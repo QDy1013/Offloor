@@ -75,7 +75,7 @@ public class AcademicActivity extends Activity {
         if (isFinishing() || isDestroyed()) return;
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG);
         setContentView(root); Ui.systemBars(this, root);
-        getWindow().setNavigationBarColor(Ui.CARD);   // 和底部导航同色
+        getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
 
         LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(14), dp(8), 0); root.addView(head);
@@ -155,7 +155,7 @@ public class AcademicActivity extends Activity {
         t.setLineSpacing(dp(3), 1f); list.addView(t);
     }
     private LinearLayout card(LinearLayout parent, int bottomDp) {
-        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 18);
+        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 20);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(bottomDp); parent.addView(c, p);
         return c;
     }
@@ -191,13 +191,13 @@ public class AcademicActivity extends Activity {
     }
     private static String countdown(int d) { return d == 0 ? "今天" : d == 1 ? "明天" : d == 2 ? "后天" : String.valueOf(d); }
 
-    /** 下一场考试：实心强调色大卡 + 大号倒计时。 */
+    /** 下一场考试：和待办页「今日概览」同一张深墨渐变卡 + 大号倒计时。 */
     private void hero(LinearLayout list, Academic.Exam e, String today) {
-        LinearLayout c = CourseUi.column(this); c.setPadding(dp(20), dp(18), dp(20), dp(20));
-        c.setBackground(Ui.round(this, Ui.ACCENT, 22));
-        if (!Ui.dark) { c.setElevation(dp(4)); if (android.os.Build.VERSION.SDK_INT >= 28) { c.setOutlineSpotShadowColor(Ui.ACCENT); c.setOutlineAmbientShadowColor(Ui.ACCENT); } }
+        LinearLayout c = CourseUi.column(this); c.setPadding(dp(22), dp(20), dp(22), dp(20));
+        c.setBackground(Ui.heroSurface(this, 26));
+        Ui.lift(c, 8f);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(2); list.addView(c, p);
-        int on = Ui.ON_ACCENT, soft = Ui.withAlpha(Ui.ON_ACCENT, 200);
+        int on = Ui.ON_HERO, soft = Ui.HERO_SUB;
         c.addView(text("下一场考试", 12, soft, true));
         CourseUi.gap(c, 10);
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.BOTTOM); c.addView(row);
@@ -212,13 +212,13 @@ public class AcademicActivity extends Activity {
             row.addView(count);
         }
         CourseUi.gap(c, 16);
-        View line = new View(this); line.setBackgroundColor(Ui.withAlpha(Ui.ON_ACCENT, 50)); c.addView(line, new LinearLayout.LayoutParams(-1, 1));
+        View line = new View(this); line.setBackgroundColor(Ui.withAlpha(android.graphics.Color.WHITE, 22)); c.addView(line, new LinearLayout.LayoutParams(-1, 1));
         CourseUi.gap(c, 14);
         c.addView(infoLine(e.date.isEmpty() ? (e.time.isEmpty() ? "时间待定" : e.time) : dateLong(e.date, today) + "   " + e.start + "–" + e.end, 15, on, true));
         if (!e.location.isEmpty()) { CourseUi.gap(c, 6); c.addView(infoLine(place(e.location), 13, soft, false)); }
         // “未结束 / 未开始”在待考卡上是废话；只显示真正有信息量的状态（如缓考、待安排）。
         if (!e.status.isEmpty() && !e.status.matches("未(结束|开始)")) {
-            CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, on, Ui.withAlpha(Ui.ON_ACCENT, 40)), new LinearLayout.LayoutParams(-2, -2));
+            CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, on, Ui.withAlpha(android.graphics.Color.WHITE, 30)), new LinearLayout.LayoutParams(-2, -2));
         }
     }
     private TextView infoLine(String s, float size, int color, boolean bold) {

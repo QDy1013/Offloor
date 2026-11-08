@@ -94,11 +94,13 @@ public class TimetableActivity extends Activity {
         root.setPadding(dp(12), dp(8), dp(12), dp(4));
         setContentView(root);
         Ui.systemBars(this, root);
-        getWindow().setNavigationBarColor(Ui.CARD);   // 和底部导航同色，连成一片
+        getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(toolbar, CourseUi.row(dp(44)));
-        toolbar.addView(icon("back", "返回", this::finish));
-        TextView title = text("我的课表", 20, Ui.TEXT, true);
+        root.addView(toolbar, CourseUi.row(dp(52)));
+        // 和待办、考试成绩一样是底部导航里的一页：大标题、不放返回箭头（系统返回键照常回到待办）。
+        TextView title = text("我的课表", 26, Ui.TEXT, true);
+        title.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+        title.setPadding(dp(8), 0, 0, 0);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         if (getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest"))
             toolbar.addView(Ui.tag(this, "测试版", Ui.SUB, Ui.FILL));
@@ -107,7 +109,7 @@ public class TimetableActivity extends Activity {
         if (table == null) { empty(root); addNavigation(root); return; }
 
         TextView school = text(table.school.name + "  /  " + table.termName, 11, Ui.SUB, false);
-        school.setPadding(dp(8), dp(10), 0, dp(14)); root.addView(school);
+        school.setPadding(dp(8), dp(6), 0, dp(16)); root.addView(school);
         swipeStart = school;
         LinearLayout navigation = new LinearLayout(this); navigation.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(navigation);
@@ -125,7 +127,7 @@ public class TimetableActivity extends Activity {
         TextView today = text("本周", 12, week == table.currentWeek() ? Ui.SUB : Ui.ACCENT, true);
         today.setPadding(dp(10), dp(10), dp(10), dp(10));
         today.setMinHeight(dp(44)); today.setMinWidth(dp(48)); today.setGravity(Gravity.CENTER);
-        today.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 10), Ui.press(), 10));
+        today.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 22), Ui.press(), 22));
         boolean inTerm = table.currentWeek() >= 1 && table.currentWeek() <= table.maxWeek;
         today.setText(inTerm ? "本周" : "非教学周"); today.setEnabled(inTerm);
         today.setContentDescription(inTerm ? "回到本周" : "当前日期不在已导入的教学周内");

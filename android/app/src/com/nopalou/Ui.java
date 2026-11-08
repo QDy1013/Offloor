@@ -18,11 +18,15 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 /**
- * 界面设计规范（v0.13）。
+ * 界面设计规范（v0.20「墨与光」）。
  *
- * 方向：「纸面 + 墨色」。暖白纸色打底，白卡承载内容，墨黑做主文字；
- * 只有一个靛蓝强调色。红 / 橙 / 琥珀只表达时间压力，紫 / 青只表达卡片类型，
+ * 方向：安静的纸面，一块有分量的墨色。石灰白纸色打底，白卡承载内容，墨黑做主文字；
+ * 首页顶部只有一张深墨渐变的「今日概览」卡负责第一眼的分量，其余地方都克制留白。
+ * 只有一个墨水蓝强调色。红 / 橙 / 琥珀只表达时间压力，紫 / 青只表达卡片类型，
  * 每种颜色只承担一种含义，用户看到颜色就知道是什么情况。
+ *
+ * 形状：卡片 20dp 圆角、胶囊按钮全圆角、底部导航是一枚悬浮胶囊；
+ * 字号只用 11 / 12 / 13 / 15 / 16 / 20 / 26 这几档，层级靠字重和颜色而不是更多字号。
  */
 final class Ui {
 
@@ -82,6 +86,15 @@ final class Ui {
     /** 卡片投影色（API 28+ 生效）。 */
     static int SHADOW;
 
+    // ---------- 首页概览卡（深墨渐变） ----------
+    static int HERO_TOP;
+    static int HERO_BOTTOM;
+    /** 概览卡上的主文字 / 次级文字。 */
+    static int ON_HERO;
+    static int HERO_SUB;
+    /** 概览卡右上角那一团很淡的光晕。 */
+    static int HERO_GLOW;
+
     // ---------- 兼容旧名（ProfileActivity 等仍在用） ----------
     static int BLUE;
     static int BLUE_BG;
@@ -108,60 +121,71 @@ final class Ui {
     private static void palette(boolean night) {
         dark = night;
         if (!night) {
-            BG = c("#F5F4F0");
+            // 浅色：石灰白纸面 + 纯白卡，墨色文字；强调色是一支偏紫的「墨水蓝」，比标准蓝更沉稳。
+            BG = c("#F3F2EE");
             CARD = c("#FFFFFF");
-            FILL = c("#ECEBE6");
-            LINE = c("#E6E4DE");
-            TEXT = c("#1C1C1E");
-            SUB = c("#64646B");
-            MUTE = c("#8E8E93");
-            RING = c("#B9B7B0");
-            ACCENT = c("#3D5AFE");
-            ACCENT_BG = c("#ECEFFF");
+            FILL = c("#EBEAE5");
+            LINE = c("#E4E2DC");
+            TEXT = c("#16161A");
+            SUB = c("#62626B");
+            MUTE = c("#93939B");
+            RING = c("#BDBBB4");
+            ACCENT = c("#4A55D8");
+            ACCENT_BG = c("#EDEEFC");
             ON_ACCENT = Color.WHITE;
-            RED = c("#E5484D");
-            RED_BG = c("#FDECEC");
-            ORANGE = c("#D9730D");
-            ORANGE_BG = c("#FCF0E3");
-            AMBER_TX = c("#9A6700");
-            AMBER_BG = c("#FBF3DB");
-            GREEN = c("#2E9E6A");
-            GREEN_BG = c("#E4F4EC");
-            VIOLET = c("#7C4DDB");
-            VIOLET_BG = c("#F2ECFD");
-            TEAL = c("#0F8B86");
-            TEAL_BG = c("#E3F4F2");
-            INK = c("#24242A");
-            INK_ACTION = c("#9DB0FF");
-            SHADOW = c("#5A4A2A");
+            RED = c("#DC3E42");
+            RED_BG = c("#FCECEC");
+            ORANGE = c("#D46A12");
+            ORANGE_BG = c("#FBEFE2");
+            AMBER_TX = c("#94650A");
+            AMBER_BG = c("#F9F1DC");
+            GREEN = c("#2A9467");
+            GREEN_BG = c("#E3F2EA");
+            VIOLET = c("#7351D4");
+            VIOLET_BG = c("#F1ECFC");
+            TEAL = c("#0E8580");
+            TEAL_BG = c("#E1F2F0");
+            INK = c("#1B1B22");
+            INK_ACTION = c("#A9B2FF");
+            SHADOW = c("#2B2A4A");
+            HERO_TOP = c("#1D1E2B");
+            HERO_BOTTOM = c("#2B2D48");
+            ON_HERO = c("#F5F5FA");
+            HERO_SUB = c("#A3A6C2");
+            HERO_GLOW = c("#6F7BFF");
         } else {
-            // 深色：暖墨底 + 略亮的卡片，彩色整体提亮、降饱和，浅底标签改成同色深底。
-            BG = c("#111113");
-            CARD = c("#1C1C1F");
-            FILL = c("#26262A");
-            LINE = c("#2E2E33");
-            TEXT = c("#EDEDEF");
-            SUB = c("#A3A3AB");
-            MUTE = c("#6F6F78");
-            RING = c("#55555C");
-            ACCENT = c("#8C9BFF");
-            ACCENT_BG = c("#23274A");
-            ON_ACCENT = c("#0D0F1E");
-            RED = c("#FF6B70");
-            RED_BG = c("#3A1C1F");
-            ORANGE = c("#F2994A");
-            ORANGE_BG = c("#38281A");
-            AMBER_TX = c("#E8B84E");
-            AMBER_BG = c("#332B16");
+            // 深色：近黑底 + 抬升一档的卡片，彩色整体提亮、降饱和，浅底标签改成同色深底。
+            BG = c("#0F0F12");
+            CARD = c("#19191D");
+            FILL = c("#232328");
+            LINE = c("#2B2B31");
+            TEXT = c("#EDEDF0");
+            SUB = c("#A1A1AA");
+            MUTE = c("#6E6E78");
+            RING = c("#55555E");
+            ACCENT = c("#939CFF");
+            ACCENT_BG = c("#22244A");
+            ON_ACCENT = c("#0C0D1F");
+            RED = c("#FF6B6E");
+            RED_BG = c("#3A1C1E");
+            ORANGE = c("#F29A4C");
+            ORANGE_BG = c("#37281A");
+            AMBER_TX = c("#E6B751");
+            AMBER_BG = c("#322A16");
             GREEN = c("#4CC38A");
-            GREEN_BG = c("#16302A");
-            VIOLET = c("#B197FC");
-            VIOLET_BG = c("#2B2345");
+            GREEN_BG = c("#152E28");
+            VIOLET = c("#B39BFF");
+            VIOLET_BG = c("#2A2345");
             TEAL = c("#3CCBC2");
-            TEAL_BG = c("#15302E");
-            INK = c("#303036");
-            INK_ACTION = c("#A9B6FF");
+            TEAL_BG = c("#142E2D");
+            INK = c("#2A2A31");
+            INK_ACTION = c("#AEB6FF");
             SHADOW = Color.BLACK;
+            HERO_TOP = c("#1B1C2A");
+            HERO_BOTTOM = c("#23254A");
+            ON_HERO = c("#F2F2F8");
+            HERO_SUB = c("#9EA1C0");
+            HERO_GLOW = c("#7D88FF");
         }
         BLUE = ACCENT;
         BLUE_BG = ACCENT_BG;
@@ -200,12 +224,12 @@ final class Ui {
             }
         };
         sheet.setOrientation(android.widget.LinearLayout.VERTICAL);
-        sheet.setPadding(dp(c, 20), dp(c, 10), dp(c, 20), dp(c, 18));
-        sheet.setBackground(topRound(c, CARD, 26));
+        sheet.setPadding(dp(c, 20), dp(c, 8), dp(c, 20), dp(c, 18));
+        sheet.setBackground(topRound(c, CARD, 28));
         android.widget.FrameLayout grip = new android.widget.FrameLayout(c);
         View handle = new View(c);
-        handle.setBackground(round(c, dark ? MUTE : LINE, 3));
-        grip.addView(handle, new android.widget.FrameLayout.LayoutParams(dp(c, 36), dp(c, 4), android.view.Gravity.CENTER));
+        handle.setBackground(round(c, dark ? RING : withAlpha(TEXT, 38), 3));
+        grip.addView(handle, new android.widget.FrameLayout.LayoutParams(dp(c, 40), dp(c, 5), android.view.Gravity.CENTER));
         sheet.addView(grip, new android.widget.LinearLayout.LayoutParams(-1, dp(c, 20)));
         grip.setOnTouchListener(new View.OnTouchListener() {
             float startY;
@@ -257,7 +281,7 @@ final class Ui {
             w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
             w.setGravity(android.view.Gravity.BOTTOM);
             w.setLayout(-1, -2);
-            w.setDimAmount(dark ? 0.6f : 0.4f);
+            w.setDimAmount(dark ? 0.62f : 0.32f);
             w.setWindowAnimations(android.R.style.Animation_InputMethod);
             w.setNavigationBarColor(CARD);
         }
@@ -270,20 +294,111 @@ final class Ui {
                 : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert;
     }
 
-    /** 卡片底：浅色用白卡 + 柔和投影，深色用亮一档的卡 + 细描边（深色下投影看不见）。 */
+    /**
+     * 卡片底：浅色是白卡 + 一层很散的冷调投影（不描边，靠投影浮起来）；
+     * 深色投影看不见，改用亮一档的卡 + 极细描边。
+     */
     static void cardSurface(View v, float radiusDp) {
         Context c = v.getContext();
         GradientDrawable face = round(c, CARD, radiusDp);
         if (dark) face.setStroke(1, LINE);
-        else face.setStroke(1, withAlpha(LINE, 150));
         v.setBackground(ripple(c, face, press(), radiusDp));
-        if (!dark) {
-            v.setElevation(dp(c, 1.5f));
-            if (android.os.Build.VERSION.SDK_INT >= 28) {
-                v.setOutlineAmbientShadowColor(withAlpha(SHADOW, 60));
-                v.setOutlineSpotShadowColor(withAlpha(SHADOW, 90));
-            }
+        if (!dark) lift(v, 2f);
+    }
+
+    /** 浅色模式下的柔和浮起：只在 API 28+ 上色，低版本是系统默认灰影。 */
+    static void lift(View v, float elevationDp) {
+        if (dark) return;
+        v.setElevation(dp(v.getContext(), elevationDp));
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            v.setOutlineAmbientShadowColor(withAlpha(SHADOW, 40));
+            v.setOutlineSpotShadowColor(withAlpha(SHADOW, 70));
         }
+    }
+
+    /**
+     * 首页「今日概览」卡的底：自上而下的深墨渐变，右上角叠一团很淡的径向光，
+     * 让整块墨色有一点纵深，但不抢文字。
+     */
+    static Drawable heroSurface(Context c, float radiusDp) {
+        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{HERO_TOP, HERO_BOTTOM});
+        base.setCornerRadius(dp(c, radiusDp));
+        GradientDrawable glow = new GradientDrawable();
+        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        glow.setColors(new int[]{withAlpha(HERO_GLOW, dark ? 70 : 80), withAlpha(HERO_GLOW, 0)});
+        glow.setGradientCenter(0.92f, 0.0f);
+        glow.setGradientRadius(dp(c, 220));
+        glow.setCornerRadius(dp(c, radiusDp));
+        android.graphics.drawable.LayerDrawable layer =
+                new android.graphics.drawable.LayerDrawable(new Drawable[]{base, glow});
+        if (dark) {
+            GradientDrawable edge = new GradientDrawable();
+            edge.setCornerRadius(dp(c, radiusDp));
+            edge.setColor(Color.TRANSPARENT);
+            edge.setStroke(1, withAlpha(Color.WHITE, 18));
+            layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{base, glow, edge});
+        }
+        return layer;
+    }
+
+    /** 分组小标题：12sp 中粗、弱化色、略加字距，像杂志的栏目名。 */
+    static TextView sectionLabel(Context c, String text) {
+        TextView t = new TextView(c);
+        t.setText(text);
+        t.setTextSize(12);
+        t.setTypeface(medium());
+        t.setTextColor(MUTE);
+        t.setLetterSpacing(0.06f);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
+    /** 设置类列表的分组底板：和页面同色系、比卡片低一档，组内各行用细线分开。 */
+    static android.widget.LinearLayout group(Context c) {
+        android.widget.LinearLayout g = new android.widget.LinearLayout(c);
+        g.setOrientation(android.widget.LinearLayout.VERTICAL);
+        g.setBackground(round(c, dark ? FILL : BG, 18));
+        g.setClipToOutline(true);
+        return g;
+    }
+
+    /** 列表行尾的「›」。 */
+    static Drawable chevron(Context c, int color) {
+        return new Chevron(dp(c, 16), color);
+    }
+
+    private static final class Chevron extends Drawable {
+        private final int size;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+
+        Chevron(int size, int color) {
+            this.size = Math.max(1, size);
+            paint.setColor(color);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(1f, size * 0.11f));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            Rect b = getBounds();
+            float s = Math.min(b.width(), b.height());
+            float x = b.left + (b.width() - s) / 2f, y = b.top + (b.height() - s) / 2f;
+            path.reset();
+            path.moveTo(x + s * 0.38f, y + s * 0.22f);
+            path.lineTo(x + s * 0.66f, y + s * 0.5f);
+            path.lineTo(x + s * 0.38f, y + s * 0.78f);
+            canvas.drawPath(path, paint);
+        }
+
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { paint.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+        @Override public int getIntrinsicWidth() { return size; }
+        @Override public int getIntrinsicHeight() { return size; }
     }
 
     /**
@@ -369,7 +484,7 @@ final class Ui {
         return Typeface.create("sans-serif-medium", Typeface.NORMAL);
     }
 
-    /** 小标签：浅底深字，11sp 中粗。 */
+    /** 小标签：浅底深字的胶囊，11sp 中粗。 */
     static TextView tag(Context c, String text, int textColor, int bgColor) {
         TextView t = new TextView(c);
         t.setText(text == null ? "" : text);
@@ -377,8 +492,8 @@ final class Ui {
         t.setTypeface(medium());
         t.setTextColor(textColor);
         t.setIncludeFontPadding(false);
-        t.setBackground(round(c, bgColor, 6));
-        t.setPadding(dp(c, 6), dp(c, 3), dp(c, 6), dp(c, 3));
+        t.setBackground(round(c, bgColor, 99));
+        t.setPadding(dp(c, 8), dp(c, 3), dp(c, 8), dp(c, 3));
         return t;
     }
 

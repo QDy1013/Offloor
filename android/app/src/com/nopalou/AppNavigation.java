@@ -20,7 +20,8 @@ import android.widget.TextView;
 
 /**
  * 待办 / 课表 / 考试成绩三个主页面之间的底部导航。
- * 样式：白底细线分隔，每个标签是「图标 + 文字」，选中项图标后面衬一枚浅靛蓝胶囊、文字变强调色；
+ * 样式：悬浮在页面底色上的一枚白色胶囊，每个标签是横排的「图标 + 文字」，
+ * 选中项整体衬一枚浅墨水蓝胶囊、图标和文字变强调色；
  * 切换用 150ms 淡入淡出，不再整页横滑，像同一个 App 里换页而不是开新窗口。
  */
 final class AppNavigation {
@@ -63,37 +64,44 @@ final class AppNavigation {
     }
 
     static View bar(Activity from, int current) {
-        LinearLayout shell = CourseUi.column(from);
-        shell.setBackgroundColor(Ui.CARD);
-        shell.addView(Ui.hairline(from));
+        // 外层和页面同色，里面是一枚悬浮的胶囊：圆角、柔和投影，和内容之间留出呼吸感。
+        FrameLayout shell = new FrameLayout(from);
+        shell.setBackgroundColor(Ui.BG);
+        shell.setClipToPadding(false);
+        shell.setPadding(Ui.dp(from, 16), Ui.dp(from, 6), Ui.dp(from, 16), Ui.dp(from, 12));
         LinearLayout row = new LinearLayout(from);
-        row.setPadding(Ui.dp(from, 16), Ui.dp(from, 6), Ui.dp(from, 16), Ui.dp(from, 6));
-        shell.addView(row, new LinearLayout.LayoutParams(-1, Ui.dp(from, 62)));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(from, 6), Ui.dp(from, 6), Ui.dp(from, 6), Ui.dp(from, 6));
+        android.graphics.drawable.GradientDrawable capsule = Ui.round(from, Ui.CARD, 30);
+        if (Ui.dark) capsule.setStroke(1, Ui.LINE);
+        row.setBackground(capsule);
+        Ui.lift(row, 6f);
+        shell.addView(row, new FrameLayout.LayoutParams(-1, Ui.dp(from, 60)));
         for (int i = 0; i < TITLES.length; i++) {
             final int target = i;
             final boolean selected = current == target;
             String title = TITLES[i];
-            LinearLayout tab = CourseUi.column(from);
+            // 每个标签都是「图标 + 文字」横排；选中的那个衬一枚浅墨水蓝胶囊。
+            LinearLayout tab = new LinearLayout(from);
             tab.setGravity(Gravity.CENTER);
             tab.setContentDescription(title + (selected ? "，当前页面" : ""));
             tab.setSelected(selected);
             tab.setFocusable(true);
-            tab.setBackground(Ui.ripple(from, null, Ui.press(), 16));
+            tab.setBackground(Ui.ripple(from, selected ? Ui.round(from, Ui.ACCENT_BG, 24) : null, Ui.press(), 24));
 
-            FrameLayout iconWrap = new FrameLayout(from);
-            if (selected) iconWrap.setBackground(Ui.round(from, Ui.ACCENT_BG, 14));
             ImageView icon = new ImageView(from);
             icon.setImageDrawable(new TabIcon(from, target, selected ? Ui.ACCENT : Ui.SUB));
-            iconWrap.addView(icon, new FrameLayout.LayoutParams(Ui.dp(from, 22), Ui.dp(from, 22), Gravity.CENTER));
-            tab.addView(iconWrap, new LinearLayout.LayoutParams(Ui.dp(from, 56), Ui.dp(from, 28)));
+            tab.addView(icon, new LinearLayout.LayoutParams(Ui.dp(from, 20), Ui.dp(from, 20)));
 
-            TextView label = CourseUi.text(from, title, 11, selected ? Ui.ACCENT : Ui.SUB, selected);
-            label.setGravity(Gravity.CENTER);
+            TextView label = CourseUi.text(from, title, 13, selected ? Ui.ACCENT : Ui.SUB, selected);
+            label.setSingleLine(true);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-2, -2);
-            labelLp.topMargin = Ui.dp(from, 4);
+            labelLp.leftMargin = Ui.dp(from, 6);
             tab.addView(label, labelLp);
 
-            row.addView(tab, new LinearLayout.LayoutParams(0, -1, 1));
+            LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, -1, 1);
+            if (i > 0) tabLp.leftMargin = Ui.dp(from, 4);
+            row.addView(tab, tabLp);
             tab.setOnClickListener(v -> {
                 if (selected) return;
                 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);

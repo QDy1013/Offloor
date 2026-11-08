@@ -99,6 +99,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView searchClear;
     private ScrollView listScroll;
     private TextView headline;
+    /** 今日概览卡和其中的七天截止分布条。 */
+    private LinearLayout hero;
+    private LinearLayout weekStrip;
     private LinearLayout emptyBox;
     private View emptyIcon;
     private TextView emptyTitle;
@@ -395,47 +398,75 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         listScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(this, 20), dp(this, 6), dp(this, 20), dp(this, 96));
+        page.setPadding(dp(this, 18), dp(this, 4), dp(this, 18), dp(this, 80));
         listScroll.addView(page, new ViewGroup.LayoutParams(-1, -2));
 
-        // 顶栏：日期 · 读取状态 · 更多
+        // 顶栏：品牌字标 · 读取状态 · 更多
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        sub = uiText(subLine(), 13, Ui.SUB, true);
-        sub.setSingleLine(true);
-        top.addView(sub, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView brand = uiText("", 22, Ui.TEXT, false);
+        SpannableString word = new SpannableString("Offloor.");
+        word.setSpan(new ForegroundColorSpan(Ui.ACCENT), word.length() - 1, word.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        brand.setText(word);
+        brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        brand.setLetterSpacing(-0.02f);
+        top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         notifStatus = uiText("", 12, Ui.SUB, true);
         notifStatus.setGravity(Gravity.CENTER);
-        notifStatus.setPadding(dp(this, 11), 0, dp(this, 12), 0);
+        notifStatus.setPadding(dp(this, 12), 0, dp(this, 13), 0);
         notifStatus.setOnClickListener(v -> showHealthCheck());
-        top.addView(notifStatus, lp(-2, dp(this, 30)));
-        TextView more = uiText("⋯", 20, Ui.TEXT, true);
-        more.setGravity(Gravity.CENTER);
+        top.addView(notifStatus, lp(-2, dp(this, 32)));
+        ImageView more = new ImageView(this);
+        more.setImageDrawable(CourseUi.glyph(this, "more"));
+        int morePad = dp(this, 9);
+        more.setPadding(morePad, morePad, morePad, morePad);
         more.setContentDescription("更多");
         more.setBackground(Ui.ripple(this, Ui.disc(this, Ui.CARD), Ui.press(), 20));
         more.setOnClickListener(v -> showMoreMenu());
-        LinearLayout.LayoutParams moreLp = lp(dp(this, 40), dp(this, 40));
+        LinearLayout.LayoutParams moreLp = lp(dp(this, 38), dp(this, 38));
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
-        page.addView(top, lp(-1, dp(this, 56)));
+        page.addView(top, lp(-1, dp(this, 60)));
 
-        // 大标题：一句话结论，数字上色
-        headline = uiText("", 28, Ui.TEXT, false);
+        // 今日概览：深墨渐变卡。日期 → 一句话结论 → 补充数量 → 未来七天的截止分布。
+        hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setPadding(dp(this, 22), dp(this, 20), dp(this, 22), dp(this, 18));
+        hero.setBackground(Ui.heroSurface(this, 26));
+        Ui.lift(hero, 8f);
+        sub = uiText(subLine(), 13, Ui.HERO_SUB, true);
+        sub.setSingleLine(true);
+        sub.setLetterSpacing(0.02f);
+        hero.addView(sub);
+        headline = uiText("", 26, Ui.ON_HERO, false);
         headline.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         headline.setLineSpacing(dp(this, 2), 1f);
+        headline.setLetterSpacing(-0.01f);
         LinearLayout.LayoutParams hlLp = lp(-1, -2);
-        hlLp.topMargin = dp(this, 14);
-        page.addView(headline, hlLp);
-        stats = uiText("", 14, Ui.SUB, false);
+        hlLp.topMargin = dp(this, 12);
+        hero.addView(headline, hlLp);
+        stats = uiText("", 13, Ui.HERO_SUB, false);
         stats.setLineSpacing(dp(this, 3), 1f);
         LinearLayout.LayoutParams stLp = lp(-1, -2);
         stLp.topMargin = dp(this, 8);
-        page.addView(stats, stLp);
+        hero.addView(stats, stLp);
+        View heroRule = new View(this);
+        heroRule.setBackgroundColor(Ui.withAlpha(Color.WHITE, 22));
+        LinearLayout.LayoutParams ruleLp = lp(-1, 1);
+        ruleLp.topMargin = dp(this, 18);
+        hero.addView(heroRule, ruleLp);
+        weekStrip = new LinearLayout(this);
+        LinearLayout.LayoutParams wsLp = lp(-1, -2);
+        wsLp.topMargin = dp(this, 14);
+        hero.addView(weekStrip, wsLp);
+        LinearLayout.LayoutParams heroLp = lp(-1, -2);
+        heroLp.topMargin = dp(this, 6);
+        page.addView(hero, heroLp);
 
         // 撞车提醒
         clashBanner = uiText("", 13, Ui.ORANGE, true);
-        clashBanner.setPadding(dp(this, 14), dp(this, 12), dp(this, 14), dp(this, 12));
-        clashBanner.setBackground(Ui.ripple(this, Ui.round(this, Ui.ORANGE_BG, 14), Ui.press(), 14));
+        clashBanner.setPadding(dp(this, 16), dp(this, 13), dp(this, 16), dp(this, 13));
+        clashBanner.setBackground(Ui.ripple(this, Ui.round(this, Ui.ORANGE_BG, 18), Ui.press(), 18));
         clashBanner.setLineSpacing(dp(this, 2), 1f);
         clashBanner.setMaxLines(2);
         clashBanner.setEllipsize(TextUtils.TruncateAt.END);
@@ -449,8 +480,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         demoTools = new LinearLayout(this);
         demoTools.setGravity(Gravity.CENTER_VERTICAL);
         demoTools.setVisibility(View.GONE);
-        demoTools.setPadding(dp(this, 16), dp(this, 10), dp(this, 10), dp(this, 10));
-        demoTools.setBackground(Ui.round(this, Ui.ACCENT_BG, 16));
+        demoTools.setPadding(dp(this, 18), dp(this, 12), dp(this, 12), dp(this, 12));
+        demoTools.setBackground(Ui.round(this, Ui.ACCENT_BG, 20));
         LinearLayout demoText = new LinearLayout(this);
         demoText.setOrientation(LinearLayout.VERTICAL);
         demoText.addView(uiText("离线演示", 14, Ui.ACCENT, true));
@@ -471,7 +502,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         demoUpdate.setVisibility(View.GONE);
         demoTools.addView(demoUpdate, lp(-2, dp(this, 40)));
         demoButton = button("退出", v -> toggleDemo());
-        demoButton.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 12), Ui.press(), 12));
+        demoButton.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 20), Ui.press(), 20));
         demoButton.setTextSize(13);
         LinearLayout.LayoutParams exitLp = lp(-2, dp(this, 40));
         exitLp.leftMargin = dp(this, 8);
@@ -516,7 +547,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         // 底部主按钮：只在没开读取时出现
         liveTools = new LinearLayout(this);
-        liveTools.setPadding(dp(this, 20), dp(this, 10), dp(this, 20), dp(this, 16));
+        liveTools.setPadding(dp(this, 20), dp(this, 10), dp(this, 20), dp(this, 4));
         liveTools.setBackgroundColor(Ui.BG);
         autoReadButton = stylePrimary(button("开启自动读取", v -> {
             if (WatchdogJob.accessEnabled(this)) showHealthCheck();
@@ -530,7 +561,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         undoBar = new LinearLayout(this);
         undoBar.setGravity(Gravity.CENTER_VERTICAL);
         undoBar.setPadding(dp(this, 18), 0, dp(this, 6), 0);
-        undoBar.setBackground(Ui.round(this, Ui.INK, 14));
+        undoBar.setBackground(Ui.round(this, Ui.INK, 18));
         undoBar.setElevation(dp(this, 6));
         undoText = uiText("", 14, Color.WHITE, false);
         undoText.setSingleLine(true);
@@ -543,7 +574,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         undoBar.addView(undoAction, lp(-2, dp(this, 40)));
         undoBar.setVisibility(View.GONE);
         FrameLayout.LayoutParams undoLp = new FrameLayout.LayoutParams(-1, dp(this, 52), Gravity.BOTTOM);
-        undoLp.setMargins(dp(this, 16), 0, dp(this, 16), dp(this, 84));
+        undoLp.setMargins(dp(this, 16), 0, dp(this, 16), dp(this, 90));
         frame.addView(undoBar, undoLp);
 
         buildCompactBar(frame);
@@ -551,7 +582,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         setContentView(frame);
         Ui.systemBars(this, frame);
-        getWindow().setNavigationBarColor(Ui.CARD);   // 和底部导航同色，连成一片
+        getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
         root.requestFocus();
     }
 
@@ -587,8 +618,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void updateCompactBar(int scrollY) {
-        if (compactBar == null || headline == null) return;
-        boolean show = scrollY > headline.getBottom() + dp(this, 4);
+        if (compactBar == null || hero == null) return;
+        boolean show = scrollY > hero.getBottom() - dp(this, 24);
         if (show == compactShown) return;
         compactShown = show;
         compactBar.animate().cancel();
@@ -619,10 +650,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         wrap.setOrientation(LinearLayout.VERTICAL);
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        searchRow.setBackground(Ui.round(this, Ui.FILL, 14));
+        GradientDrawable searchBg = Ui.round(this, Ui.dark ? Ui.FILL : Ui.CARD, 16);
+        if (!Ui.dark) searchBg.setStroke(1, Ui.withAlpha(Ui.LINE, 200));
+        searchRow.setBackground(searchBg);
         searchField = new EditText(this);
         searchField.setSingleLine(true);
         searchField.setTextSize(15);
+        searchField.setTypeface(Typeface.DEFAULT);
         searchField.setHint("搜索事项、群名、来源");
         searchField.setContentDescription("搜索待办卡片");
         searchField.setBackground(null);
@@ -641,7 +675,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         searchClear.setOnClickListener(v -> searchField.setText(""));
         searchRow.addView(searchClear, lp(dp(this, 44), dp(this, 44)));
         LinearLayout.LayoutParams searchLp = lp(-1, -2);
-        searchLp.topMargin = dp(this, 22);
+        searchLp.topMargin = dp(this, 20);
         wrap.addView(searchRow, searchLp);
         searchField.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -692,9 +726,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private TextView chip(String text) {
-        TextView t = uiText(text, 14, Ui.TEXT, true);
+        TextView t = uiText(text, 13, Ui.TEXT, true);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(this, 14), 0, dp(this, 14), 0);
+        t.setPadding(dp(this, 15), 0, dp(this, 15), 0);
         return t;
     }
 
@@ -711,9 +745,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         boolean wasSelected = chip.isSelected();
         chip.setTag(key);
         chip.setText(s);
-        chip.setTextColor(selected ? Ui.CARD : Ui.TEXT);
-        GradientDrawable bg = selected ? Ui.round(this, Ui.TEXT, 18) : Ui.round(this, Ui.CARD, 18);
-        if (!selected) bg.setStroke(1, Ui.LINE);
+        chip.setTextColor(selected ? Ui.CARD : Ui.SUB);
+        // 选中：墨色实心胶囊；未选中：没有描边，只在纸面上留一块很浅的底。
+        GradientDrawable bg = selected ? Ui.round(this, Ui.TEXT, 18)
+                : Ui.round(this, Ui.dark ? Ui.FILL : Ui.withAlpha(Ui.TEXT, 10), 18);
         chip.setBackground(Ui.ripple(this, bg, Ui.press(), 18));
         chip.setSelected(selected);
         if (selected && !wasSelected && chip.isAttachedToWindow()) {
@@ -760,6 +795,86 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         styleChip(stateFilter, stateLabel + " ▾", null, scoped);
     }
 
+    /** 概览卡上的提亮色：红 / 橙 / 墨水蓝在深墨底上的对应色。 */
+    private static final int HERO_RED = Color.parseColor("#FF8A8C");
+    private static final int HERO_ORANGE = Color.parseColor("#FFB46B");
+    private static final int HERO_ACCENT = Color.parseColor("#AEB6FF");
+
+    /**
+     * 未来七天的截止分布：每天一列「星期 / 日期 / 圆点」，圆点数 = 当天截止的未完成事项（最多三颗），
+     * 颜色跟随时间压力。今天的日期衬一枚白色圆片。扫一眼就知道这一周哪天最挤。
+     */
+    private void updateWeekStrip(Engine shown, long now) {
+        if (weekStrip == null) return;
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(now);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        long dayStart = cal.getTimeInMillis();
+        int[] count = new int[7];
+        int[] level = new int[7];
+        for (Engine.Card c : shown.all()) {
+            if (c.done || c.deadline <= 0 || c.needsConfirm) continue;
+            if (c.deadline < dayStart) continue;
+            Calendar d = Calendar.getInstance();
+            d.setTimeInMillis(c.deadline);
+            int diff = 0;
+            Calendar probe = (Calendar) cal.clone();
+            while (diff < 7 && !(probe.get(Calendar.YEAR) == d.get(Calendar.YEAR)
+                    && probe.get(Calendar.DAY_OF_YEAR) == d.get(Calendar.DAY_OF_YEAR))) {
+                probe.add(Calendar.DAY_OF_MONTH, 1);
+                diff++;
+            }
+            if (diff >= 7) continue;
+            count[diff]++;
+            level[diff] = Math.max(level[diff], TodayView.urgency(c.deadline, false, false, now));
+        }
+        String key = java.util.Arrays.toString(count) + java.util.Arrays.toString(level) + dayStart;
+        if (key.equals(weekStrip.getTag())) return;
+        weekStrip.setTag(key);
+        weekStrip.removeAllViews();
+        String[] names = {"日", "一", "二", "三", "四", "五", "六"};
+        Calendar day = (Calendar) cal.clone();
+        StringBuilder spoken = new StringBuilder("未来七天：");
+        for (int i = 0; i < 7; i++) {
+            boolean today = i == 0;
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setGravity(Gravity.CENTER_HORIZONTAL);
+            TextView wd = uiText(today ? "今" : names[day.get(Calendar.DAY_OF_WEEK) - 1], 11,
+                    today ? Ui.ON_HERO : Ui.HERO_SUB, today);
+            col.addView(wd);
+            TextView num = uiText(String.valueOf(day.get(Calendar.DAY_OF_MONTH)), 15,
+                    today ? Ui.HERO_TOP : Ui.ON_HERO, true);
+            num.setGravity(Gravity.CENTER);
+            if (today) num.setBackground(Ui.disc(this, Ui.ON_HERO));
+            LinearLayout.LayoutParams numLp = lp(dp(this, 30), dp(this, 30));
+            numLp.topMargin = dp(this, 6);
+            col.addView(num, numLp);
+            LinearLayout dots = new LinearLayout(this);
+            dots.setGravity(Gravity.CENTER);
+            int dotColor = level[i] >= 2 ? HERO_RED : level[i] == 1 ? HERO_ORANGE : HERO_ACCENT;
+            for (int k = 0; k < Math.min(3, count[i]); k++) {
+                View dot = Ui.dot(this, dotColor, 4.5f);
+                LinearLayout.LayoutParams dLp = lp(dp(this, 4.5f), dp(this, 4.5f));
+                if (k > 0) dLp.leftMargin = dp(this, 3);
+                dots.addView(dot, dLp);
+            }
+            LinearLayout.LayoutParams dotsLp = lp(-1, dp(this, 5));
+            dotsLp.topMargin = dp(this, 7);
+            col.addView(dots, dotsLp);
+            weekStrip.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
+            if (count[i] > 0) {
+                spoken.append(today ? "今天" : (day.get(Calendar.MONTH) + 1) + "月" + day.get(Calendar.DAY_OF_MONTH) + "日")
+                        .append(" ").append(count[i]).append(" 件；");
+            }
+            day.add(Calendar.DAY_OF_MONTH, 1);
+        }
+        weekStrip.setContentDescription(spoken.length() > 5 ? spoken.toString() : "未来七天没有截止的事项");
+    }
+
     /** 大标题和副标题：先说最要紧的一件事，再补充其余数量。 */
     private void updateHeadline(Engine shown, long now) {
         int total = 0, open = 0, today = 0, tomorrow = 0, overdue = 0, confirm = 0, urgent = 0, soon = 0;
@@ -803,12 +918,17 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             head = "今天没有截止";
         }
         SpannableString s = new SpannableString(head);
+        SpannableString onHero = new SpannableString(head);
         if (num != null) {
             int i = head.indexOf(num);
             s.setSpan(new ForegroundColorSpan(numColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            // 深墨卡上同一种含义换成提亮的那一档，保证对比度。
+            int heroColor = numColor == Ui.RED ? HERO_RED : numColor == Ui.ORANGE ? HERO_ORANGE : HERO_ACCENT;
+            onHero.setSpan(new ForegroundColorSpan(heroColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        headline.setText(s);
+        headline.setText(onHero);
         if (compactTitle != null) compactTitle.setText(s);
+        updateWeekStrip(shown, now);
 
         List<String> parts = new ArrayList<>();
         if (tomorrow > 0 && !"tomorrow".equals(lead)) parts.add("明天 " + tomorrow + " 件");
@@ -938,7 +1058,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         btn.setAllCaps(false);
         btn.setTypeface(Ui.medium());
         btn.setTextColor(Ui.TEXT);
-        btn.setBackground(Ui.ripple(this, Ui.round(this, Ui.FILL, 12), Ui.press(), 12));
+        btn.setBackground(Ui.ripple(this, Ui.round(this, Ui.FILL, 14), Ui.press(), 14));
         btn.setMinHeight(0);
         btn.setMinimumHeight(dp(this, 44));
         btn.setMinWidth(0);
@@ -955,7 +1075,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     /** 主按钮：靛蓝实心 + 白字。一个界面只放一个。 */
     Button stylePrimary(Button b) {
-        b.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT, 14), Ui.withAlpha(Ui.ON_ACCENT, 60), 14));
+        b.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT, 16), Ui.withAlpha(Ui.ON_ACCENT, 60), 16));
+        Ui.lift(b, 3f);
         b.setTextColor(Ui.ON_ACCENT);
         Ui.pressScale(b, 0.97f);
         b.setTextSize(15);
@@ -1024,8 +1145,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuSection(body, "演示");
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
-        View gap = new View(this);
-        body.addView(gap, lp(-1, dp(this, 8)));
+        menuSection(body, null);
         menuRow(body, holder, "清空本机数据", "清空全部待办、已移除卡片和近期消息", Ui.RED, () ->
                 alert()
                         .setTitle("清空待办和近期消息？")
@@ -1040,35 +1160,63 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     TextView sheetTitle(String text) {
-        TextView t = uiText(text, 18, Ui.TEXT, true);
-        t.setPadding(dp(this, 4), dp(this, 12), 0, dp(this, 4));
+        TextView t = uiText(text, 20, Ui.TEXT, false);
+        t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        t.setPadding(dp(this, 4), dp(this, 10), 0, dp(this, 6));
         return t;
     }
 
+    /** 当前正在往里放行的分组底板；menuSection 开新组，menuRow 往里加。 */
+    private LinearLayout menuGroup;
+
+    /** 开一个新分组：可选的栏目名 + 一块圆角底板。name 为 null 时只开底板（用来把危险操作单独隔开）。 */
     void menuSection(LinearLayout body, String name) {
-        TextView t = uiText(name, 12, Ui.MUTE, true);
-        t.setPadding(dp(this, 4), dp(this, 18), 0, dp(this, 6));
-        body.addView(t);
+        if (name != null) {
+            TextView t = Ui.sectionLabel(this, name);
+            t.setPadding(dp(this, 6), dp(this, 20), 0, dp(this, 8));
+            body.addView(t);
+        }
+        menuGroup = Ui.group(this);
+        LinearLayout.LayoutParams gLp = lp(-1, -2);
+        if (name == null) gLp.topMargin = dp(this, 16);
+        body.addView(menuGroup, gLp);
     }
 
     void menuRow(LinearLayout body, android.app.Dialog[] holder, String label, String hint, int color, Runnable action) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(this, 56));
-        row.setPadding(dp(this, 4), dp(this, 10), dp(this, 4), dp(this, 10));
-        row.setBackground(Ui.ripple(this, null, Ui.press(), 12));
-        row.addView(uiText(label, 16, color, false));
-        if (!TextUtils.isEmpty(hint)) {
-            TextView h = uiText(hint, 12, Ui.MUTE, false);
-            h.setPadding(0, dp(this, 5), 0, 0);
-            row.addView(h);
+        LinearLayout target = menuGroup != null && menuGroup.getParent() == body ? menuGroup : body;
+        if (target != body && target.getChildCount() > 0) {
+            View rule = new View(this);
+            rule.setBackgroundColor(Ui.LINE);
+            LinearLayout.LayoutParams ruleLp = lp(-1, 1);
+            ruleLp.leftMargin = dp(this, 16);
+            target.addView(rule, ruleLp);
         }
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(this, 58));
+        row.setPadding(dp(this, 16), dp(this, 11), dp(this, 12), dp(this, 11));
+        row.setBackground(Ui.ripple(this, null, Ui.press(), 0));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView main = uiText(label, 15, color, true);
+        text.addView(main);
+        if (!TextUtils.isEmpty(hint)) {
+            TextView h = uiText(hint, 12, color == Ui.TEXT ? Ui.MUTE : Ui.withAlpha(color, 200), false);
+            h.setPadding(0, dp(this, 5), 0, 0);
+            h.setLineSpacing(dp(this, 1), 1f);
+            text.addView(h);
+        }
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView chev = new ImageView(this);
+        chev.setImageDrawable(Ui.chevron(this, Ui.RING));
+        LinearLayout.LayoutParams cLp = lp(dp(this, 16), dp(this, 16));
+        cLp.leftMargin = dp(this, 8);
+        row.addView(chev, cLp);
         row.setOnClickListener(v -> {
             if (holder[0] != null) holder[0].dismiss();
             action.run();
         });
-        body.addView(row, lp(-1, -2));
+        target.addView(row, lp(-1, -2));
     }
 
     /**
@@ -1424,31 +1572,38 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 .show();
     }
 
-    /** 分组标题：组名 + 数量，「已过期」标红、「待确认」标琥珀，其余墨色。 */
+    /**
+     * 分组标题：组名 + 数量 + 一条延伸到右边的细线，像杂志里的栏目分隔。
+     * 「已过期」标红、「待确认」标琥珀、「今天」前加一个墨水蓝小圆点，其余墨色。
+     */
     View groupHeader(String name, int count) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         int color = "已过期".equals(name) ? Ui.RED : "待确认".equals(name) ? Ui.AMBER_TX
                 : "已完成".equals(name) ? Ui.MUTE : Ui.TEXT;
         if ("今天".equals(name) || "已过期".equals(name) || "待确认".equals(name)) {
-            // 需要注意的分组前加一个同色小圆点，扫一眼就能分出轻重。
             View dot = new View(this);
             dot.setBackground(Ui.disc(this, "今天".equals(name) ? Ui.ACCENT : color));
             LinearLayout.LayoutParams dotLp = lp(dp(this, 6), dp(this, 6));
             dotLp.rightMargin = dp(this, 8);
             row.addView(dot, dotLp);
         }
-        row.addView(uiText(name, 15, color, true));
-        TextView num = Ui.tag(this, String.valueOf(count), Ui.SUB, Ui.FILL);
-        num.setMinWidth(dp(this, 20));
-        num.setGravity(Gravity.CENTER);
+        TextView label = uiText(name, 15, color, true);
+        row.addView(label);
+        TextView num = uiText(String.valueOf(count), 13, Ui.MUTE, true);
         LinearLayout.LayoutParams numLp = lp(-2, -2);
-        numLp.leftMargin = dp(this, 8);
+        numLp.leftMargin = dp(this, 7);
         row.addView(num, numLp);
+        View rule = new View(this);
+        rule.setBackgroundColor(Ui.LINE);
+        LinearLayout.LayoutParams ruleLp = new LinearLayout.LayoutParams(0, 1, 1);
+        ruleLp.leftMargin = dp(this, 12);
+        row.addView(rule, ruleLp);
+        row.setContentDescription(name + "，" + count + " 件");
         LinearLayout.LayoutParams lp = lp(-1, -2);
         lp.leftMargin = dp(this, 4);
-        lp.topMargin = dp(this, 22);
-        lp.bottomMargin = dp(this, 10);
+        lp.topMargin = dp(this, 26);
+        lp.bottomMargin = dp(this, 12);
         row.setLayoutParams(lp);
         return row;
     }
@@ -1464,13 +1619,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(this, 4), dp(this, 16), dp(this, 16), dp(this, 16));
+        card.setPadding(dp(this, 6), dp(this, 18), dp(this, 18), dp(this, 18));
         if (c.done) {
             // 已完成的卡退到背景里：不浮起、不投影，只留一层淡底。
-            GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 140 : 170), 18);
-            card.setBackground(Ui.ripple(this, face, Ui.press(), 18));
+            GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 140 : 150), 20);
+            card.setBackground(Ui.ripple(this, face, Ui.press(), 20));
         } else {
-            Ui.cardSurface(card, 18);
+            Ui.cardSurface(card, 20);
         }
         Ui.pressScale(card, 0.985f);
 
@@ -1495,6 +1650,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setLineSpacing(dp(this, 3), 1f);
+        title.setLetterSpacing(0.005f);
         if (c.done) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         body.addView(title);
 
@@ -1532,14 +1688,14 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         StringBuilder metaText = new StringBuilder(sourceName(c));
         if (!TextUtils.isEmpty(c.groupName)) metaText.append(" · ").append(c.groupName);
         if (!TextUtils.isEmpty(c.sender)) metaText.append(" · ").append(c.sender);
-        TextView metaLine = uiText(metaText.toString(), 12, Ui.SUB, false);
+        TextView metaLine = uiText(metaText.toString(), 12, Ui.MUTE, false);
         metaLine.setSingleLine(true);
         metaLine.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams mtLp = new LinearLayout.LayoutParams(0, -2, 1);
         mtLp.leftMargin = dp(this, 6);
         meta.addView(metaLine, mtLp);
         LinearLayout.LayoutParams metaLp = lp(-1, -2);
-        metaLp.topMargin = dp(this, 10);
+        metaLp.topMargin = dp(this, 12);
         body.addView(meta, metaLp);
 
         List<String> extra = new ArrayList<>();
@@ -1559,8 +1715,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             TextView reason = uiText(c.reason, 12, Ui.AMBER_TX, false);
             reason.setMaxLines(2);
             reason.setEllipsize(TextUtils.TruncateAt.END);
-            reason.setPadding(dp(this, 8), dp(this, 6), dp(this, 8), dp(this, 6));
-            reason.setBackground(Ui.round(this, Ui.AMBER_BG, 8));
+            reason.setPadding(dp(this, 10), dp(this, 7), dp(this, 10), dp(this, 7));
+            reason.setBackground(Ui.round(this, Ui.AMBER_BG, 10));
             LinearLayout.LayoutParams rLp = lp(-2, -2);
             rLp.topMargin = dp(this, 8);
             body.addView(reason, rLp);
@@ -1578,7 +1734,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             return true;
         });
         LinearLayout.LayoutParams cardLp = lp(-1, -2);
-        cardLp.bottomMargin = dp(this, 10);
+        cardLp.bottomMargin = dp(this, 12);
         card.setLayoutParams(cardLp);
         return card;
     }
