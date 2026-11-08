@@ -42,7 +42,7 @@ final class CampusData {
     }
     static void validateModule(JSONObject m) throws JSONException {
         String state = string(m, "state", 30);
-        if (!java.util.Arrays.asList("ok", "empty", "login", "binding", "network", "unavailable", "unsupported").contains(state)) throw new JSONException("同步状态无效");
+        if (!java.util.Arrays.asList("ok", "empty", "login", "binding", "network", "blocked", "unavailable", "unsupported").contains(state)) throw new JSONException("同步状态无效");
         String src = string(m, "source", 2000); if (!src.isEmpty() && !CampusServices.readUrl(src)) throw new JSONException("数据来源无效");
         JSONArray fields = array(m, "fields", 2000), tables = array(m, "tables", 80), links = array(m, "links", 400);
         for (int i=0; i<fields.length(); i++) {
@@ -123,6 +123,6 @@ final class CampusData {
     java.util.List<CampusServices.Service> services() {
         java.util.List<CampusServices.Service> result=new java.util.ArrayList<>(java.util.Arrays.asList(CampusServices.ALL)); result.addAll(CampusCatalog.services(catalog)); return result;
     }
-    String route(CampusServices.Service s) { return routes.optString(s.id, s.entry); }
+    String route(CampusServices.Service s) { String value=routes.optString(s.id,s.entry); return CampusServices.isPortal(value) && !CampusServices.isPortal(s.entry)?s.entry:value; }
     String encode() { return json.toString(); }
 }

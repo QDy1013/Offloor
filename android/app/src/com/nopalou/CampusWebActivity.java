@@ -38,6 +38,7 @@ public class CampusWebActivity extends Activity {
     private String script,ssoScript,autoScript,owner="",lastSnapshot="",run;
     private String portalSnapshot="";
     private long portalChanged;
+    private boolean portalRecovered;
     private View cover,actions;
     private FrameLayout stage;
     private TextView readingNote;
@@ -213,6 +214,7 @@ public class CampusWebActivity extends Activity {
                 } catch (Exception e) { collection.markIncomplete(); }
                 due=android.os.SystemClock.elapsedRealtime()+45_000;
                 status.setText("正在自动读取“"+service.title+"” · "+action.optString("label"));
+                if ("navigate".equals(action.optString("type")) && CampusServices.readUrl(action.optString("url"))) { web.loadUrl(action.optString("url")); schedule(100); return; }
                 web.evaluateJavascript("NwpuAuto.act("+JSONObject.quote(id)+","+JSONObject.quote(action.optString("key"))+")",ignored -> schedule(1000)); return;
             }
             if ("ok".equals(state) || "empty".equals(state)) {
@@ -259,7 +261,7 @@ public class CampusWebActivity extends Activity {
     }
     private void beginBootstrap(boolean resume) {
         generation++; handler.removeCallbacksAndMessages(null); probing=false; electricBusy=false; centralExpired=false; challengeActive=false;
-        bootstrapping=true; resumeService=resume; catalogTried=false; auth.reset(); handoffs.clear();
+        bootstrapping=true; resumeService=resume; catalogTried=false; portalRecovered=false; auth.reset(); handoffs.clear();
         bootstrapStarted=android.os.SystemClock.elapsedRealtime(); authDeadline=bootstrapStarted+45_000;
         portalSnapshot=""; portalChanged=bootstrapStarted;
         title.setText("统一认证"); actions.setVisibility(View.GONE); status.setText("正在复用翱翔门户会话，加载本人可用的校园服务入口…");
@@ -308,25 +310,26 @@ public class CampusWebActivity extends Activity {
     private void scanPortal(JSONObject r,int active) {
         String url=web.getUrl();
         if (url==null || !"ecampus.nwpu.edu.cn".equals(Uri.parse(url).getHost())) { timeout(); return; }
+        if (r.optBoolean("portalError") && !portalRecovered) { portalRecovered=true; web.loadUrl(CampusServices.PORTAL); schedule(100); return; }
         if (!catalogTried) {
             catalogTried=true; web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("catalog-"+active)+")",ignored -> schedule(80)); return;
         }
-        long now=android.os.SystemClock.elapsedRealtime(); String snapshot=String.valueOf(r.optJSONArray("apps"))+String.valueOf(r.optJSONObject("routes"));
+        long now=android.os.SystemClock.elapsedRealtime(); String snapshot=String.valueOf(r.optJSONArray("apps"))+String.valueOf(r.optJSONObject("routes"))+String.valueOf(r.optJSONObject("portalModules"));
         if (!snapshot.equals(portalSnapshot)) { portalSnapshot=snapshot; portalChanged=now; }
         boolean empty=(r.optJSONArray("apps")==null || r.optJSONArray("apps").length()==0) && (r.optJSONObject("routes")==null || r.optJSONObject("routes").length()==0);
         if ((empty || r.optBoolean("busy") || now-portalChanged<200) && now-bootstrapStarted<5000) { schedule(80); return; }
-        JSONObject routes=r.optJSONObject("routes"); finishBootstrap(routes==null?new JSONObject():routes,r.optJSONArray("apps"),active);
+        JSONObject routes=r.optJSONObject("routes"); finishBootstrap(routes==null?new JSONObject():routes,r.optJSONObject("portalModules"),active);
     }
     private void finishBootstrap(JSONObject routes,int active) {
         finishBootstrap(routes,null,active);
     }
-    private void finishBootstrap(JSONObject routes,JSONArray apps,int active) {
+    private void finishBootstrap(JSONObject routes,JSONObject modules,int active) {
         if (!bootstrapping || active!=generation || isDestroyed()) return;
         writing=true;
         io.execute(() -> {
             CampusData next=null;
             try {
-                JSONObject fresh=new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes);
+                JSONObject fresh=new JSONObject().put("version",1).put("school","西北工业大学").put("modules",modules==null?new JSONObject():modules).put("routes",routes);
                 next=CampusStore.update(getApplicationContext(),fresh.toString(),owner);
             } catch (Exception ignored) { }
             CampusData result=next; runOnUiThread(() -> {
@@ -362,7 +365,7 @@ public class CampusWebActivity extends Activity {
     }
     private void openPortalService(JSONObject r,int active) {
         JSONObject routes=r.optJSONObject("routes"); String target=routes==null?"":routes.optString(service.id);
-        if (CampusServices.readUrl(target) && !target.equals(web.getUrl())) {
+        if (CampusServices.readUrl(target) && !CampusServices.isPortal(target) && !target.equals(web.getUrl())) {
             try { saveRoutes(new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes).toString(),active); } catch (Exception ignored) { }
             web.loadUrl(target); schedule(700); return;
         }

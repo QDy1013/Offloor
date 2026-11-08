@@ -57,11 +57,14 @@ final class CampusBatch {
         } catch (Exception ignored) { }
         academicScripts=academic;
         String entry=activity.getSharedPreferences("campus-auto",0).getString("academic_entry",NwpuImportActivity.COURSE_URL);
-        waiting.add(new CampusServices.Service("_academic","全部学期成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true));
+        CampusServices.Service history=new CampusServices.Service("_academic","全部学期成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true);
         for (CampusServices.Service service:services) if (CampusServices.selected(service.id)) {
-            if (service.id.equals("bus")) { doneIds.add("bus"); successfulIds.add("bus"); } else waiting.add(service);
+            JSONObject current=saved.module(service.id);
+            boolean portalBalance=(service.id.equals("network") || service.id.equals("card")) && current!=null && "ok".equals(current.optString("state")) && current.optLong("updated")>=wallStarted-30_000;
+            if (service.id.equals("bus") || portalBalance) { doneIds.add(service.id); successfulIds.add(service.id); } else waiting.add(service);
         }
         if (activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty()) waiting.add(1,new CampusServices.Service("housing","电费","本人宿舍匹配",CampusServices.byId("housing").entry,false)); else doneIds.add("housing");
+        waiting.add(history);
         total=waiting.size();
     }
     void start() { for (int i=0;i<3;i++) lanes.add(new Lane()); pump(); }
@@ -112,7 +115,7 @@ final class CampusBatch {
     private static JSONObject decode(String raw) throws Exception { Object value=new JSONTokener(raw).nextValue(); return value instanceof String?new JSONObject((String)value):new JSONObject(); }
 
     private final class Lane {
-        final WebView web=new WebView(activity);
+        WebView web;
         final CampusAuth auth=new CampusAuth();
         final Runnable tick=this::inspect;
         CampusServices.Service service;
@@ -122,10 +125,14 @@ final class CampusBatch {
         long started,deadline,loaded,lastPreview;
         boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry;
         int academicRevision;
+        int mainHttpStatus;
+        String httpUrl="";
         String academicPending;
         long academicPreview;
         final Set<String> handoffs=new HashSet<>();
-        Lane() {
+        Lane() { createWeb(); }
+        void createWeb() {
+            web=new WebView(activity);
             stage.addView(web,0,new FrameLayout.LayoutParams(-1,-1));
             WebSettings settings=web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
             settings.setUseWideViewPort(true); settings.setLoadWithOverviewMode(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -134,28 +141,32 @@ final class CampusBatch {
                 @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r) { return !CampusServices.allowed(r.getUrl().toString()); }
                 @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !CampusServices.allowed(url); }
                 @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon) {
-                    injected=false; academicInjected=false; loaded=SystemClock.elapsedRealtime(); probing=false;
+                    if (v!=web) return;
+                    injected=false; academicInjected=false; loaded=SystemClock.elapsedRealtime(); probing=false; if (!url.equals(httpUrl)) mainHttpStatus=0;
                     if (CampusServices.allowed(url)) web.evaluateJavascript(autoScript+"\nNwpuAuto.install();",ignored -> {});
                 }
-                @Override public void onPageFinished(WebView v,String url) { injected=false; if (service!=null) schedule(20); }
-                @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e) { if (r.isForMainFrame() && r.getUrl().toString().equals(v.getUrl())) fail("network"); }
-                @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse e) { if (r.isForMainFrame() && r.getUrl().toString().equals(v.getUrl()) && e.getStatusCode()>=400) fail("network"); }
-                @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); fail("network"); }
+                @Override public void onPageFinished(WebView v,String url) { if (v!=web) return; injected=false; if (service!=null) schedule(20); }
+                @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e) { if (v==web && r.isForMainFrame() && r.getUrl().toString().equals(v.getUrl())) fail("network"); }
+                @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse e) { if (v==web && r.isForMainFrame() && r.getUrl().toString().equals(v.getUrl())) { mainHttpStatus=e.getStatusCode(); httpUrl=r.getUrl().toString(); schedule(100); } }
+                @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); if (v==web) fail("network"); }
             });
         }
         void start(CampusServices.Service service,String host) {
+            // A completed navigation can deliver late error callbacks. Keep each job's
+            // browser distinct so an old request cannot fail the next module in this lane.
+            if (generation>0) { WebView old=web; web=null; old.stopLoading(); stage.removeView(old); old.destroy(); createWeb(); }
             this.service=service; this.host=host; generation++; collection=new CampusReadSession(); auth.reset(); handoffs.clear();
             probing=false; writing=false; portalRetry=false; electric=false; electricRetry=false; querying=false; profileSaved=false; academicInjected=false; academicRevision=-1; academicPending=null; academicPreview=0; lastPhase="";
             started=SystemClock.elapsedRealtime(); lastPreview=0; deadline=started+15_000; navigate(saved.route(service));
         }
-        void navigate(String url) { injected=false; loaded=SystemClock.elapsedRealtime(); web.loadUrl(url); schedule(60); }
+        void navigate(String url) { injected=false; mainHttpStatus=0; httpUrl=""; loaded=SystemClock.elapsedRealtime(); web.loadUrl(url); schedule(60); }
         void schedule(long delay) { handler.removeCallbacks(tick); if (alive() && service!=null) handler.postDelayed(tick,delay); }
         void inspect() {
             if (!alive() || service==null || writing || probing || querying) return;
             if (interactive!=null && interactive!=this) { schedule(200); return; }
             if (System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
             long now=SystemClock.elapsedRealtime();
-            if (now-started>20*60_000 || collection.limited()) { finish(true); return; }
+            if ((!service.id.equals("_academic") && now-started>90_000) || now-started>20*60_000 || collection.limited()) { finish(true); return; }
             String url=web.getUrl(); if (!CampusServices.allowed(url)) { timeout(); return; }
             int active=generation; probing=true;
             String prefix=injected?"":scripts+"\nNwpuAuto.install();NwpuAuto.focus();"; injected=true;
@@ -196,8 +207,10 @@ final class CampusBatch {
         }
         void retryPortal() { if (portalRetry) { fail("unavailable"); return; } portalRetry=true; handoffs.clear(); navigate(CampusServices.PORTAL_SSO); }
         void portal(JSONObject r) {
+            JSONObject modules=r.optJSONObject("portalModules"), module=modules==null?null:modules.optJSONObject(service.id);
+            if (module!=null && "ok".equals(module.optString("state"))) { store(this,module,true); return; }
             JSONObject routes=r.optJSONObject("routes"); String target=routes==null?"":routes.optString(service.id);
-            if (CampusServices.readUrl(target) && !target.equals(web.getUrl())) { navigate(target); return; }
+            if (CampusServices.readUrl(target) && !CampusServices.isPortal(target) && !target.equals(web.getUrl()) && handoffs.add("route:"+target)) { navigate(target); return; }
             String key="portal:"+service.id;
             if (handoffs.add(key)) {
                 int active=generation;
@@ -228,6 +241,7 @@ final class CampusBatch {
                     else if (action.optString("type").equals("navigate")) collection.openPage();
                 } catch (Exception e) { collection.markIncomplete(); }
                 deadline=SystemClock.elapsedRealtime()+15_000;
+                if (action.optString("type").equals("navigate") && CampusServices.readUrl(action.optString("url"))) { navigate(action.optString("url")); return; }
                 web.evaluateJavascript("NwpuAuto.act("+JSONObject.quote(service.id)+","+JSONObject.quote(action.optString("key"))+")",ignored -> schedule(60)); return;
             }
             if (state.equals("ok") || state.equals("empty")) { if (!continuePage()) finish(collection.incomplete()); return; }
@@ -247,7 +261,8 @@ final class CampusBatch {
             return false;
         }
         void timeout() {
-            if (SystemClock.elapsedRealtime()>deadline) { collection.markIncomplete(); if (!continuePage()) finish(true); }
+            if (mainHttpStatus>=400 && SystemClock.elapsedRealtime()-loaded>3000) { fail(mainHttpStatus==401 || mainHttpStatus==403 || mainHttpStatus==412?"blocked":"network"); }
+            else if (SystemClock.elapsedRealtime()>deadline) { collection.markIncomplete(); if (!continuePage()) finish(true); }
             else schedule(100);
         }
         void preview() {

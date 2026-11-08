@@ -16,6 +16,10 @@ final class CampusScope {
         java.util.List<String> remove=new java.util.ArrayList<>();
         for (Iterator<String> it=modules.keys();it.hasNext();) { String id=it.next(); if (!CampusServices.selected(id) && !id.equals("housing")) remove.add(id); }
         for (String id:remove) modules.remove(id);
+        JSONObject electric=modules.optJSONObject("electric");
+        if (electric!=null) { JSONArray fields=new JSONArray(),source=electric.optJSONArray("fields"); for (int i=0;source!=null && i<source.length();i++) { JSONObject f=source.optJSONObject(i); if (f!=null && f.optString("label").matches(".*(?:电费|电量|余额).*") && !f.optString("label").matches(".*(?:宿舍|房间|楼栋|校区).*$")) fields.put(f); } electric.put("fields",fields); }
+        JSONObject classroom=modules.optJSONObject("classroom");
+        if (classroom!=null && !"empty".equals(classroom.optString("state")) && (classroom.optJSONArray("tables")==null || classroom.getJSONArray("tables").length()==0)) { classroom.put("fields",new JSONArray()); if ("ok".equals(classroom.optString("state"))) classroom.put("state","unavailable"); }
         JSONObject housing=modules.optJSONObject("housing");
         if (housing!=null) {
             JSONArray fields=new JSONArray(), source=housing.optJSONArray("fields");

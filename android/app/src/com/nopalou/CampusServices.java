@@ -30,7 +30,7 @@ final class CampusServices {
         new Service("network", "校园网", "余额、流量与套餐", "https://zizhu.nwpu.edu.cn/", false),
         new Service("library", "我的借阅", "借阅书目与应还日期", "https://tushuguan.nwpu.edu.cn/", false),
         new Service("seats", "座位预约", "个人预约与签到状态 · 需要校园网", "https://ic.nwpu.edu.cn/", false),
-        new Service("classroom", "空闲教室", "按日期和节次查询自习教室", "https://idle-classroom.nwpu.edu.cn/ui/", false),
+        new Service("classroom", "空闲教室", "按日期和节次查询自习教室", "https://jwxt.nwpu.edu.cn/student/for-std/room-free", false),
         new Service("sports", "体育场馆", "场地信息与本人预约", PORTAL, false),
         new Service("notices", "校园公告", "学校最新通知与公告", NOTICES, false),
         new Service("calendar", "校历与校车", "校历、放假与校车时刻", NOTICES, false),
@@ -39,7 +39,7 @@ final class CampusServices {
     };
     static final Service[] CAMPUS={
         new Service("network","网费","账户余额、套餐与到期状态","https://zizhu.nwpu.edu.cn/",false),
-        new Service("electric","电费","宿舍剩余电量与更新时间","https://yktapp.nwpu.edu.cn/",false),
+        new Service("electric","电费","剩余电量与更新时间","https://yktapp.nwpu.edu.cn/",false),
         byId("card"),byId("classroom"),byId("bus"),byId("deadlines")
     };
     static boolean selected(String id) { for (Service s:CAMPUS) if (s.id.equals(id)) return true; return false; }
@@ -71,8 +71,9 @@ final class CampusServices {
             case "ok": return "已同步";
             case "empty": return "暂无记录";
             case "login": return "统一认证未完成";
-            case "binding": return "需要选择宿舍";
+            case "binding": return "暂未关联电表";
             case "network": return "连接失败";
+            case "blocked": return "校方暂时拒绝访问";
             case "unavailable": return "暂未读到，将自动重试";
             case "unsupported": return "页面暂不支持";
             default: return "等待自动读取";

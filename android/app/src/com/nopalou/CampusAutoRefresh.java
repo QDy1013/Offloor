@@ -10,6 +10,7 @@ final class CampusAutoRefresh {
     private static final Object LOCK=new Object();
     private static final java.util.concurrent.ExecutorService IO=java.util.concurrent.Executors.newSingleThreadExecutor();
     private static boolean pending;
+    private static String liveRun;
     private static final android.os.Handler TIMER=new android.os.Handler(android.os.Looper.getMainLooper());
     private static final java.util.Map<Activity,Runnable> POLLS=new java.util.WeakHashMap<>();
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("campus-auto",Context.MODE_PRIVATE); }
@@ -42,11 +43,15 @@ final class CampusAutoRefresh {
                     if (!force && !POLLS.containsKey(a)) return;
                     if (owner.isEmpty()) { if (closeLogin) { a.startActivity(new Intent(a,CampusActivity.class)); a.finish(); } return; }
                     SharedPreferences p=prefs(context); long now=System.currentTimeMillis();
+                    // WebView work dies with its process; a persisted lease alone is not
+                    // evidence of a running reader after an update or a system process kill.
+                    if (p.getBoolean("active",false) && !p.getString("run","").equals(liveRun)) p.edit().putBoolean("active",false).putLong("next",0).apply();
                     boolean same=owner.equals(p.getString("owner",""));
                     if (!force && same && !CampusAutoPolicy.due(now,p.getLong("started",0),p.getBoolean("active",false),p.getLong("next",0),p.getLong("version",0),version(context))) return;
                     String token=java.util.UUID.randomUUID().toString();
                     String entry=a.getIntent().getStringExtra("course_url"); if (!CampusServices.readUrl(entry)) entry=same?p.getString("academic_entry",NwpuImportActivity.COURSE_URL):NwpuImportActivity.COURSE_URL;
                     p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).putString("academic_entry",entry).putInt("done",0).putInt("total",0).apply();
+                    liveRun=token;
                     a.startActivity(new Intent(a,CampusWebActivity.class).putExtra("all",true).putExtra("automatic",true).putExtra("fresh_login",closeLogin).putExtra("academic_incomplete",a.getIntent().getBooleanExtra("academic_incomplete",false)).putExtra("run",token));
                     if (closeLogin) a.finish();
                 }
@@ -56,11 +61,11 @@ final class CampusAutoRefresh {
     static String attach(Context c,String owner,String requested) {
         synchronized (LOCK) {
             SharedPreferences p=prefs(c);
-            if (requested!=null && requested.equals(p.getString("run","")) && owner.equals(p.getString("owner",""))) return requested;
+            if (requested!=null && requested.equals(p.getString("run","")) && owner.equals(p.getString("owner",""))) { liveRun=requested; p.edit().putBoolean("active",true).putLong("started",System.currentTimeMillis()).apply(); return requested; }
             long now=System.currentTimeMillis();
-            if (p.getBoolean("active",false) && owner.equals(p.getString("owner","")) && now>=p.getLong("started",0) && now-p.getLong("started",0)<CampusAutoPolicy.LEASE) return null;
+            if (p.getBoolean("active",false) && p.getString("run","").equals(liveRun) && owner.equals(p.getString("owner","")) && now>=p.getLong("started",0) && now-p.getLong("started",0)<CampusAutoPolicy.LEASE) return null;
             String token=java.util.UUID.randomUUID().toString();
-            p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).apply(); return token;
+            p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).apply(); liveRun=token; return token;
         }
     }
     static boolean owns(Context c,String run,String owner) {

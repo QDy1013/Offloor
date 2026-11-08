@@ -32,7 +32,7 @@ check('electricity form separates selection from read-only balance query', () =>
 check('electricity validates the observed school schema, negative balance remains real', () => {
     assert.deepEqual(api.electricNormalize({map: {data: [{name: '合成校区', value: 'C'}]}}, 0), [{name: '合成校区', value: 'C'}]);
     const m = api.electricNormalize({map: {data: {campus: '合成校区', building: 'A', room: '101'}, showData: {'当前剩余电量': '-1.5'}}}, 3);
-    assert.equal(m.fields[1].value, '-1.5 度');
+    assert.equal(m.fields[0].value, '-1.5 度'); assert.equal(m.fields.length, 1);
     for (const v of [null, '', 'NaN', '12度', Infinity, {}]) assert.throws(() => api.electricNormalize({map: {showData: {'当前剩余电量': v}}}, 3));
 });
 

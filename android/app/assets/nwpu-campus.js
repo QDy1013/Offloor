@@ -76,6 +76,7 @@
         const host = new URL(url).hostname;
         const required = {profile: 'jwxt.nwpu.edu.cn', program: 'jwxt.nwpu.edu.cn', completion: 'jwxt.nwpu.edu.cn', selection: 'jwxt.nwpu.edu.cn', evaluation: 'jwxt.nwpu.edu.cn',
             card: 'yktapp.nwpu.edu.cn', electric: 'yktapp.nwpu.edu.cn', network: 'zizhu.nwpu.edu.cn', seats: 'ic.nwpu.edu.cn', classroom: 'idle-classroom.nwpu.edu.cn', deadlines: 'jwxt.nwpu.edu.cn'};
+        if (kind === 'classroom' && host === 'jwxt.nwpu.edu.cn' && /^\/student\/for-std\/room-free(?:\/|$)/.test(new URL(url).pathname)) delete required.classroom;
         if (required[kind] && host !== required[kind]) return empty('unavailable', url);
         // Portal tiles and library news are entry points, not personal records. Wait until the
         // user (or a labelled link) has opened the actual service page before collecting data.
@@ -215,8 +216,45 @@
             await p; root.__louCampusResult = {token, status: 'ok', data};
         })().catch(() => { root.__louCampusResult = {token, status: 'error'}; });
     }
+    // Confirmed portal widgets expose balances without a second service login. Restrict
+    // extraction to the labelled widget, so another card's balance cannot be attributed.
+    function portal(doc = root.document, url = root.location.href) {
+        const modules = {};
+        if (!allowed(url) || new URL(url).hostname !== 'ecampus.nwpu.edu.cn' || !/^\/(?:main\.html)?$/.test(new URL(url).pathname) || isLogin(doc,url,true)) return modules;
+        for (const widget of doc.querySelectorAll('.hotdata-ul-li')) {
+            if (!visible(widget,true)) continue;
+            const heading = widget.querySelector('.hotdata-ul-li-top .left');
+            const name = clean(heading && nodeText(heading,true));
+            const id = name === '网费' ? 'network' : /^(校园卡|一卡通)$/.test(name) ? 'card' : '';
+            if (!id) continue;
+            const body = nodeText(widget,true);
+            const matches = [...body.matchAll(/((?:账户|帐户|校园卡|一卡通|可用|总)?余额)\s*[:：]\s*[￥¥]?\s*(-?\d+(?:\.\d{1,2})?)\s*(?:元|人民币|RMB)?/g)];
+            if (matches.length !== 1) continue;
+            modules[id] = {state:'ok', source:source(url), fields:[{label:matches[0][1],value:matches[0][2]+' 元'}],tables:[],links:[]};
+        }
+        // The official HotData widget renders some card details in a collapsed panel.
+        // Read only its confirmed balance/status fields, never the surrounding Vue state.
+        for (const widget of doc.querySelectorAll('.hotdata-ul-li')) {
+            let p=widget;
+            for (let i=0;p && i<8;i++,p=p.parentElement) {
+                const vm=p.__vue__; if (!vm || !vm.$options || vm.$options.name!=='HotData') continue;
+                const card=vm.allData && vm.allData.schoolCard;
+                const balance=card && (typeof card.balance==='number' || typeof card.balance==='string') ? String(card.balance).trim() : '';
+                if (!card || card.SystemUpgrading || !/^-?\d+(?:\.\d{1,2})?$/.test(balance)) break;
+                const fields=[{label:'校园卡余额',value:balance+' 元'}];
+                if (typeof card.cardStatus==='string' && clean(card.cardStatus)) fields.push({label:'卡片状态',value:cut(card.cardStatus,100)});
+                modules.card={state:'ok',source:source(url),fields,tables:[],links:[]}; break;
+            }
+            if (modules.card) break;
+        }
+        return modules;
+    }
     function capture(kind, doc = root.document) {
         const url = root.location.href; let data = extract(doc, url, kind, true);
+        if (kind === 'classroom' && data.state==='ok') {
+            data.tables=data.tables.filter(t=>t.columns.some(c=>/教室|房间|场地|教室编号/.test(c)));
+            if (!data.tables.length) data=empty('unavailable',url);
+        }
         if (kind === 'deadlines') data = deadlineData(data);
         if (kind === 'bus') data = busData(data, doc);
         if (root.__louCampusFocus && kind === 'housing') {
@@ -294,9 +332,8 @@
         const value = map.showData && map.showData['当前剩余电量'];
         const n = typeof value === 'number' ? value : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim()) ? +value : NaN;
         if (!Number.isFinite(n) || Math.abs(n) > 1000000) throw new Error('schema');
-        const d = map.data || {};
         return {state: 'ok', source: 'https://yktapp.nwpu.edu.cn/jfdt/charge/feeitem/getThirdData',
-            fields: [{label: '宿舍', value: ['campus', 'building', 'room'].map(k => cut(d[k], 120)).filter(Boolean).join(' ')}, {label: '当前剩余电量', value: n + ' 度'}].filter(x => x.value), tables: [], links: []};
+            fields: [{label: '当前剩余电量', value: n + ' 度'}], tables: [], links: []};
     }
     function electricStart(token, level, binding) {
         root.__louElectricResult = {token, status: 'loading'};
@@ -311,6 +348,6 @@
             } finally { clearTimeout(timer); }
         })().catch(() => { root.__louElectricResult = {token, status: 'error'}; });
     }
-    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, identity, capture, deadlineTime, deadlineData, busData, electricForm, electricNormalize, electricStart};
+    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, identity, capture, portal, deadlineTime, deadlineData, busData, electricForm, electricNormalize, electricStart};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuCampus = api;
 })(typeof window === 'undefined' ? globalThis : window);

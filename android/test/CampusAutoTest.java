@@ -78,7 +78,9 @@ public class CampusAutoTest {
         check("electricity starts as soon as housing dependencies finish",CampusSchedule.next(queue,busy,done,null)==0);
         CampusServices.Service history=new CampusServices.Service("_academic","学期成绩","","https://jwxt.nwpu.edu.cn/student/for-std/course-table",true);
         busy.add(CampusSchedule.host(history,null)); queue.clear(); queue.add(CampusServices.byId("program"));
-        check("slow historical grade API does not hold up academic page reads",CampusSchedule.next(queue,busy,done,null)==0);
+        check("history and classroom reads share the same host limit",CampusSchedule.next(queue,busy,done,null)==-1);
+        CampusData placeholder=CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","1").put("modules",new JSONObject()).put("routes",new JSONObject().put("card",CampusServices.PORTAL+"#/Index")).toString(),100,null);
+        check("portal placeholders never replace a service landing page",placeholder.route(CampusServices.byId("card")).equals(CampusServices.byId("card").entry));
         System.out.println(count+" checks passed");
     }
 }

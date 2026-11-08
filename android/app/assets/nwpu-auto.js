@@ -16,9 +16,32 @@
         network:['我的账户','账户信息','余额查询','上网信息','流量查询'], card:['我的账户','账户信息','账户余额','余额查询','消费明细','交易明细','账单查询'],
         electric:['电费查询','宿舍电费'], housing:['我的宿舍','住宿信息','公寓信息','智慧公寓'], classroom:['空闲教室查询','空闲教室'],
         bus:['校车查询','校车服务','校车时刻','校车时刻表','西北工业大学校历、校车时刻表'],
-        deadlines:['我的评教','学生评教','评教任务','我的选课','选课安排','选课时间','选课结果','时间安排']
+        deadlines:['我的评教','学生评教','评教任务','学生过程性评教','学生即时性评教','学生总结性评教','我的选课','选课安排','选课时间','选课结果','时间安排']
     };
     function focus() { state.focus=true; root.__louCampusFocus=true; }
+    function classroom() {
+        if (root.location.hostname!=='jwxt.nwpu.edu.cn' || !/^\/student\/for-std\/room-free(?:\/|$)/.test(root.location.pathname)) return null;
+        let vm;
+        for (const el of root.document.querySelectorAll('#room-borrow-app,.container')) {
+            const v=el.__vue__; if (v && typeof v.queryFreeList==='function' && v.freeListParam && Array.isArray(v.campusList)) { vm=v; break; }
+        }
+        if (!vm) return null;
+        if (!state.classroom) {
+            const sites=vm.campusList.filter(o=>o && o.value!==undefined && String(o.value) && text(o.text));
+            const site=sites.find(o=>String(o.value)===String(vm.freeListParam.campusId)) || sites.find(o=>/长安/.test(o.text)) || sites[0];
+            if (!site) return null;
+            const now=new Date(Date.now()+8*60*60*1000), min=now.getUTCHours()*60+now.getUTCMinutes();
+            if (min>=1438) { now.setUTCDate(now.getUTCDate()+1); now.setUTCHours(0,0,0,0); }
+            const start=now.getUTCHours()*60+now.getUTCMinutes(), end=Math.min(1439,start+60), date=now.toISOString().slice(0,10);
+            const time=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+            const query=state.classroom={vm,campus:String(site.value),date,start:time(start),end:time(end),condition:text(site.text)+' · '+date+' '+time(start)+'—'+time(end),failed:false};
+            vm.byWeek=false; vm.byTime=true; vm.freeListParam.campusId=String(site.value);
+            const run=()=>{try { const p=vm.freeListParam.dateTimeSegmentCmd; p.startDateTime=date;p.endDateTime=date;p.startTime=query.start;p.endTime=query.end;vm.queryFreeList(); } catch (_) {query.failed=true;} };
+            if (typeof vm.$nextTick==='function') vm.$nextTick(run); else Promise.resolve().then(run);
+        }
+        const q=state.classroom, posted=vm.posted && vm.posted.freeListParam, d=posted && posted.dateTimeSegmentCmd;
+        return {condition:q.condition,ready:!!(posted && String(posted.campusId)===q.campus && d && d.startDateTime===q.date && d.startTime===q.start && d.endTime===q.end),failed:q.failed,rows:Array.isArray(vm.freeRooms)?vm.freeRooms.length:0};
+    }
     function install() {
         if (state.installed) return; state.installed = true;
         state.changed = Date.now();
@@ -159,6 +182,14 @@
             const key = target ? 'page:' + target : base + '|section:' + name;
             if (!out.some(a => a.key === key)) out.push({type: 'navigate', key, label: name, url: target, element: e});
         }
+        // JWXT keeps student task links inside collapsed navigation. Follow their observed
+        // read-page href directly; never activate teacher review or evaluation submit controls.
+        if (state.focus && kind==='deadlines') for (const e of root.document.querySelectorAll('a[href]')) {
+            const name=label(e), target=safeTarget(e);
+            if (!readLabel(name,kind) || !target || target===root.location.href || new URL(target).origin!==root.location.origin) continue;
+            const key='page:'+target;
+            if (!out.some(a=>a.key===key)) out.push({type:'navigate',key,label:name,url:target,element:e});
+        }
         for (const frame of Array.from(doc.querySelectorAll('iframe[src]')).filter(visible)) {
             try {
                 const url = new URL(frame.getAttribute('src'), root.location.href).href;
@@ -171,18 +202,23 @@
         install();
         if (!root.NwpuCampus.allowed(root.location.href)) return {pending: 0, actions: [], settling: false};
         const loading = Array.from(root.document.querySelectorAll('.el-loading-mask,.ant-spin-spinning,[aria-busy="true"]')).some(visible);
+        const room=kind==='classroom' && state.focus?classroom():null;
         const seen = new Set(visited || []), snapshot = root.NwpuCampus.capture(kind, scope()), m = snapshot.modules[kind];
+        if (room && room.ready && !room.failed) {
+            if (room.rows===0) m.state='empty';
+            if (m.state==='ok' || m.state==='empty') m.fields=[{label:'查询条件',value:room.condition}];
+        }
         const group = text(context || state.detail || [filterContext(filters(scope())), customFilters(scope()).map(f => f.value).filter(v => v && !/^(全部|所有|不限)/.test(v)).join(' · ')].filter(Boolean).join(' · ')).slice(0, 180);
         if (group) {
             for (const f of m.fields) { f.group = group; f.record = (baseUrl() + (state.detailKey || '')).slice(0, 2500); }
             for (const t of m.tables) t.title = (group + (t.title ? ' · ' + t.title : '')).slice(0, 100);
         }
-        const actions = candidates(kind, seen).filter(a => !seen.has(a.key));
+        const actions = room?[]:candidates(kind, seen).filter(a => !seen.has(a.key));
         state.planned = actions;
         const query = Array.from(scope().querySelectorAll('button,input[type="button"],input[type="submit"],[role="button"]')).find(e => visible(e) && /^(查询|搜索|查找)$/.test(label(e)) && !disabled(e));
         const queryKey = query && viewKey() + '|query:' + label(query) + ':' + filterKey(filters(scope())) + customKey(customFilters(scope()));
-        return {pending: state.pending, settling: loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160, pageKey: pageKey(), snapshot,
-            preparing: !!query && !seen.has(queryKey),
+        return {pending: state.pending, settling: !!(room && !room.ready && !room.failed) || loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160, pageKey: pageKey(), snapshot,
+            preparing: room?!room.ready:!!query && !seen.has(queryKey),
             actions: actions.map(a => ({key: a.key, type: a.type, label: a.label, url: a.url || '', context: a.context || ''}))};
     }
     function act(kind, key) {

@@ -82,7 +82,10 @@
         if (hasPassword) return {phase: 'service_login'};
         if (/^(系统加载中[.。…]*|正在加载[.。…]*)$/.test(text(doc.body && doc.body.innerText))) return {phase: 'redirecting'};
         const portal = portalInfo(doc, url);
-        return {phase: 'ready', routes: portal.routes, apps: portal.apps, busy: !!(root.__louAutoDriver && root.__louAutoDriver.pending > 0)};
+        const isPortal = u.hostname === 'ecampus.nwpu.edu.cn' && /^\/(?:main\.html)?$/.test(u.pathname);
+        return {phase: 'ready', routes: portal.routes, apps: portal.apps, busy: !!(root.__louAutoDriver && root.__louAutoDriver.pending > 0),
+            portalModules:isPortal && root.NwpuCampus.portal ? root.NwpuCampus.portal(doc,url) : {},
+            portalError:isPortal && /哎呀，出错了|网络异常|服务器异常/.test(doc.body && doc.body.innerText || '')};
     }
     const activated = root.__louSsoActivated || (root.__louSsoActivated = new Set());
     function click(kind, token) {

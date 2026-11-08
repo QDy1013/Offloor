@@ -31,7 +31,7 @@ final class CampusSummary {
             for (int i=0;tables!=null && i<tables.length();i++) { JSONObject table=tables.optJSONObject(i); if (table==null) continue; JSONArray columns=table.optJSONArray("columns"),rows=table.optJSONArray("rows"); int at=column(columns,"教室|房间|地点");
                 for (int r=0;at>=0 && rows!=null && r<rows.length();r++) { String room=rows.optJSONArray(r)==null?"":rows.optJSONArray(r).optString(at); if (!room.isEmpty()) rooms.add(room); }
             }
-            String condition=field(module,"查询日期|日期|节次");
+            String condition=field(module,"查询条件|查询日期|日期|节次");
             StringBuilder sample=new StringBuilder(); int shown=0; for (String room:rooms) { if (shown++==3) break; if (sample.length()>0) sample.append("、"); sample.append(room); }
             return new CampusSummary(rooms.isEmpty()?(module!=null && module.optString("state").equals("empty")?"当前条件暂无空闲教室":"教室结果暂未读到"):"查询到 "+rooms.size()+" 间教室",condition.isEmpty()?sample.toString():condition);
         }
@@ -52,7 +52,7 @@ final class CampusSummary {
         for (int i=0;tables!=null && i<tables.length();i++) { JSONObject table=tables.optJSONObject(i); if (table==null) continue; int at=column(table.optJSONArray("columns"),"截止|结束|到期"); JSONArray rows=table.optJSONArray("rows");
             for (int j=0;at>=0 && rows!=null && j<rows.length();j++) { JSONArray row=rows.optJSONArray(j); if (row==null) continue; long end=date(row.optString(at)); if (end>=now && end<first) { first=end; name=row.optString(0); label=row.optString(at); } }
         }
-        if (first==Long.MAX_VALUE) return new CampusSummary(module!=null && module.optString("state").equals("empty")?"暂无待办截止":"截止信息暂未读到","");
+        if (first==Long.MAX_VALUE) return new CampusSummary(module!=null && module.optString("state").equals("empty") && !module.optBoolean("partial")?"暂无待办截止":"截止信息暂未完整读到","");
         return new CampusSummary(name,label+" 截止");
     }
     private static CampusSummary bus(JSONObject module,long now) {

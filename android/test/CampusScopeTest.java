@@ -24,6 +24,9 @@ public class CampusScopeTest {
         CampusSummary balance=CampusSummary.of("network",compact.module("network"),0);
         check("fee card shows its actual balance directly",balance.value.equals("12.5 元"));
         check("missing balance is never rendered as zero",!CampusSummary.of("network",null,0).value.contains("0"));
+        CampusData cleanup=CampusScope.compact(CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","123").put("modules",new JSONObject().put("electric",module("当前剩余电量","42 度").put("fields",new JSONArray().put(new JSONObject().put("label","当前剩余电量").put("value","42 度")).put(new JSONObject().put("label","宿舍").put("value","合成宿舍")))).put("classroom",module("查询日期","2099-01-01"))).toString(),100,null));
+        check("electricity display excludes housing details",cleanup.module("electric").getJSONArray("fields").length()==1);
+        check("old classroom form fields cannot survive as successful results",cleanup.module("classroom").getJSONArray("fields").length()==0 && cleanup.module("classroom").optString("state").equals("unavailable"));
         CampusData bus=new CampusData(Files.readString(Paths.get(args[0])));
         check("student timetable excludes the teacher-only service",bus.module("bus").getJSONArray("tables").getJSONObject(0).getJSONArray("rows").length()==50);
         long sunday=CampusSummary.date("2026-11-08 07:30");
