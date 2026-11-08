@@ -1024,6 +1024,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuSection(body, "演示");
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
+        menuSection(body, "应用");
+        menuRow(body, holder, "下载最新版", "当前版本 "+UpdateActivity.version(this)+" · 点击开始下载", Ui.TEXT,
+                () -> startActivity(new Intent(this, UpdateActivity.class)));
         View gap = new View(this);
         body.addView(gap, lp(-1, dp(this, 8)));
         menuRow(body, holder, "清空本机数据", "清空全部待办、已移除卡片和近期消息", Ui.RED, () ->

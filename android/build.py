@@ -116,7 +116,7 @@ def main():
                     for element in list(app.findall(tag)):
                         app.remove(element)
                 for permission in list(tree.getroot().findall("uses-permission")):
-                    if permission.get(ns + "name") != "android.permission.INTERNET":
+                    if permission.get(ns + "name") not in {"android.permission.INTERNET", "android.permission.REQUEST_INSTALL_PACKAGES"}:
                         tree.getroot().remove(permission)
                 tree.write(manifest, encoding="utf-8", xml_declaration=True)
                 name = "nopalou-timetable-test"

@@ -142,8 +142,9 @@ public class CampusActivity extends Activity {
         if (request==41 && result==RESULT_OK) startActivity(new Intent(this,CampusWebActivity.class).putExtra("all",true));
     }
     private void settings() {
-        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"切换教务账号","清空本机校园数据"},(d,i) -> {
+        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
             if (i==0) startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"));
+            else if (i==2) startActivity(new Intent(this,UpdateActivity.class));
             else new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("清空本机校园数据？").setMessage("将删除此页面的同步存档和宿舍绑定，可重新同步。").setNegativeButton("取消",null).setPositiveButton("清空",(a,b) -> io.execute(() -> {
                 CampusStore.clear(getApplicationContext()); runOnUiThread(() -> { data=null; render(); });
             })).show();

@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nopalou"
-    android:versionCode="21"
-    android:versionName="0.21">
+    android:versionCode="22"
+    android:versionName="0.22">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -50,6 +51,7 @@
         <activity android:name=".AcademicActivity" android:exported="false" android:label="考试与成绩" />
         <activity android:name=".CampusActivity" android:exported="false" android:label="我的校园" />
         <activity android:name=".CampusWebActivity" android:exported="false" android:label="校园服务同步" />
+        <activity android:name=".UpdateActivity" android:exported="false" android:label="应用更新" />
 
         <service
             android:name=".NotifListener"
