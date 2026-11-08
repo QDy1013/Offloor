@@ -37,6 +37,7 @@ final class CampusBatch {
     private final Listener listener;
     private final List<CampusServices.Service> waiting=new ArrayList<>();
     private final Set<String> doneIds=new HashSet<>(), hosts=new HashSet<>();
+    private final Set<String> successfulIds=new HashSet<>();
     private final List<Lane> lanes=new ArrayList<>();
     private CampusData saved;
     private final int total;
@@ -57,7 +58,11 @@ final class CampusBatch {
         academicScripts=academic;
         String entry=activity.getSharedPreferences("campus-auto",0).getString("academic_entry",NwpuImportActivity.COURSE_URL);
         waiting.add(new CampusServices.Service("_academic","全部学期成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true));
-        waiting.addAll(services); total=waiting.size();
+        for (CampusServices.Service service:services) if (CampusServices.selected(service.id)) {
+            if (service.id.equals("bus")) { doneIds.add("bus"); successfulIds.add("bus"); } else waiting.add(service);
+        }
+        if (activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty()) waiting.add(1,new CampusServices.Service("housing","电费","本人宿舍匹配",CampusServices.byId("housing").entry,false)); else doneIds.add("housing");
+        total=waiting.size();
     }
     void start() { for (int i=0;i<3;i++) lanes.add(new Lane()); pump(); }
     void stop() {
@@ -80,8 +85,10 @@ final class CampusBatch {
     }
     private void notifyProgress() {
         StringBuilder active=new StringBuilder();
-        for (Lane lane:lanes) if (lane.service!=null) { if (active.length()>0) active.append(" · "); active.append(lane.service.title); }
-        listener.progress(done,total,success,failed,active.toString());
+        for (Lane lane:lanes) if (lane.service!=null && (CampusServices.selected(lane.service.id) || lane.service.id.equals("housing"))) { if (active.length()>0) active.append(" · "); active.append(lane.service.title); }
+        int visibleDone=0,visibleSuccess=0;
+        for (String id:doneIds) if (CampusServices.selected(id)) { visibleDone++; if (successfulIds.contains(id)) visibleSuccess++; }
+        listener.progress(visibleDone,CampusServices.CAMPUS.length,visibleSuccess,visibleDone-visibleSuccess,active.toString());
     }
     private void store(Lane lane,JSONObject module,boolean ok) {
         if (!alive() || lane.writing || lane.service==null) return;
@@ -98,7 +105,7 @@ final class CampusBatch {
     }
     private void completeLane(Lane lane,CampusData result,boolean ok,boolean partial) {
         if (result!=null) saved=result;
-        if (ok) success++; else failed++;
+        if (ok) { success++; successfulIds.add(lane.service.id); } else failed++;
         if (ok && partial) failed++;
         done++; doneIds.add(lane.service.id); hosts.remove(lane.host); lane.service=null; lane.writing=false; lane.web.stopLoading(); pump();
     }
@@ -151,7 +158,7 @@ final class CampusBatch {
             if (now-started>20*60_000 || collection.limited()) { finish(true); return; }
             String url=web.getUrl(); if (!CampusServices.allowed(url)) { timeout(); return; }
             int active=generation; probing=true;
-            String prefix=injected?"":scripts+"\nNwpuAuto.install();"; injected=true;
+            String prefix=injected?"":scripts+"\nNwpuAuto.install();NwpuAuto.focus();"; injected=true;
             web.evaluateJavascript(prefix+"\nJSON.stringify({auth:NwpuSso.inspect(),read:NwpuAuto.inspect("+JSONObject.quote(service.id)+","+collection.visited()+","+JSONObject.quote(collection.context())+")})",raw -> {
                 if (!alive() || active!=generation || service==null) return; probing=false;
                 if (!url.equals(web.getUrl())) { schedule(40); return; }
@@ -269,7 +276,7 @@ final class CampusBatch {
         void beginAcademic() {
             if (academicScripts.isEmpty()) { fail("unsupported"); return; }
             int active=generation; String token=java.util.UUID.randomUUID().toString(); querying=true;
-            String code=(academicInjected?"":academicScripts)+"\nJSON.stringify((function(){try{var sid=String(NwpuImport.context(window,document).student);NwpuAcademic.start("+JSONObject.quote(token)+",sid);NwpuCampus.profileStart("+JSONObject.quote(token)+",sid);return {ready:true,identity:sid};}catch(e){return {ready:false};}})())";
+            String code=(academicInjected?"":academicScripts)+"\nJSON.stringify((function(){try{var sid=String(NwpuImport.context(window,document).student);NwpuAcademic.start("+JSONObject.quote(token)+",sid);return {ready:true,identity:sid};}catch(e){return {ready:false};}})())";
             academicInjected=true;
             web.evaluateJavascript(code,raw -> {
                 if (!alive() || active!=generation || service==null) return;

@@ -18,10 +18,13 @@ final class CampusStore {
     static synchronized CampusData load(Context c) throws Exception {
         AtomicFile f = file(c);
         if (!f.getBaseFile().exists() && !new File(f.getBaseFile() + ".bak").exists()) {
-            try (java.io.InputStream in = c.getAssets().open("campus-public.json")) { return read(in); }
+            try (java.io.InputStream in = c.getAssets().open("campus-public.json")) { return busFallback(c,CampusScope.compact(read(in))); }
             catch (java.io.FileNotFoundException e) { return null; }
         }
-        try (java.io.InputStream in = f.openRead()) { return read(in); }
+        CampusData raw; try (java.io.InputStream in = f.openRead()) { raw=read(in); }
+        CampusData selected=busFallback(c,CampusScope.compact(raw));
+        if (!selected.encode().equals(raw.encode())) write(c,selected);
+        return selected;
     }
     private static CampusData read(java.io.InputStream in) throws Exception {
         try (java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
@@ -31,13 +34,24 @@ final class CampusStore {
         }
     }
     static synchronized CampusData update(Context c, String fresh, String expectedOwner) throws Exception {
-        CampusData old = load(c), next = CampusData.merge(old, fresh, System.currentTimeMillis(), expectedOwner);
+        CampusData old = load(c), next = busFallback(c,CampusScope.compact(CampusData.merge(old, fresh, System.currentTimeMillis(), expectedOwner)));
+        write(c,next); changed(); return next;
+    }
+    private static void write(Context c,CampusData next) throws Exception {
         byte[] bytes = next.encode().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > CampusData.MAX_BYTES) throw new java.io.IOException("校园存档过大");
         AtomicFile f=file(c); FileOutputStream out=null;
         try { out=f.startWrite(); out.write(bytes); f.finishWrite(out); }
         catch (Exception e) { if (out != null) f.failWrite(out); throw e; }
-        changed(); return next;
+    }
+    private static CampusData busFallback(Context c,CampusData data) throws Exception {
+        org.json.JSONObject existing=data.module("bus");
+        if (existing!=null && existing.optJSONArray("tables")!=null && existing.getJSONArray("tables").length()>0) return data;
+        try (java.io.InputStream in=c.getAssets().open("campus-bus.json")) {
+            org.json.JSONObject json=new org.json.JSONObject(data.encode());
+            org.json.JSONObject bus=new org.json.JSONObject(read(in).module("bus").toString());
+            json.getJSONObject("modules").put("bus",bus); return new CampusData(json.toString());
+        } catch (java.io.FileNotFoundException ignored) { return data; }
     }
     static synchronized CampusData bind(Context c,String fresh) throws Exception {
         String key=CampusData.accountKey(new org.json.JSONObject(fresh).getString("identity"));

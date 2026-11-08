@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const scripts=['nwpu-campus.js','nwpu-sso.js','nwpu-auto.js'].map(f=>fs.readFileSync(path.join(__dirname,'../android/app/assets',f),'utf8')).join('\n');
+let n=0;const check=(name,fn)=>{fn();n++;console.log('PASS '+name);};
+(async()=>{const browser=await chromium.launch({headless:true,...(process.env.CAMPUS_BROWSER?{executablePath:process.env.CAMPUS_BROWSER}:{})});try{
+ const context=await browser.newContext();await context.route('**/*',r=>r.fulfill({contentType:'text/html; charset=utf-8',body:'<main></main>'}));const page=await context.newPage();
+ const load=async(html,url='https://jwxt.nwpu.edu.cn/student/home')=>{await page.goto(url);await page.setContent(html);await page.addScriptTag({content:scripts+'\nNwpuAuto.install();NwpuAuto.focus();'});};
+ await load('<a href="/student/for-std/evaluation">评教任务</a><a href="/student/for-std/selection">选课安排</a><a href="/profile">个人基本信息</a><a href="/program">培养方案</a>');
+ let r=await page.evaluate(()=>NwpuAuto.inspect('deadlines',[]));
+ check('deadline traversal opens only the selected useful task sources',()=>assert.deepEqual(r.actions.map(a=>a.label).sort(),['评教任务','选课安排']));
+ await load('<table><tr><th>事项</th><th>截止时间</th><th>状态</th></tr><tr><td>课程评教</td><td>2099-11-08 18:00</td><td>未完成</td></tr><tr><td>选课</td><td>2099-11-09 18:00</td><td>已提交</td></tr><tr><td>旧任务</td><td>2020-01-01 18:00</td><td>未完成</td></tr></table>');
+ r=await page.evaluate(()=>NwpuCampus.capture('deadlines').modules.deadlines);
+ check('deadline card retains upcoming unfinished items only',()=>{assert.equal(r.tables[0].rows.length,1);assert.equal(r.tables[0].rows[0][0],'课程评教');});
+ await load('<dl><dt>姓名</dt><dd>合成同学</dd><dt>专业</dt><dd>合成专业</dd></dl>');r=await page.evaluate(()=>NwpuCampus.capture('deadlines').modules.deadlines);
+ check('personal profile data cannot populate the deadline card',()=>{assert.equal(r.state,'unavailable');assert.equal(r.fields.length,0);});
+ await load('<button onclick="window.hit=1">借阅历史</button><button onclick="window.hit=2">我的预约</button><button onclick="window.hit=3">账户信息</button><a rel=next href="#">下一页</a>','https://yktapp.nwpu.edu.cn/personal');r=await page.evaluate(()=>NwpuAuto.inspect('card',[]));
+ check('card overview skips borrowing, reservations and unbounded old history',()=>assert.deepEqual(r.actions.map(a=>a.label),['账户信息']));
+ await load('<main><h1>校车时刻表</h1><table><tr><th>校区</th><th>发车时间</th></tr><tr><td>长安</td><td>08:30</td></tr></table><a href="/calendar.pdf">学年校历</a></main>','https://xygg.nwpu.edu.cn/info/1003/22073.htm');r=await page.evaluate(()=>NwpuCampus.capture('bus').modules.bus);
+ check('bus card excludes school calendar material',()=>{assert.equal(r.tables[0].rows[0][1],'08:30');assert.equal(r.links.length,0);});
+ await load('<main></main>','https://jwxt.nwpu.edu.cn/student/for-std/course-table');await page.evaluate(()=>{window.fetch=()=>{throw Error('unexpected request');};NwpuCampus.identity('identity-only','123');});r=await page.evaluate(()=>window.__louCampusResult);
+ check('login establishes identity without fetching deleted modules',()=>{assert.equal(r.status,'ok');assert.deepEqual(r.data.modules,{});assert.equal(r.data.identity,'123');});
+ console.log(n+' checks passed');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

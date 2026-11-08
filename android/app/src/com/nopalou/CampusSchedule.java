@@ -14,7 +14,7 @@ final class CampusSchedule {
             try {
                 String host=host(service,data);
                 if (busy.contains(host)) continue;
-                if (service.id.equals("electric") && (!done.contains("housing") || !done.contains("affairs"))) continue;
+                if (service.id.equals("electric") && !done.contains("housing")) continue;
                 return i;
             } catch (Exception ignored) { }
         }

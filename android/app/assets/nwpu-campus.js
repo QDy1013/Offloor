@@ -9,6 +9,7 @@
         completion: /^(我的培养方案完成情况|培养方案完成情况|计划完成情况)$/,
         selection: /^(我的选课|选课结果|已选课程|本学期选课结果)$/,
         evaluation: /^(我的评教|学生评教|评教任务|评教)$/,
+        deadlines: /^(我的评教|学生评教|评教任务|选课安排|选课时间|我的选课|选课结果)$/,
         card: /^(一卡通|校园卡|一卡通服务)$/,
         electric: /^(电费|宿舍电费|电费查询|公寓电费)$/,
         network: /^(网络自助|网费|校园网|网络服务)$/,
@@ -74,7 +75,7 @@
         if (isLogin(doc, url, live)) return empty('login', url);
         const host = new URL(url).hostname;
         const required = {profile: 'jwxt.nwpu.edu.cn', program: 'jwxt.nwpu.edu.cn', completion: 'jwxt.nwpu.edu.cn', selection: 'jwxt.nwpu.edu.cn', evaluation: 'jwxt.nwpu.edu.cn',
-            card: 'yktapp.nwpu.edu.cn', electric: 'yktapp.nwpu.edu.cn', network: 'zizhu.nwpu.edu.cn', seats: 'ic.nwpu.edu.cn', classroom: 'idle-classroom.nwpu.edu.cn'};
+            card: 'yktapp.nwpu.edu.cn', electric: 'yktapp.nwpu.edu.cn', network: 'zizhu.nwpu.edu.cn', seats: 'ic.nwpu.edu.cn', classroom: 'idle-classroom.nwpu.edu.cn', deadlines: 'jwxt.nwpu.edu.cn'};
         if (required[kind] && host !== required[kind]) return empty('unavailable', url);
         // Portal tiles and library news are entry points, not personal records. Wait until the
         // user (or a labelled link) has opened the actual service page before collecting data.
@@ -113,7 +114,9 @@
             ).filter(r => r.length && r.some(Boolean));
             if (!rows.length) continue;
             // Label/value tables are common in student profiles and network self service.
-            const kv = rows.length > 0 && rows.every(r => r.length === 2 && r[0].length < 45) &&
+            const firstRow=table.querySelector('tr');
+            const listHeader=!!table.querySelector('thead') || (firstRow && Array.from(firstRow.children).length>1 && Array.from(firstRow.children).every(c=>c.tagName==='TH'));
+            const kv = !listHeader && rows.length > 0 && rows.every(r => r.length === 2 && r[0].length < 45) &&
                 rows.some(r => /姓名|学号|年级|专业|余额|流量|套餐|状态|宿舍|电量|学分/.test(r[0]));
             if (kv) { rows.forEach(r => add(r[0], r[1])); continue; }
             const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
@@ -213,8 +216,58 @@
         })().catch(() => { root.__louCampusResult = {token, status: 'error'}; });
     }
     function capture(kind, doc = root.document) {
-        const url = root.location.href, data = extract(doc, url, kind, true);
+        const url = root.location.href; let data = extract(doc, url, kind, true);
+        if (kind === 'deadlines') data = deadlineData(data);
+        if (kind === 'bus') data = busData(data, doc);
+        if (root.__louCampusFocus && kind === 'housing') {
+            data.fields = data.fields.filter(f => /住宿校区|宿舍校区|校区|宿舍楼|楼栋|楼号|公寓楼|房间|宿舍号|寝室/.test(f.label)); data.tables = []; data.links = [];
+            if (data.state === 'ok' && !data.fields.length) data.state = 'unavailable';
+        }
         return {version: 1, school: SCHOOL, modules: {[kind]: data}, routes: discover(root.document, url)};
+    }
+    function identity(token, student) {
+        if (root.location.origin !== 'https://jwxt.nwpu.edu.cn' || !/^\d{1,20}$/.test(String(student))) { root.__louCampusResult = {token, status: 'error'}; return; }
+        root.__louCampusResult = {token, status: 'ok', data: {version: 1, school: SCHOOL, identity: String(student), modules: {}, routes: discover(root.document, root.location.href)}};
+    }
+    function deadlineTime(value) {
+        const match = clean(value).match(/(20\d{2})[-年/.](\d{1,2})[-月/.](\d{1,2})日?(?:\s*[T ]\s*(\d{1,2})[:：](\d{2}))?/);
+        if (!match) return null;
+        const y=+match[1], month=+match[2], day=+match[3], hour=match[4]===undefined?23:+match[4], minute=match[5]===undefined?59:+match[5];
+        const check=new Date(Date.UTC(y,month-1,day));
+        if (month<1 || month>12 || day<1 || check.getUTCDate()!==day || hour>23 || minute>59) return null;
+        return Date.UTC(y,month-1,day,hour-8,minute);
+    }
+    function deadlineData(raw) {
+        if (raw.state !== 'ok') return raw;
+        const out=empty('unavailable',raw.source), rows=[], seen=new Set(); let recognized=false;
+        for (const table of raw.tables) {
+            const column=table.columns.findIndex(c=>/截止|结束|最晚|到期/.test(c)); if (column<0) continue;
+            recognized=true;
+            for (const row of table.rows) {
+                if (/已完成|已评价|已评教|已提交|已取消|已结束/.test(row.join(' '))) continue;
+                const when=deadlineTime(row[column]); if (when===null || when<Date.now()) continue;
+                const nameColumn=table.columns.findIndex(c=>/事项|任务名称|课程名称|项目名称|名称|^课程$/.test(c) && !/代码|编号/.test(c));
+                const name=(nameColumn>=0?row[nameColumn]:'') || row.find((value,i)=>i!==column && value && !/^\d+$/.test(value) && !/未完成|未评价|未评教|待处理|未提交|进行中/.test(value)) || table.title || '待处理事项';
+                const key=name+'|'+row[column]; if (!seen.has(key)) { seen.add(key); rows.push([cut(name,300),row[column]]); }
+            }
+        }
+        const names=raw.fields.filter(f=>/事项|任务名称|课程名称|项目名称/.test(f.label));
+        for (const f of raw.fields) if (/截止|结束|最晚|到期/.test(f.label) && deadlineTime(f.value)!==null && deadlineTime(f.value)>=Date.now()) {
+            const name=f.group || (names.length===1?names[0].value:'') || (/评教|选课/.test(f.label)?f.label:'');
+            if (name) rows.push([cut(name,300),f.value]);
+        }
+        rows.sort((a,b)=>deadlineTime(a[1])-deadlineTime(b[1]));
+        if (rows.length) { out.state='ok'; out.tables.push({title:'待办截止',columns:['事项','截止时间'],rows,truncated:false}); }
+        else if (recognized) out.state='empty';
+        return out;
+    }
+    function busData(raw, doc) {
+        if (raw.state !== 'ok') return raw;
+        const heading=Array.from(doc.querySelectorAll('h1,h2,.article-title,.page-title')).map(e=>nodeText(e,true)).join(' '), isBus=/校车|班车/.test(heading);
+        raw.fields=raw.fields.filter(f=>/发车|班次|乘车|候车|上车|下车|站点|线路|运行|运营/.test(f.label));
+        raw.tables=raw.tables.filter(t=>t.columns.some(c=>/发车|出发|班次|站点|乘车|线路|校区/.test(c)) || (isBus && t.rows.some(row=>row.some(v=>/(?:[01]?\d|2[0-3])[:：][0-5]\d/.test(v)))));
+        raw.links=raw.links.filter(l=>/校车|班车/.test(l.title) || (isBus && /时刻|班次|安排/.test(l.title)));
+        if (!raw.fields.length && !raw.tables.length && !raw.links.length) raw.state='unavailable'; return raw;
     }
     function profileStart(token, student) {
         root.__louProfileResult = {token, status: 'loading'};
@@ -258,6 +311,6 @@
             } finally { clearTimeout(timer); }
         })().catch(() => { root.__louElectricResult = {token, status: 'error'}; });
     }
-    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, capture, electricForm, electricNormalize, electricStart};
+    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, identity, capture, deadlineTime, deadlineData, busData, electricForm, electricNormalize, electricStart};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuCampus = api;
 })(typeof window === 'undefined' ? globalThis : window);

@@ -371,7 +371,7 @@ public class NwpuImportActivity extends Activity {
         // The identity is the one NwpuImport already confirmed on this page; nothing is guessed.
         String script = academicDone ? "NwpuImport.start(" + quoted + ");" : academicScript + "\nNwpuImport.start(" + quoted + ");(function(){try{NwpuAcademic.start(" + quoted
                 + ",NwpuImport.context(window,document).student);}catch(e){window.__louAcademicResult={token:" + quoted + ",status:'error'};}})();";
-        if (campusScript != null) script += "\n" + campusScript + "\n(function(){try{NwpuCampus.start(" + quoted
+        if (campusScript != null) script += "\n" + campusScript + "\n(function(){try{NwpuCampus.identity(" + quoted
                 + ",NwpuImport.context(window,document).student);}catch(e){window.__louCampusResult={token:" + quoted + ",status:'error'};}})();";
         web.evaluateJavascript(script, ignored -> pollRead(active, token));
     }

@@ -42,6 +42,7 @@ public class CampusWebActivity extends Activity {
     private FrameLayout stage;
     private TextView readingNote;
     private CampusBatch batch;
+    private boolean shownFocused;
     private CampusReadSession collection=new CampusReadSession();
     private CampusData saved;
     private CampusServices.Service service;
@@ -71,15 +72,13 @@ public class CampusWebActivity extends Activity {
         else if (getIntent().getBooleanExtra("academic_incomplete",false)) unavailable=1;
         build();
         if (all) {
-            for (CampusServices.Service s:CampusServices.ALL) queue.add(s);
+            for (CampusServices.Service s:CampusServices.CAMPUS) queue.add(s);
         } else {
-            CampusServices.Service s=CampusServices.byId(getIntent().getStringExtra("module")); queue.add(s==null?CampusServices.ALL[0]:s);
+            CampusServices.Service s=CampusServices.selectedService(getIntent().getStringExtra("module")); queue.add(s==null?CampusServices.CAMPUS[0]:s);
         }
         io.execute(() -> {
             try { saved=CampusStore.load(getApplicationContext()); owner=saved==null?"":saved.owner; } catch (Exception ignored) { }
             runOnUiThread(() -> { if (!isDestroyed()) {
-                appendCatalog();
-                if (!all && saved!=null && saved.service(getIntent().getStringExtra("module"))!=null) { queue.clear(); queue.add(saved.service(getIntent().getStringExtra("module"))); }
                 if (automatic) {
                     if (owner.isEmpty()) { finish(); return; }
                     run=CampusAutoRefresh.attach(this,owner,getIntent().getStringExtra("run"));
@@ -92,7 +91,7 @@ public class CampusWebActivity extends Activity {
                     authPaused=true;
                     startActivityForResult(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu").putExtra("reuse_session",true).putExtra("auth_only",true).putExtra("automatic_refresh",true),42); return;
                 }
-                if (all || (!service.id.equals("notices") && !service.id.equals("calendar"))) beginBootstrap(false); else loadNext();
+                if (all || (!service.id.equals("notices") && !service.id.equals("calendar") && !service.id.equals("bus"))) beginBootstrap(false); else loadNext();
             } });
         });
     }
@@ -154,13 +153,6 @@ public class CampusWebActivity extends Activity {
         String entry=initial!=null && CampusServices.readUrl(initial)?initial:saved==null?service.entry:saved.route(service);
         web.loadUrl(entry); schedule(1200);
     }
-    private void appendCatalog() {
-        if (!all || saved==null) return;
-        for (CampusServices.Service discovered:CampusCatalog.services(saved.catalog)) {
-            boolean found=false; for (CampusServices.Service existing:queue) if (existing.id.equals(discovered.id)) { found=true; break; }
-            if (!found) queue.add(discovered);
-        }
-    }
     @Override public void onResume() {
         super.onResume();
         if (automatic && run!=null && !completed && !CampusAutoRefresh.owns(this,run,owner)) finish();
@@ -174,7 +166,7 @@ public class CampusWebActivity extends Activity {
         if (web==null || service==null || writing || probing || electricBusy || authPaused || isFinishing() || isDestroyed()) return;
         String url=web.getUrl(); if (url==null || !CampusServices.allowed(url)) { schedule(1200); return; }
         final int active=generation; probing=true;
-        web.evaluateJavascript(script+"\n"+ssoScript+"\n"+autoScript+"\nNwpuAuto.install();JSON.stringify(NwpuSso.inspect())",value -> {
+        web.evaluateJavascript(script+"\n"+ssoScript+"\n"+autoScript+"\nNwpuAuto.install();NwpuAuto.focus();JSON.stringify(NwpuSso.inspect())",value -> {
             if (active!=generation || isDestroyed()) return; probing=false;
             if (!url.equals(web.getUrl())) { schedule(600); return; }
             JSONObject r; try { r=result(value); } catch (Exception e) { timeout(); return; }
@@ -334,12 +326,12 @@ public class CampusWebActivity extends Activity {
         io.execute(() -> {
             CampusData next=null;
             try {
-                JSONObject fresh=new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes).put("catalog",apps==null?new JSONArray():apps);
+                JSONObject fresh=new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes);
                 next=CampusStore.update(getApplicationContext(),fresh.toString(),owner);
             } catch (Exception ignored) { }
             CampusData result=next; runOnUiThread(() -> {
                 writing=false; if (active!=generation || isDestroyed()) return; if (result!=null) saved=result;
-                appendCatalog(); bootstrapping=false; keepPortalRetry=resumeService;
+                bootstrapping=false; keepPortalRetry=resumeService;
                 if (all && automatic) startBatch(); else loadNext();
             });
         });
@@ -348,11 +340,13 @@ public class CampusWebActivity extends Activity {
         if (batch!=null) batch.stop();
         generation++; handler.removeCallbacksAndMessages(null); service=null; probing=false; web.stopLoading();
         title.setText("自动读取校园信息"); cover.setVisibility(View.VISIBLE);
+        shownFocused=false;
         batch=new CampusBatch(this,stage,saved,new ArrayList<>(queue),run,script,ssoScript,autoScript,new CampusBatch.Listener() {
             public void progress(int done,int total,int ok,int failed,String active) {
                 status.setGravity(Gravity.CENTER); status.setText("已处理 "+done+" / "+total+" 项 · "+ok+" 项已读取");
                 readingNote.setText(active.isEmpty()?"正在保存读取结果":"同时读取：\n"+active+"\n\n读到的信息会立即保存，无需等待其他项目");
                 getSharedPreferences("campus-auto",MODE_PRIVATE).edit().putInt("done",done).putInt("total",total).apply();
+                if (done==total && !shownFocused && hasWindowFocus()) { shownFocused=true; startActivity(new Intent(CampusWebActivity.this,CampusActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)); }
             }
             public void challenge(WebView view,boolean visible) { if (visible) { cover.setVisibility(View.GONE); view.bringToFront(); status.setText("请完成校方安全验证，其他读取将自动继续"); } else { cover.bringToFront(); cover.setVisibility(View.VISIBLE); } }
             public void loginRequired() { if (batch!=null) { batch.stop(); batch=null; } centralExpired=true; primaryAction(); }
@@ -361,7 +355,7 @@ public class CampusWebActivity extends Activity {
                 if (batch!=null) { batch.stop(); batch=null; }
                 CampusAutoRefresh.finish(CampusWebActivity.this,run,owner,true,unavailable>0);
                 CampusStore.signalChanged();
-                if (hasWindowFocus()) startActivity(new Intent(CampusWebActivity.this,CampusActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)); finish();
+                if (!shownFocused && hasWindowFocus()) startActivity(new Intent(CampusWebActivity.this,CampusActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)); finish();
             }
         });
         batch.start();
@@ -389,7 +383,7 @@ public class CampusWebActivity extends Activity {
             try { saved=CampusStore.load(getApplicationContext()); owner=saved==null?"":saved.owner; } catch (Exception ignored) { }
             runOnUiThread(() -> { if (!isDestroyed()) {
                 CampusAutoRefresh.rebind(this,run,owner);
-                if (all) { queue.clear(); for (CampusServices.Service s:CampusServices.ALL) queue.add(s); appendCatalog(); }
+                if (all) { queue.clear(); for (CampusServices.Service s:CampusServices.CAMPUS) queue.add(s); }
                 index=0; success=0; unavailable=value!=null && value.getBooleanExtra("academic_incomplete",false)?1:0; beginBootstrap(false);
             } });
         });

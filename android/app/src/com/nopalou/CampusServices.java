@@ -33,8 +33,17 @@ final class CampusServices {
         new Service("classroom", "空闲教室", "按日期和节次查询自习教室", "https://idle-classroom.nwpu.edu.cn/ui/", false),
         new Service("sports", "体育场馆", "场地信息与本人预约", PORTAL, false),
         new Service("notices", "校园公告", "学校最新通知与公告", NOTICES, false),
-        new Service("calendar", "校历与校车", "校历、放假与校车时刻", NOTICES, false)
+        new Service("calendar", "校历与校车", "校历、放假与校车时刻", NOTICES, false),
+        new Service("bus", "校车", "下一班时间与乘车地点", "https://xygg.nwpu.edu.cn/info/1003/22073.htm", false),
+        new Service("deadlines", "待办截止", "未完成评教、选课等事项的截止时间", HOME, false)
     };
+    static final Service[] CAMPUS={
+        new Service("network","网费","账户余额、套餐与到期状态","https://zizhu.nwpu.edu.cn/",false),
+        new Service("electric","电费","宿舍剩余电量与更新时间","https://yktapp.nwpu.edu.cn/",false),
+        byId("card"),byId("classroom"),byId("bus"),byId("deadlines")
+    };
+    static boolean selected(String id) { for (Service s:CAMPUS) if (s.id.equals(id)) return true; return false; }
+    static Service selectedService(String id) { for (Service s:CAMPUS) if (s.id.equals(id)) return s; return null; }
     static Service byId(String id) { for (Service s : ALL) if (s.id.equals(id)) return s; return null; }
     static boolean allowed(String value) {
         try {

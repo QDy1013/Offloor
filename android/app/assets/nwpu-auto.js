@@ -12,6 +12,13 @@
         seats: ['我的预约', '预约记录', '我的预约记录', '历史预约'], classroom: ['空闲教室查询', '空闲教室'], sports: ['我的预约', '预约记录', '我的预约记录', '历史预约']
     };
     const state = root.__louAutoDriver || (root.__louAutoDriver = {pending: 0, started: Date.now(), detail: ''});
+    const focused = {
+        network:['我的账户','账户信息','余额查询','上网信息','流量查询'], card:['我的账户','账户信息','账户余额','余额查询','消费明细','交易明细','账单查询'],
+        electric:['电费查询','宿舍电费'], housing:['我的宿舍','住宿信息','公寓信息','智慧公寓'], classroom:['空闲教室查询','空闲教室'],
+        bus:['校车查询','校车服务','校车时刻','校车时刻表','西北工业大学校历、校车时刻表'],
+        deadlines:['我的评教','学生评教','评教任务','我的选课','选课安排','选课时间','选课结果','时间安排']
+    };
+    function focus() { state.focus=true; root.__louCampusFocus=true; }
     function install() {
         if (state.installed) return; state.installed = true;
         state.changed = Date.now();
@@ -50,6 +57,7 @@
     }
     function readLabel(name, kind) {
         if (!name || name.length > 50 || writable(name)) return false;
+        if (state.focus) return (focused[kind] || []).includes(name);
         if ((sections[kind] || []).includes(name)) return true;
         return /^(?:我的|个人|本人).*(?:信息|中心|记录|明细|查询|结果|状态|账户|借阅|申请|预约|奖|补助|考勤|请假|体测|课|学分|缴费|事务)$/.test(name) ||
             /^(?:基本|学籍|住宿|联系|学业|体测|体质|奖助|奖学金|助学金|学费|缴费|借阅|预约|考勤|请假|申请|审批|消费|交易|充值|上网|流量|账户|余额|历史|历年|历次).*(?:信息|记录|明细|查询|结果|状态|账单|历史|进度|余额|列表)$/.test(name);
@@ -135,9 +143,9 @@
             if (visible(e) && e.clientHeight > 0 && e.scrollTop + e.clientHeight < e.scrollHeight - 3) out.push({type: 'scroll', key: pageKey() + '|scroll:' + variant + ':' + Math.round(e.scrollTop), label: '读取后续记录', element: e});
         }
         const next = Array.from(doc.querySelectorAll('.el-pagination .btn-next,.ant-pagination-next,.pagination [rel="next"],a[rel="next"],[aria-label="下一页"],[title="下一页"]')).find(e => visible(e) && !disabled(e) && validLink(e));
-        if (next) out.push({type: 'next', key: pageKey() + '|next', label: '下一页', element: next});
-        if (query && list.length) out.push(...filterActions(list, viewKey(), seen, label(query), customKey(custom)));
-        if (query) for (const f of custom) {
+        if (next && (!state.focus || ['deadlines','classroom'].includes(kind))) out.push({type: 'next', key: pageKey() + '|next', label: '下一页', element: next});
+        if (!state.focus && query && list.length) out.push(...filterActions(list, viewKey(), seen, label(query), customKey(custom)));
+        if (!state.focus && query) for (const f of custom) {
             const other = custom.filter(v => v !== f), key = viewKey() + '|custom:' + f.key + ':' + filterKey(list) + customKey(other);
             const known = state.filterOptions && state.filterOptions[viewKey() + '|' + f.key];
             if (known && known.every(value => value === f.value || seen.has(key + '|option:' + value))) continue;
@@ -194,6 +202,6 @@
         if (root.NwpuSso && root.NwpuSso.activateElement) return root.NwpuSso.activateElement(action.element);
         action.element.click(); return true;
     }
-    const api = {install, inspect, act, pageKey};
+    const api = {install, focus, inspect, act, pageKey};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuAuto = api;
 })(typeof window === 'undefined' ? globalThis : window);
