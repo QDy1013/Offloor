@@ -2,31 +2,31 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 25,
-      "versionName": "0.25",
-      "size": 284078,
-      "sha256": "9bc390af9b21b4c0a465ddbf6f0c46b0411a909add184a52144117b71641424a",
+      "versionCode": 26,
+      "versionName": "0.26",
+      "size": 288174,
+      "sha256": "8bc291e34ac54f56e8071ca97e99f2a09cc54f37d80a705173fe8cef6fcb6480",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/9bc390af9b21b4c0a465ddbf6f0c46b0411a909add184a52144117b71641424a/offloor.apk",
-      "notes": "校园仅保留网费、电费、一卡通、空闲教室、校车和待办截止；清除其他展示与无关读取，直接展示实际数值和表列下一班。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/8bc291e34ac54f56e8071ca97e99f2a09cc54f37d80a705173fe8cef6fcb6480/offloor.apk",
+      "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
     },
     "com.nopalou.preview": {
-      "versionCode": 25,
-      "versionName": "0.25",
-      "size": 284078,
-      "sha256": "a30956325ab29ec78383c779fbd81c8f4712130e47690f40a4e65aadbaedbf8a",
+      "versionCode": 26,
+      "versionName": "0.26",
+      "size": 288174,
+      "sha256": "6537a9c52dd1acf0d594b8c622d5483cb94464e9cb2af76169f3930ec67e7068",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/a30956325ab29ec78383c779fbd81c8f4712130e47690f40a4e65aadbaedbf8a/offloor-preview.apk",
-      "notes": "校园仅保留网费、电费、一卡通、空闲教室、校车和待办截止；清除其他展示与无关读取，直接展示实际数值和表列下一班。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/6537a9c52dd1acf0d594b8c622d5483cb94464e9cb2af76169f3930ec67e7068/offloor-preview.apk",
+      "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
     },
     "com.nopalou.timetabletest": {
-      "versionCode": 25,
-      "versionName": "0.25",
-      "size": 284078,
-      "sha256": "1ca09dc59605dc9f9a5fcaa1f1ae42d25463f4ebfd8b653ab55f56a33400d32d",
+      "versionCode": 26,
+      "versionName": "0.26",
+      "size": 288174,
+      "sha256": "46cb890f0e27e99d875d3da96bbe917de77d0497aecd378eba6233e2df10f743",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/1ca09dc59605dc9f9a5fcaa1f1ae42d25463f4ebfd8b653ab55f56a33400d32d/offloor-timetable-test.apk",
-      "notes": "校园仅保留网费、电费、一卡通、空闲教室、校车和待办截止；清除其他展示与无关读取，直接展示实际数值和表列下一班。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/46cb890f0e27e99d875d3da96bbe917de77d0497aecd378eba6233e2df10f743/offloor-timetable-test.apk",
+      "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
     }
   }
 }
