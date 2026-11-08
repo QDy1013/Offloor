@@ -73,7 +73,20 @@ public class CampusActivity extends Activity {
     private static String time(long t) { return t<=0?"尚未同步":new SimpleDateFormat("M月d日 HH:mm",Locale.CHINA).format(new Date(t)); }
     private void renderOverview() {
         if (data==null || data.owner.isEmpty()) { LinearLayout login=card(); login.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48))); }
-        else note(getSharedPreferences("campus-auto",MODE_PRIVATE).getBoolean("active",false)?"正在自动更新，已读信息会直接显示":"已开启自动更新");
+        else {
+            android.content.SharedPreferences auto=getSharedPreferences("campus-auto",MODE_PRIVATE);
+            String attention=CampusSilentRefresh.attention(this);
+            if (!attention.isEmpty()) {
+                // 后台更新遇到了只能本人处理的情况：给一个入口，走原来的可见读取页（含登录与安全验证）
+                LinearLayout warn=card();
+                warn.addView(text("login".equals(attention)?"校园登录已过期，暂停自动更新":"校方要求安全验证，暂停自动更新",15,Ui.TEXT,true));
+                TextView why=text("下面是上次读到的信息。重新登录一次后，会继续在后台自动更新。",12,Ui.SUB,false); why.setPadding(0,dp(6),0,dp(12)); warn.addView(why);
+                warn.addView(CourseUi.action(this,"login".equals(attention)?"重新登录并更新":"去完成验证",true,() -> startActivity(new Intent(this,CampusWebActivity.class).putExtra("all",true).putExtra("automatic",true))),CourseUi.row(dp(46)));
+            } else if (auto.getBoolean("active",false)) {
+                int done=auto.getInt("done",0),total=auto.getInt("total",0);
+                note("正在后台更新"+(total>0?" · "+done+"/"+total:"")+"，可以照常使用，读到的信息会直接显示");
+            } else note("已开启自动更新");
+        }
         for (CampusServices.Service s:CampusServices.CAMPUS) moduleCard(s);
     }
     private void moduleCard(CampusServices.Service s) {
@@ -151,5 +164,5 @@ public class CampusActivity extends Activity {
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
     @Override public void onPause() { resumed=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
-    @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
 }

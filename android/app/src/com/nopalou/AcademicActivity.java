@@ -66,7 +66,7 @@ public class AcademicActivity extends Activity {
         b.putBoolean("grades", showGrades); b.putBoolean("finishedOpen", finishedOpen);
         b.putStringArrayList("openTerms", new ArrayList<>(openTerms)); super.onSaveInstanceState(b);
     }
-    @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
     @Override public void onPause() { resumed=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
     /** 返回待办时同样淡出，和底部导航的切换手感一致。 */
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }

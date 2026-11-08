@@ -71,7 +71,7 @@ public class TimetableActivity extends Activity {
         AppNavigation.rememberTimetable(week, savedScrollY);
         super.onPause();
     }
-    @Override public void onDestroy() { uiTick.removeCallbacksAndMessages(null); if (velocity != null) velocity.recycle(); io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); uiTick.removeCallbacksAndMessages(null); if (velocity != null) velocity.recycle(); io.shutdown(); super.onDestroy(); }
     /** 返回待办时同样淡出，和底部导航的切换手感一致。 */
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
     final android.os.Handler uiTick = new android.os.Handler(android.os.Looper.getMainLooper());

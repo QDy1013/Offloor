@@ -159,9 +159,18 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
     }
 
+    /** 常驻的待办页：校园后台更新的浏览器挂在它下面，切换底部标签时不会被打断。 */
+    private static java.lang.ref.WeakReference<MainActivity> liveRef;
+
+    static MainActivity live() {
+        MainActivity m = liveRef == null ? null : liveRef.get();
+        return m == null || m.isFinishing() || m.isDestroyed() ? null : m;
+    }
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        liveRef = new java.lang.ref.WeakReference<>(this);
         Ui.apply(this);
         firstRender = b == null;
         if (b != null) {
@@ -268,6 +277,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     @Override
     protected void onDestroy() {
+        CampusSilentRefresh.hostDestroyed(this);
         uiHandler.removeCallbacksAndMessages(null);
         if (engine != null && engine.listener == this) engine.listener = null;
         super.onDestroy();

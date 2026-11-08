@@ -47,13 +47,24 @@ final class CampusAutoRefresh {
                     // evidence of a running reader after an update or a system process kill.
                     if (p.getBoolean("active",false) && !p.getString("run","").equals(liveRun)) p.edit().putBoolean("active",false).putLong("next",0).apply();
                     boolean same=owner.equals(p.getString("owner",""));
+                    // 后台做不了的（登录过期、安全验证）等用户在校园页处理，不反复自动重试
+                    if (!force && !p.getString(CampusSilentRefresh.ATTENTION,"").isEmpty()) return;
+                    if (!force && CampusSilentRefresh.running()) return;
                     if (!force && same && !CampusAutoPolicy.due(now,p.getLong("started",0),p.getBoolean("active",false),p.getLong("next",0),p.getLong("version",0),version(context))) return;
                     String token=java.util.UUID.randomUUID().toString();
                     String entry=a.getIntent().getStringExtra("course_url"); if (!CampusServices.readUrl(entry)) entry=same?p.getString("academic_entry",NwpuImportActivity.COURSE_URL):NwpuImportActivity.COURSE_URL;
                     p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).putString("academic_entry",entry).putInt("done",0).putInt("total",0).apply();
                     liveRun=token;
-                    a.startActivity(new Intent(a,CampusWebActivity.class).putExtra("all",true).putExtra("automatic",true).putExtra("fresh_login",closeLogin).putExtra("academic_incomplete",a.getIntent().getBooleanExtra("academic_incomplete",false)).putExtra("run",token));
-                    if (closeLogin) a.finish();
+                    // 后台更新：不打开新页面、不转圈，浏览器挂在常驻的待办页（没有时挂在当前页）下面。
+                    if (closeLogin) p.edit().remove(CampusSilentRefresh.ATTENTION).apply();
+                    Activity host=MainActivity.live();
+                    if (host==null && closeLogin) {
+                        // 登录页马上要关，又没有常驻页可挂：沿用原来的可见读取页
+                        a.startActivity(new Intent(a,CampusWebActivity.class).putExtra("all",true).putExtra("automatic",true).putExtra("fresh_login",true).putExtra("academic_incomplete",a.getIntent().getBooleanExtra("academic_incomplete",false)).putExtra("run",token));
+                        a.finish(); return;
+                    }
+                    CampusSilentRefresh.start(host!=null?host:a,token);
+                    if (closeLogin) { a.startActivity(new Intent(a,CampusActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)); a.finish(); }
                 }
             });
         });
@@ -81,7 +92,9 @@ final class CampusAutoRefresh {
         synchronized (LOCK) {
             if (!owns(c,run,owner)) return;
             long delay=!completed?CampusAutoPolicy.CANCEL_INTERVAL:incomplete?CampusAutoPolicy.RETRY_INTERVAL:CampusAutoPolicy.SUCCESS_INTERVAL;
-            prefs(c).edit().putBoolean("active",false).putLong("version",version(c)).putLong("next",System.currentTimeMillis()+delay).putLong("finished",System.currentTimeMillis()).apply();
+            SharedPreferences.Editor e=prefs(c).edit();
+            if (completed) e.remove(CampusSilentRefresh.ATTENTION);     // 读通过了一轮：之前的“需要重新登录”作废
+            e.putBoolean("active",false).putLong("version",version(c)).putLong("next",System.currentTimeMillis()+delay).putLong("finished",System.currentTimeMillis()).apply();
         }
     }
 }
