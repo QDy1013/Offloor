@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Offloor</string>
     <string name="read_service_desc">用来导入以前的群消息：在 QQ 或微信的群里点「Offloor · 导入」，Offloor 会自动往上翻一个月的聊天记录，把作业、考试、接龙整理成待办。只在你点按钮时读取，只存本机，不发送任何消息。</string>
+    <string name="widget_today_desc">今天还没上完的课和最近要做的待办</string>
+    <string name="widget_today_label">今日课程与待办</string>
 </resources>

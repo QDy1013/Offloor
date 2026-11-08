@@ -235,6 +235,7 @@ public class EngineHolder {
                     Log.w(TAG, "卡片已保存，提醒调度失败", ex);
                     diag(app, "出错", "到期提醒调度失败");
                 }
+                TodayWidget.refresh(app);
             });
         });
     }
@@ -289,6 +290,7 @@ public class EngineHolder {
             Log.w(TAG, "卡片已保存，提醒调度失败", ex);
             diag(app, "出错", "到期提醒调度失败");
         }
+        TodayWidget.refresh(app);
         return true;
     }
 

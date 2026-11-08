@@ -191,6 +191,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     protected void onResume() {
         super.onResume();
         CampusAutoRefresh.maybeRefresh(this);
+        TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
         // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。

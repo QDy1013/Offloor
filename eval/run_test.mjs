@@ -37,7 +37,8 @@ if (/^test_[a-z0-9_]+$/.test(name)) {
   const health = path.join(root, 'android/app/src/com/nopalou/HealthCheck.java');
   const diff = path.join(root, 'android/app/src/com/nopalou/ChangeDiff.java');
   const sections = path.join(root, 'android/app/src/com/nopalou/SectionTimes.java');
-  const files = [engine, ...[filter, demo, reminder, today, clash, parser, diag, health, diff, sections].filter(existsSync), src];
+  const plan = path.join(root, 'android/app/src/com/nopalou/TodayPlan.java');
+  const files = [engine, ...[filter, demo, reminder, today, clash, parser, diag, health, diff, sections, plan].filter(existsSync), src];
   const c = spawnSync('javac', ['-J-Duser.language=en', '-nowarn', '-encoding', 'UTF-8', '-d', out, ...files], { encoding: 'utf8', timeout: 120000 });
   if (c.status !== 0) finish(c);
   const args = ['-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-cp', out, 'com.nopalou.' + name, path.join(root, 'android')];

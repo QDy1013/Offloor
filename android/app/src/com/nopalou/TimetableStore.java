@@ -41,6 +41,7 @@ final class TimetableStore {
         }
         // 基线是“上一次保存的课表”，不是第一次导入的那份
         CampusChanges.timetable(c, previous, t);
+        TodayWidget.refresh(c);
     }
-    static synchronized void clear(Context c) { file(c).delete(); }
+    static synchronized void clear(Context c) { file(c).delete(); TodayWidget.refresh(c); }
 }
