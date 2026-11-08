@@ -154,9 +154,14 @@ public class CampusActivity extends Activity {
         row.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
     }
     private void settings() {
-        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
-            if (i==0) startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"));
-            else if (i==2) startActivity(new Intent(this,UpdateActivity.class));
+        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"立即更新","切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
+            if (i==0) {
+                boolean started=CampusAutoRefresh.refreshNow(this);
+                android.widget.Toast.makeText(this,started?"已开始在后台更新，可以照常使用":"正在后台更新中",android.widget.Toast.LENGTH_SHORT).show();
+                updates.postDelayed(this::reload,1500);
+            }
+            else if (i==1) startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"));
+            else if (i==3) startActivity(new Intent(this,UpdateActivity.class));
             else new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("清空本机校园数据？").setMessage("将删除此页面的同步存档和宿舍绑定，可重新同步。").setNegativeButton("取消",null).setPositiveButton("清空",(a,b) -> io.execute(() -> {
                 CampusStore.clear(getApplicationContext()); runOnUiThread(() -> { data=null; render(); });
             })).show();

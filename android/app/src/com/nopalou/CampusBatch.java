@@ -114,6 +114,10 @@ final class CampusBatch {
     }
     private static JSONObject decode(String raw) throws Exception { Object value=new JSONTokener(raw).nextValue(); return value instanceof String?new JSONObject((String)value):new JSONObject(); }
 
+    /** 一卡通统一登录入口（落地到一卡通首页，地址里带 synjones-auth 令牌）和交电费页。 */
+    static final String ELECTRIC_SSO="https://yktapp.nwpu.edu.cn/berserker-auth/cas/login/supwisdom?targetUrl=https%3A%2F%2Fyktapp.nwpu.edu.cn%2Fplat";
+    static final String ELECTRIC_PAGE="https://yktapp.nwpu.edu.cn/jfdt/charge/feeitem/toAppitem?feeitemid=182&type=app&loginFrom=h5&appId=36";
+
     private final class Lane {
         WebView web;
         final CampusAuth auth=new CampusAuth();
@@ -180,7 +184,10 @@ final class CampusBatch {
                 if (service.id.equals("_academic")) { beginAcademic(); return; }
                 if (service.id.equals("electric") && "yktapp.nwpu.edu.cn".equals(Uri.parse(url).getHost()) && !electric) {
                     electric=true; String room=activity.getSharedPreferences("campus-binding",0).getString("room","");
-                    try { electric(room.isEmpty()?0:3,room.isEmpty()?new JSONObject():new JSONObject(room)); } catch (Exception e) { electric(0,new JSONObject()); } return;
+                    // 手动关联过房间：按房间查；否则直接读“交电费”页面显示的本账号宿舍电量（翱翔助手的做法），
+                    // 读不到再走逐级匹配。
+                    if (!room.isEmpty()) { try { electric(3,new JSONObject(room)); return; } catch (Exception ignored) { } }
+                    electricPage(); return;
                 }
                 JSONObject read=result.optJSONObject("read"); if (read==null) { timeout(); return; }
                 read(read,url);
@@ -345,6 +352,50 @@ final class CampusBatch {
                 activity.runOnUiThread(() -> { if (alive() && active==generation) completeLane(this,null,result,rest); });
             });
         }
+        /**
+         * 打开一卡通“交电费”页面，读它按本账号宿舍显示的剩余电量；读不到再逐级匹配房间。
+         * 这个页面要带一卡通的 synjones-auth 令牌，直接打开会返回 401：先走一卡通的统一登录入口，
+         * 落地到一卡通首页时地址里带着令牌，取出来再打开交电费页。令牌只在内存里用，不保存。
+         */
+        void electricPage() {
+            querying=true; int active=generation; boolean bound=!activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty();
+            web.loadUrl(ELECTRIC_SSO);
+            handler.postDelayed(() -> pollElectricToken(active,bound,SystemClock.elapsedRealtime()+15_000),800);
+        }
+        void pollElectricToken(int active,boolean bound,long limit) {
+            if (!alive() || generation!=active || service==null) return;
+            String url=web.getUrl(); Uri u=url==null?null:Uri.parse(url);
+            String token=u==null || !"yktapp.nwpu.edu.cn".equals(u.getHost())?null:u.getQueryParameter("synjones-auth");
+            if (token!=null && token.matches("[A-Za-z0-9._\\-]{20,2000}")) {
+                EngineHolder.diag(activity,"电费","一卡通令牌已取得，打开交电费页");
+                web.loadUrl(ELECTRIC_PAGE+"&synjones-auth="+Uri.encode(token));
+                handler.postDelayed(() -> pollElectricPage(active,bound,SystemClock.elapsedRealtime()+14_000),1200);
+                return;
+            }
+            if (SystemClock.elapsedRealtime()>limit) {
+                EngineHolder.diag(activity,"电费","没拿到一卡通令牌，停在 "+(u==null?"空白页":u.getHost()+u.getPath()));
+                querying=false; if (bound) fail("unavailable"); else electric(0,new JSONObject()); return;
+            }
+            handler.postDelayed(() -> pollElectricToken(active,bound,limit),500);
+        }
+        void pollElectricPage(int active,boolean bound,long limit) {
+            if (!alive() || generation!=active || service==null) return;
+            if (SystemClock.elapsedRealtime()>limit) {
+                String at=web.getUrl(); EngineHolder.diag(activity,"电费","交电费页没读到电量，停在 "+(at==null?"空白页":Uri.parse(at).getPath()));
+                querying=false;
+                if (bound) fail("unavailable");           // 已关联房间：不重新匹配，下次再按房间查
+                else electric(0,new JSONObject());        // 没关联：退回逐级匹配
+                return;
+            }
+            String url=web.getUrl();
+            if (url==null || !"yktapp.nwpu.edu.cn".equals(Uri.parse(url).getHost())) { handler.postDelayed(() -> pollElectricPage(active,bound,limit),600); return; }
+            web.evaluateJavascript(scripts+"\nJSON.stringify(NwpuCampus.electricPage())",raw -> {
+                if (!alive() || generation!=active || service==null) return;
+                JSONObject r; try { r=decode(raw); } catch (Exception e) { r=new JSONObject(); }
+                if ("ok".equals(r.optString("state"))) { querying=false; EngineHolder.diag(activity,"电费","交电费页读到电量"); store(this,r,true); return; }
+                handler.postDelayed(() -> pollElectricPage(active,bound,limit),700);
+            });
+        }
         void electric(int level,JSONObject binding) {
             querying=true; int active=generation; String token=java.util.UUID.randomUUID().toString();
             web.evaluateJavascript("NwpuCampus.electricStart("+JSONObject.quote(token)+","+level+","+binding+")",ignored -> pollElectric(active,token,level,binding,SystemClock.elapsedRealtime()+13_000));
@@ -358,7 +409,8 @@ final class CampusBatch {
                 if (!token.equals(r.optString("token")) || r.optString("status").equals("loading")) { handler.postDelayed(() -> pollElectric(active,token,level,binding,limit),80); return; }
                 querying=false;
                 if (!r.optString("status").equals("ok")) {
-                    if (level==3 && !electricRetry) { electricRetry=true; activity.getSharedPreferences("campus-binding",0).edit().remove("room").apply(); electric(0,new JSONObject()); return; }
+                    // 已关联的房间查询失败多半是网络或校方临时问题：房间保留，改读交电费页面，下次照常按房间查。
+                    if (level==3 && !electricRetry) { electricRetry=true; electricPage(); return; }
                     fail("unavailable"); return;
                 }
                 try {

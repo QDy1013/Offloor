@@ -348,6 +348,58 @@
             } finally { clearTimeout(timer); }
         })().catch(() => { root.__louElectricResult = {token, status: 'error'}; });
     }
-    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, identity, capture, portal, deadlineTime, deadlineData, busData, electricForm, electricNormalize, electricStart};
+    // 一卡通“交电费”页面：页面会按本账号默认（上次缴费）的宿舍显示剩余电量，不用逐级选校区/楼栋/房间。
+    // 打开时要带一卡通令牌（由 CampusBatch 先走一卡通统一登录入口取得），否则返回 401。
+    // 只取电量这个数，不读、不存宿舍信息。先找页面组件里的数据，找不到再看页面文字。
+    const ELECTRIC_PAGE = 'https://yktapp.nwpu.edu.cn/jfdt/charge/feeitem/toAppitem?feeitemid=182&type=app&loginFrom=h5&appId=36';
+    const ELECTRIC_KEY = /当前剩余电量|剩余电量|电量余额/;
+    function electricNumber(v) {
+        if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+        if (typeof v !== 'string') return NaN;
+        const s = v.replace(/[,，\s]/g, '').replace(/(度|kWh|KWH)$/i, '');
+        return /^-?\d+(?:\.\d+)?$/.test(s) ? +s : NaN;
+    }
+    function electricScan(obj, depth, seen) {
+        if (!obj || typeof obj !== 'object' || depth > 6 || seen.has(obj)) return NaN;
+        seen.add(obj);
+        // 形如 {name:'当前剩余电量', value:'12.3'} 的条目
+        const label = obj.name || obj.label || obj.title || obj.key;
+        if (typeof label === 'string' && ELECTRIC_KEY.test(label)) {
+            const n = electricNumber(obj.value !== undefined ? obj.value : obj.val);
+            if (Number.isFinite(n)) return n;
+        }
+        const keys = Object.keys(obj).slice(0, 300);
+        for (const k of keys) {
+            let v; try { v = obj[k]; } catch (e) { continue; }
+            if (ELECTRIC_KEY.test(k)) { const n = electricNumber(v); if (Number.isFinite(n)) return n; }
+        }
+        for (const k of keys) {
+            if (k.charAt(0) === '_' || k.charAt(0) === '$') continue;
+            let v; try { v = obj[k]; } catch (e) { continue; }
+            if (v && typeof v === 'object') { const n = electricScan(v, depth + 1, seen); if (Number.isFinite(n)) return n; }
+        }
+        return NaN;
+    }
+    function electricPage() {
+        if (root.location.origin !== 'https://yktapp.nwpu.edu.cn') return {state: 'elsewhere'};
+        const ok = n => Math.abs(n) > 1000000 ? {state: 'loading'} : {state: 'ok', source: ELECTRIC_PAGE,
+            fields: [{label: '当前剩余电量', value: n + ' 度'}], tables: [], links: []};
+        const doc = root.document, rootEl = doc && doc.querySelector('#app');
+        const vm = rootEl && (rootEl.__vue__ || (rootEl.__vue_app__ && rootEl.__vue_app__._instance && rootEl.__vue_app__._instance.proxy));
+        if (vm) {
+            const seen = new Set(), queue = [vm];
+            for (let visited = 0; queue.length && visited < 200; visited++) {
+                const c = queue.shift();
+                let n = NaN; try { n = electricScan(c.$data || c, 0, seen); } catch (e) { }
+                if (Number.isFinite(n)) return ok(n);
+                try { (c.$children || []).forEach(x => queue.push(x)); } catch (e) { }
+            }
+        }
+        const text = (doc && doc.body && doc.body.innerText) || '';
+        const m = text.match(/(?:当前)?剩余电量[^\d\-\n]{0,12}(-?\d+(?:\.\d+)?)/);
+        if (m) return ok(+m[1]);
+        return {state: 'loading'};
+    }
+    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, identity, capture, portal, deadlineTime, deadlineData, busData, electricForm, electricNormalize, electricStart, electricPage, ELECTRIC_PAGE};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuCampus = api;
 })(typeof window === 'undefined' ? globalThis : window);

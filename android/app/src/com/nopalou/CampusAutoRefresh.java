@@ -18,6 +18,11 @@ final class CampusAutoRefresh {
         try { android.content.pm.PackageInfo p=c.getPackageManager().getPackageInfo(c.getPackageName(),0); return android.os.Build.VERSION.SDK_INT>=28?p.getLongVersionCode():p.versionCode; } catch (Exception e) { return 0; }
     }
     static void afterLogin(Activity a) { launch(a,true,true); }
+    /** 校园页“立即更新”：不等 6 小时，马上在后台跑一轮。已经在跑就不重复开。 */
+    static boolean refreshNow(Activity a) {
+        if (CampusSilentRefresh.running()) return false;
+        launch(a,true,false); return true;
+    }
     static void maybeRefresh(Activity a) {
         pause(a);
         java.lang.ref.WeakReference<Activity> ref=new java.lang.ref.WeakReference<>(a);
