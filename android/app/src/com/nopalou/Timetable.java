@@ -137,6 +137,21 @@ final class Timetable {
         }
         return a.isEmpty() || b.isEmpty() ? result : result + " · " + a + "–" + b;
     }
+    /** 同上，但友谊校区的课按那一周所在月份换成友谊校区夏/冬季作息。 */
+    String time(Lesson l, int week) {
+        if (!SectionTimes.friendship(l.room)) return time(l);
+        Calendar c = calendar(firstMonday);
+        int month;
+        if (c != null && week >= 1) {
+            c.add(Calendar.DAY_OF_MONTH, (week - 1) * 7 + l.weekday - 1);
+            month = c.get(Calendar.MONTH) + 1;
+        } else {
+            month = Calendar.getInstance().get(Calendar.MONTH) + 1;
+        }
+        String range = SectionTimes.friendshipRange(month, l.start, l.end);
+        String result = "第" + l.start + "–" + l.end + "节";
+        return range == null ? time(l) : result + " · " + range + "（友谊校区" + (SectionTimes.summer(month) ? "夏季" : "冬季") + "作息）";
+    }
     String encode() throws JSONException {
         if (calendar(firstMonday) == null || !firstMonday.equals(monday(firstMonday)))
             throw new JSONException("请确认第1周周一的日期");

@@ -1028,6 +1028,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 () -> startActivity(new Intent(this, ProfileActivity.class)));
         menuRow(body, holder, "我的课表", "本科课表一键导入，离线查看每周课程", Ui.TEXT,
                 () -> AppNavigation.openTimetable(this));
+        menuRow(body, holder, "成绩与课表提醒", "出成绩、考试改期、课表变化、电量不足时通知", Ui.TEXT,
+                this::showCampusAlerts);
         menuSection(body, "演示");
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
@@ -1047,6 +1049,35 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                         .setNegativeButton("取消", null)
                         .show());
         holder[0] = showSheet(body, null);
+    }
+
+    /** 「成绩与课表提醒」：同步后比较新旧数据，有变化才通知；第一次导入不提醒。 */
+    void showCampusAlerts() {
+        android.content.SharedPreferences p = CampusChanges.prefs(this);
+        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric"};
+        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）", "宿舍电量不足"};
+        boolean[] checked = new boolean[keys.length];
+        for (int i = 0; i < keys.length; i++) checked[i] = p.getBoolean(keys[i], true);
+        android.widget.EditText threshold = new android.widget.EditText(this);
+        threshold.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        threshold.setHint("电量提醒阈值（度）");
+        threshold.setText(CampusChanges.trim((double) p.getFloat("electric_threshold", CampusChanges.DEFAULT_ELECTRIC)));
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(dp(this, 22), 0, dp(this, 22), 0);
+        box.addView(threshold, lp(-1, -2));
+        alert()
+                .setTitle("成绩与课表提醒")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setView(box)
+                .setPositiveButton("保存", (d, w) -> {
+                    android.content.SharedPreferences.Editor e = p.edit();
+                    for (int i = 0; i < keys.length; i++) e.putBoolean(keys[i], checked[i]);
+                    Double v = ChangeDiff.firstNumber(threshold.getText().toString());
+                    if (v != null && v >= 0 && v < 10000) e.putFloat("electric_threshold", v.floatValue()).putBoolean("electric_low", false);
+                    e.apply();
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     TextView sheetTitle(String text) {

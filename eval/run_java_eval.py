@@ -69,7 +69,8 @@ def run_java(rows: list[dict], java: str, javac: str, timing: bool = False) -> E
     with TemporaryDirectory(prefix="nopalou-java-eval-", dir=Path.cwd()) as classes:
         subprocess.run(
             [javac, "-encoding", "UTF-8", "-d", classes,
-             str(app / "src" / "com" / "nopalou" / "Engine.java"), str(ROOT / "eval" / "EngineEval.java")],
+             str(app / "src" / "com" / "nopalou" / "Engine.java"),
+             str(app / "src" / "com" / "nopalou" / "ChangeDiff.java"), str(ROOT / "eval" / "EngineEval.java")],
             check=True,
         )
         result = subprocess.run(

@@ -48,7 +48,7 @@ python3 eval/run_java_eval.py --out java-comparison.json
 python3 eval/run_java_eval.py --timing --out java-timing.json
 
 # 4. 端到端自测（不需要模拟器/手机）
-cd android && javac -d build/test app/src/com/nopalou/Engine.java test/EngineTest.java
+cd android && javac -d build/test app/src/com/nopalou/Engine.java app/src/com/nopalou/ChangeDiff.java test/EngineTest.java
 java -cp build/test com.nopalou.EngineTest app/assets replay/assets/messages.txt
 
 # 4b. Python 验收用例（每个都是独立脚本，失败时退出码非 0）
@@ -161,6 +161,17 @@ python android/build.py
 | 语音/图片消息 | 已改进（v0.27）。重点群、老师/班干部、@全体发的图片/语音/视频/文件出一张“去看一下”的提示卡（同人 10 分钟内合并），图片可一键截图识别；普通群友的只记进上下文 |
 
 AI 识别默认关闭，在「更多 → AI 识别」里填 OpenAI 兼容接口（预置通义千问 / DeepSeek）和密钥后开启。没开、没网或调用失败时，卡片保持本机规则的结果，不会丢；模型的结论不会覆盖用户亲手改过的标题和时间；模型认为“不是待办”的卡移到“已移除的卡片”，可以恢复。
+
+### 成绩、考试、课表与电费提醒（v0.27）
+
+参考同校应用“翱翔助手”的做法（只借鉴设计，未使用其代码；该仓库未声明开源许可证），并避开它已知的两个问题：
+
+- **变化提醒**：成绩、考试安排、课表每次保存后和“上一次保存的内容”比较（`ChangeDiff` + `CampusChanges`），有新增或改动才发通知。第一次导入没有基线，不提醒；课程名统一去空白、全角转半角后再比较，避免每次都提示“有更新”；成绩只比较分数、绩点、学分，不比较“成绩构成”说明文字，避免成绩没变也提醒；换学期整体替换课表时不算更新。
+- **考试进待办**：教务系统的考试安排自动变成考试卡，接上原有的到期提醒；改期会更新原卡并标“有更新”；群消息里已经有同一场考试时不重复出卡；用户移除或改过时间的卡不会被覆盖（`Engine.syncSchoolExams`）。
+- **友谊校区作息**：教室在友谊校区的课按夏季（5–9 月）/冬季作息显示上课时间（`SectionTimes`）。
+- **电量不足**：宿舍电量低于阈值（默认 20 度）时提醒一次，充值回到阈值以上后才会再次提醒。
+- 开关和阈值在「更多 → 成绩与课表提醒」。
+- 修复：只清空校园数据后再次同步，不会再连带删掉课表和成绩（`CampusStore.bind` 只在确实换了账号时才全部清空）。
 
 仍未做：真正离线的端侧小模型（需要 NDK 编译 llama.cpp/MNN 并改用 Gradle 打包，当前 `build.py` 只能打纯 Java 包）；语音转文字（安卓拿不到微信/QQ 的语音文件）。
 

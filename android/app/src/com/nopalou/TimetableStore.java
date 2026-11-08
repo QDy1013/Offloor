@@ -27,6 +27,8 @@ final class TimetableStore {
     static synchronized void save(Context c, Timetable t) throws Exception {
         byte[] bytes = t.encode().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > Timetable.MAX_BYTES) throw new java.io.IOException("课表过大");
+        Timetable previous = null;
+        try { previous = load(c); } catch (Exception ignored) { }
         AtomicFile f = file(c);
         FileOutputStream out = null;
         try {
@@ -37,6 +39,8 @@ final class TimetableStore {
             if (out != null) f.failWrite(out);
             throw e;
         }
+        // 基线是“上一次保存的课表”，不是第一次导入的那份
+        CampusChanges.timetable(c, previous, t);
     }
     static synchronized void clear(Context c) { file(c).delete(); }
 }

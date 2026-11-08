@@ -214,6 +214,7 @@ public class Engine {
                 case "demo": return "演示样例";
                 case "screenshot": return "截图识别";
                 case "share": return "分享";
+                case "jwxt": return "教务系统";
                 default: return "来源待确认";
             }
         }
@@ -1836,6 +1837,91 @@ public class Engine {
         cards.add(c);
         notifyChanged();
         return true;
+    }
+
+    // ---------- 教务系统的考试安排 ----------
+    public static final String PKG_SCHOOL = "jwxt";
+
+    /** 教务系统里的一场考试；start 为 0 表示只知道日期或时间未排。 */
+    public static class SchoolExam {
+        public String course, place;
+        public long start;          // 毫秒；0 = 时间未知
+        public boolean dateOnly;    // 只知道日期，时刻待定
+        public boolean finished;
+    }
+
+    /**
+     * 把教务系统的考试安排同步成考试卡：新考试出卡，改了时间/地点的更新原卡并标“有更新”。
+     * 已结束的不出卡；用户移除过的不再顶回来；用户改过的时间不覆盖；
+     * 群消息里已经有同一门课、时间相近（12 小时内）的考试卡时不重复出卡，只补地点。
+     * @return 新增或更新的卡片数
+     */
+    public int syncSchoolExams(List<SchoolExam> exams, long now) {
+        int changed = 0;
+        for (SchoolExam x : exams) {
+            if (x == null || blank(x.course) || x.finished) continue;
+            if (x.start > 0 && x.start < now - 3 * 3600_000L) continue;      // 已经考完
+            String key = "school:" + ChangeDiff.norm(x.course);
+            boolean removed = false;
+            for (Card r : removedCards) if (PKG_SCHOOL.equals(r.sourcePackage) && key.equals(r.platformKey)) removed = true;
+            if (removed) continue;
+            Card same = null;
+            for (Card c : cards) if (PKG_SCHOOL.equals(c.sourcePackage) && key.equals(c.platformKey)) { same = c; break; }
+            String title = x.course.trim().endsWith("考试") ? x.course.trim() : x.course.trim() + " 考试";
+            String place = clip(x.place, 30);
+            if (same != null) {
+                boolean upd = false;
+                if (!same.deadlineUserSet && x.start > 0 && x.start != same.deadline) {
+                    same.deadline = x.start;
+                    same.deadlineText = humanDeadline(x.start);
+                    same.needsConfirm = x.dateOnly;
+                    upd = true;
+                }
+                if (place != null && !place.equals(same.place)) { same.place = place; upd = true; }
+                if (upd) {
+                    same.updated = true;
+                    same.reason = "教务系统的考试安排有变化";
+                    changed++;
+                    notifyChanged();
+                }
+                continue;
+            }
+            Card fromChat = null;
+            String course = ChangeDiff.norm(x.course);
+            for (Card c : cards) {
+                if (!"exam".equals(c.kind) || c.done || PKG_SCHOOL.equals(c.sourcePackage)) continue;
+                String t = ChangeDiff.norm(c.displayTitle()) + " " + ChangeDiff.norm(c.sourceText);
+                boolean near = x.start == 0 || c.deadline == 0 || Math.abs(c.deadline - x.start) <= 12 * 3600_000L;
+                if (t.contains(course) && near) { fromChat = c; break; }
+            }
+            if (fromChat != null) {
+                if (blank(fromChat.place) && place != null) { fromChat.place = place; changed++; notifyChanged(); }
+                continue;
+            }
+            Card c = new Card();
+            c.id = newCardId();
+            c.kind = "exam";
+            c.title = clip(title, 24);
+            c.platformKey = key;
+            c.deadline = x.start > 0 ? x.start : 0;
+            c.deadlineText = humanDeadline(c.deadline);
+            c.needsConfirm = c.deadline == 0 || x.dateOnly;
+            c.place = place;
+            c.sourcePackage = PKG_SCHOOL;
+            c.groupId = PKG_SCHOOL + "|教务系统";
+            c.groupName = "教务系统";
+            c.sender = "教务系统";
+            c.sourceId = key;
+            c.sourceText = x.course.trim() + (place == null ? "" : " · " + place);
+            c.sourceTs = now;
+            c.confidence = 0.95;
+            c.reason = c.deadline == 0 ? "教务系统还没排出考试时间" : x.dateOnly ? "教务系统只给了日期，具体时刻待确认" : "来自教务系统的考试安排";
+            c.context = new ArrayList<>();
+            cards.add(c);
+            changed++;
+            notifyChanged();
+        }
+        return changed;
     }
 
     // ---------- 图片 / 语音 / 文件消息 ----------
