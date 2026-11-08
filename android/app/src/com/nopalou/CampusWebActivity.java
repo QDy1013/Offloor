@@ -26,19 +26,22 @@ import org.json.JSONTokener;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Visible official browser + bounded page extraction. Authentication and binding stay with the user. */
+/** One shared CAS login, first-party service handoffs, and bounded page extraction. */
 public class CampusWebActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService io=java.util.concurrent.Executors.newSingleThreadExecutor();
     private WebView web;
     private TextView title,status,primary;
-    private String script,owner="",lastSnapshot="";
+    private String script,ssoScript,owner="",lastSnapshot="";
     private CampusData saved;
     private CampusServices.Service service;
     private final List<CampusServices.Service> queue=new ArrayList<>();
-    private int index,generation,success,needsLogin,unavailable;
+    private int index,generation,success,unavailable;
     private boolean all,writing,probing,electricBusy,electricRequested;
-    private long due;
+    private long due,authDeadline,bootstrapStarted;
+    private boolean bootstrapping,resumeService,portalRetried,keepPortalRetry,catalogTried,portalActivated,centralExpired,authPaused,challengeActive;
+    private final CampusAuth auth=new CampusAuth();
+    private final java.util.Set<String> handoffs=new java.util.HashSet<>();
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b); Ui.apply(this);
@@ -46,6 +49,9 @@ public class CampusWebActivity extends Activity {
         try (java.io.InputStream in=getAssets().open("nwpu-campus.js"); java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()) {
             byte[] buffer=new byte[4096]; int n; while ((n=in.read(buffer))!=-1) out.write(buffer,0,n); script=out.toString("UTF-8");
         } catch (Exception e) { toast("校园同步组件无法加载"); finish(); return; }
+        try (java.io.InputStream in=getAssets().open("nwpu-sso.js"); java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()) {
+            byte[] buffer=new byte[4096]; int n; while ((n=in.read(buffer))!=-1) out.write(buffer,0,n); ssoScript=out.toString("UTF-8");
+        } catch (Exception e) { toast("统一认证组件无法加载"); finish(); return; }
         build(); all=getIntent().getBooleanExtra("all",false);
         if (all) {
             for (CampusServices.Service s:CampusServices.ALL) if (!s.id.equals("profile")) queue.add(s);
@@ -54,7 +60,10 @@ public class CampusWebActivity extends Activity {
         }
         io.execute(() -> {
             try { saved=CampusStore.load(getApplicationContext()); owner=saved==null?"":saved.owner; } catch (Exception ignored) { }
-            runOnUiThread(() -> { if (!isDestroyed()) loadNext(); });
+            runOnUiThread(() -> { if (!isDestroyed()) {
+                service=queue.get(0);
+                if (all || (!service.id.equals("notices") && !service.id.equals("calendar"))) beginBootstrap(false); else loadNext();
+            } });
         });
     }
     private int dp(float n) { return Ui.dp(this,n); }
@@ -75,14 +84,14 @@ public class CampusWebActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r) { return !navigate(r.getUrl().toString()); }
             @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !navigate(url); }
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon) { probing=false; }
-            @Override public void onPageFinished(WebView v,String url) { if (service!=null) schedule(800); }
+            @Override public void onPageFinished(WebView v,String url) { CookieManager.getInstance().flush(); if (service!=null) schedule(800); }
             @Override public void onReceivedSslError(WebView v,SslErrorHandler h,SslError e) { h.cancel(); failure("network"); }
             @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e) { if (r.isForMainFrame()) failure("network"); }
         });
         LinearLayout actions=new LinearLayout(this); actions.setPadding(dp(12),dp(10),dp(12),dp(12)); root.addView(actions);
-        primary=CourseUi.action(this,"读取此页",true,() -> { if (service!=null && service.id.equals("electric")) bindElectric(); else inspect(true); });
+        primary=CourseUi.action(this,"读取此页",true,this::primaryAction);
         actions.addView(primary,new LinearLayout.LayoutParams(0,dp(48),1));
-        TextView portal=CourseUi.action(this,"翱翔门户",false,() -> { generation++; lastSnapshot=""; probing=false; electricBusy=false; web.loadUrl(CampusServices.PORTAL); due=android.os.SystemClock.elapsedRealtime()+16_000; });
+        TextView portal=CourseUi.action(this,"翱翔门户",false,() -> beginBootstrap(true));
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1); p.leftMargin=dp(8); actions.addView(portal,p);
         TextView next=CourseUi.action(this,"下一项",false,() -> { if (all) { unavailable++; index++; loadNext(); } else choose(); });
         LinearLayout.LayoutParams n=new LinearLayout.LayoutParams(dp(80),dp(48)); n.leftMargin=dp(8); actions.addView(next,n);
@@ -92,7 +101,7 @@ public class CampusWebActivity extends Activity {
         toast("此链接需要在校方指定的浏览器或应用中打开"); return false;
     }
     private void choose() {
-        all=false; handler.removeCallbacksAndMessages(null); generation++; probing=false; electricBusy=false;
+        all=false; bootstrapping=false; handler.removeCallbacksAndMessages(null); generation++; probing=false; electricBusy=false;
         String[] labels=new String[CampusServices.ALL.length]; for (int i=0;i<labels.length;i++) labels[i]=CampusServices.ALL[i].title;
         new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择校园服务").setItems(labels,(d,i) -> {
             queue.clear(); queue.add(CampusServices.ALL[i]); index=0; loadNext();
@@ -101,13 +110,16 @@ public class CampusWebActivity extends Activity {
     private void loadNext() {
         if (isFinishing() || isDestroyed()) return;
         generation++; probing=false; electricBusy=false; electricRequested=false; lastSnapshot=""; handler.removeCallbacksAndMessages(null);
+        bootstrapping=false; centralExpired=false; challengeActive=false; portalActivated=false; catalogTried=false;
+        if (!keepPortalRetry) portalRetried=false; keepPortalRetry=false;
+        auth.reset(); handoffs.clear(); authDeadline=android.os.SystemClock.elapsedRealtime()+45_000;
         if (index>=queue.size()) {
-            status.setText("同步结束："+success+" 项读到数据，"+needsLogin+" 项需登录，"+unavailable+" 项需打开对应页面或检查网络。原有数据已保留。");
+            status.setText("同步结束："+success+" 项读到数据，"+unavailable+" 项需检查入口、页面或网络。原有数据已保留。");
             new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("校园同步已结束").setMessage(status.getText()).setPositiveButton("查看校园信息",(d,w) -> finish()).setNegativeButton("留在校方页面",(d,w) -> { all=false; }).show(); return;
         }
         service=queue.get(index); title.setText(service.title+(all?" · "+(index+1)+"/"+queue.size():""));
         primary.setText(service.id.equals("electric")?"选择宿舍":"读取此页");
-        status.setText(all?"正在尝试复用登录状态，未读到数据的项目可稍后单独打开。":"请在校方页面登录并打开“"+service.title+"”。读到内容后会自动保存。");
+        status.setText(all?"正在通过统一认证进入各校园服务，无需重复输入账号密码。":"正在使用翱翔门户登录状态打开“"+service.title+"”，读到内容后会自动保存。");
         due=android.os.SystemClock.elapsedRealtime()+16_000;
         String initial=!all && index==0?getIntent().getStringExtra("url"):null;
         String entry=initial!=null && CampusServices.readUrl(initial)?initial:saved==null?service.entry:saved.route(service);
@@ -117,14 +129,28 @@ public class CampusWebActivity extends Activity {
     private final Runnable tick=() -> inspect(false);
     private JSONObject result(String value) throws Exception { Object raw=new JSONTokener(value).nextValue(); return raw instanceof String?new JSONObject((String)raw):new JSONObject(); }
     private void inspect(boolean manual) {
-        if (web==null || service==null || writing || probing || electricBusy || isFinishing() || isDestroyed()) return;
+        if (web==null || service==null || writing || probing || electricBusy || authPaused || isFinishing() || isDestroyed()) return;
         String url=web.getUrl(); if (url==null || !CampusServices.allowed(url)) { schedule(1200); return; }
+        final int active=generation; probing=true;
+        web.evaluateJavascript(script+"\n"+ssoScript+"\nJSON.stringify(NwpuSso.inspect())",value -> {
+            if (active!=generation || isDestroyed()) return; probing=false;
+            if (!url.equals(web.getUrl())) { schedule(600); return; }
+            JSONObject r; try { r=result(value); } catch (Exception e) { timeout(); return; }
+            if (!authenticationReady(r,active)) return;
+            if (bootstrapping) { scanPortal(r,active); return; }
+            if ("ecampus.nwpu.edu.cn".equals(Uri.parse(url).getHost()) && !service.id.equals("notices") && !service.id.equals("calendar")) {
+                openPortalService(r,active); return;
+            }
+            readPage(manual,active,url);
+        });
+    }
+    private void readPage(boolean manual,int active,String url) {
         if (service.id.equals("electric") && Uri.parse(url).getHost().equals("yktapp.nwpu.edu.cn") && !electricRequested) {
             electricRequested=true; String stored=getSharedPreferences("campus-binding",MODE_PRIVATE).getString("room","");
             if (!stored.isEmpty()) { try { queryElectric(3,new JSONObject(stored),false); return; } catch (Exception ignored) { } }
             if (all) { failure("binding"); return; }
         }
-        final int active=generation; final String id=service.id; probing=true;
+        final String id=service.id; probing=true;
         web.evaluateJavascript(script+"\nJSON.stringify(NwpuCampus.capture("+JSONObject.quote(id)+"))",value -> {
             if (active!=generation || isDestroyed()) return; probing=false;
             if (!url.equals(web.getUrl())) { schedule(800); return; }
@@ -142,12 +168,115 @@ public class CampusWebActivity extends Activity {
                 if (!snapshot.equals(lastSnapshot)) { lastSnapshot=snapshot; persist(fresh.toString(),active,true); }
                 else if (manual) toast("此页内容已保存");
                 if (!all) schedule(1600);
-            } else if (all && "login".equals(state)) failure("login");
+            } else if ("login".equals(state)) {
+                // A service login page is not evidence of another account/password. Retry its
+                // portal SSO entry before classifying the adapter as incomplete.
+                if (!portalRetried) { portalRetried=true; beginBootstrap(true); } else failure("unavailable");
+            }
             else { if (manual) status.setText(CampusServices.status(state)+"。请在校方页面打开具体信息，加载后再读取。"); timeout(); }
         });
     }
     private void timeout() {
+        if (bootstrapping) { if (android.os.SystemClock.elapsedRealtime()-bootstrapStarted>30_000) finishBootstrap(new JSONObject(),generation); else schedule(1000); return; }
         if (all && android.os.SystemClock.elapsedRealtime()>due) failure("unavailable"); else schedule(1200);
+    }
+    private void primaryAction() {
+        if (centralExpired) {
+            authPaused=true; handler.removeCallbacksAndMessages(null);
+            startActivityForResult(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"),42);
+        } else if (bootstrapping || challengeActive) inspect(true);
+        else if (service!=null && service.id.equals("electric")) bindElectric(); else inspect(true);
+    }
+    private void beginBootstrap(boolean resume) {
+        generation++; handler.removeCallbacksAndMessages(null); probing=false; electricBusy=false; centralExpired=false; challengeActive=false;
+        bootstrapping=true; resumeService=resume; catalogTried=false; auth.reset(); handoffs.clear();
+        bootstrapStarted=android.os.SystemClock.elapsedRealtime(); authDeadline=bootstrapStarted+45_000;
+        title.setText("统一认证"); primary.setText("读取此页"); status.setText("正在复用翱翔门户会话，加载本人可用的校园服务入口…");
+        web.loadUrl(CampusServices.PORTAL_SSO); schedule(700);
+    }
+    private boolean authenticationReady(JSONObject r,int active) {
+        long now=android.os.SystemClock.elapsedRealtime(); String phase=r.optString("phase");
+        CampusAuth.Decision decision=auth.observe(phase,now);
+        if (decision==CampusAuth.Decision.CHALLENGE) {
+            challengeActive=true; authDeadline=now+300_000;
+            status.setText("请完成校方统一认证的安全验证，通过后会自动继续同步。"); schedule(700); return false;
+        }
+        if (decision==CampusAuth.Decision.CENTRAL_EXPIRED) {
+            if (!centralExpired) { centralExpired=true; primary.setText("重新统一登录"); }
+            status.setText("翱翔门户统一登录已过期，请重新登录一次，之后继续同步所有服务。"); schedule(1000); return false;
+        }
+        if (decision==CampusAuth.Decision.WAIT) {
+            status.setText("正在等待统一认证完成跳转…");
+            if (now>authDeadline) { if (bootstrapping) finishBootstrap(new JSONObject(),active); else failure("unavailable"); }
+            else schedule(600); return false;
+        }
+        if (decision==CampusAuth.Decision.HANDOFF) {
+            String target=r.optString("url"), key=phase+":"+web.getUrl();
+            if (handoffs.add(key) && handoffs.size()<=4) {
+                status.setText("正在通过学校提供的统一登录入口建立服务会话…");
+                if ("sso_link".equals(phase) && CampusServices.readUrl(target)) web.loadUrl(target);
+                else web.evaluateJavascript("NwpuSso.click('sso',"+JSONObject.quote("handoff-"+active)+")",ignored -> {});
+                schedule(800);
+            } else if (now>authDeadline) { if (bootstrapping) finishBootstrap(new JSONObject(),active); else failure("unavailable"); }
+            else schedule(800);
+            return false;
+        }
+        if (decision==CampusAuth.Decision.SERVICE_ENTRY) {
+            if (!portalRetried) { portalRetried=true; beginBootstrap(true); }
+            else { status.setText("这个服务的统一认证入口尚未适配，请从翱翔门户打开对应服务。"); if (all) failure("unavailable"); else schedule(1500); }
+            return false;
+        }
+        if (decision!=CampusAuth.Decision.READY) { timeout(); return false; }
+        if (centralExpired || challengeActive) {
+            centralExpired=false; challengeActive=false; due=now+16_000; authDeadline=now+45_000;
+            primary.setText(service.id.equals("electric")?"选择宿舍":"读取此页");
+        }
+        return true;
+    }
+    private void scanPortal(JSONObject r,int active) {
+        String url=web.getUrl();
+        if (url==null || !"ecampus.nwpu.edu.cn".equals(Uri.parse(url).getHost())) { timeout(); return; }
+        if (!catalogTried) {
+            catalogTried=true; web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("catalog-"+active)+")",ignored -> schedule(900)); return;
+        }
+        if (android.os.SystemClock.elapsedRealtime()-bootstrapStarted<6000) { schedule(800); return; }
+        JSONObject routes=r.optJSONObject("routes"); finishBootstrap(routes==null?new JSONObject():routes,active);
+    }
+    private void finishBootstrap(JSONObject routes,int active) {
+        if (!bootstrapping || active!=generation || isDestroyed()) return;
+        writing=true;
+        io.execute(() -> {
+            CampusData next=null;
+            try {
+                JSONObject fresh=new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes);
+                next=CampusStore.update(getApplicationContext(),fresh.toString(),owner);
+            } catch (Exception ignored) { }
+            CampusData result=next; runOnUiThread(() -> {
+                writing=false; if (active!=generation || isDestroyed()) return; if (result!=null) saved=result;
+                bootstrapping=false; keepPortalRetry=resumeService; loadNext();
+            });
+        });
+    }
+    private void openPortalService(JSONObject r,int active) {
+        JSONObject routes=r.optJSONObject("routes"); String target=routes==null?"":routes.optString(service.id);
+        if (CampusServices.readUrl(target) && !target.equals(web.getUrl())) {
+            try { saveRoutes(new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject()).put("routes",routes).toString(),active); } catch (Exception ignored) { }
+            web.loadUrl(target); schedule(700); return;
+        }
+        if (!portalActivated) {
+            portalActivated=true; web.evaluateJavascript("NwpuSso.click("+JSONObject.quote(service.id)+","+JSONObject.quote("service-"+active)+")",ignored -> schedule(1000)); return;
+        }
+        if (!catalogTried) { catalogTried=true; web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("service-catalog-"+active)+")",ignored -> { portalActivated=false; schedule(1000); }); return; }
+        timeout();
+    }
+    @Override protected void onActivityResult(int request,int result,Intent value) {
+        super.onActivityResult(request,result,value);
+        if (request!=42) return; authPaused=false;
+        if (result!=RESULT_OK) { schedule(1000); return; }
+        io.execute(() -> {
+            try { saved=CampusStore.load(getApplicationContext()); owner=saved==null?"":saved.owner; } catch (Exception ignored) { }
+            runOnUiThread(() -> { if (!isDestroyed()) { index=0; success=0; unavailable=0; beginBootstrap(false); } });
+        });
     }
     private void saveRoutes(String fresh,int active) {
         io.execute(() -> { try { CampusData d=CampusStore.update(getApplicationContext(),fresh,owner); runOnUiThread(() -> { if (active==generation) saved=d; }); } catch (Exception ignored) { } });
@@ -176,7 +305,7 @@ public class CampusWebActivity extends Activity {
                 CampusData result=d; runOnUiThread(() -> {
                     writing=false; if (active!=generation || isDestroyed()) return; if (result!=null) saved=result;
                     status.setText(CampusServices.status(state)+"。上次成功读取的数据已保留。");
-                    if (all) { if (state.equals("login")) needsLogin++; else unavailable++; index++; loadNext(); }
+                    if (all) { unavailable++; index++; loadNext(); }
                 });
             });
         } catch (Exception ignored) { writing=false; }

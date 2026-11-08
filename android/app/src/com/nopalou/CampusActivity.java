@@ -64,7 +64,7 @@ public class CampusActivity extends Activity {
         int saved=0; for (CampusServices.Service s:CampusServices.ALL) if (data!=null && CampusData.count(data.module(s.id))>0) saved++;
         hero.addView(text("西北工业大学",12,Ui.ACCENT,true)); CourseUi.gap(hero,10);
         hero.addView(text(saved==0?"把校园信息，放到一起":saved+" 项校园服务已有本机数据",22,Ui.TEXT,true));
-        CourseUi.gap(hero,10); TextView sub=text("同步教务信息，并尝试读取其他校园服务。需要额外登录、选择宿舍或连接校园网的项目会单独提示。",12,Ui.SUB,false); sub.setLineSpacing(dp(4),1); hero.addView(sub);
+        CourseUi.gap(hero,10); TextView sub=text("一次翱翔门户登录，自动完成各校园服务的统一认证并同步信息。宿舍选择、校方安全验证或校园网要求会单独提示。",12,Ui.SUB,false); sub.setLineSpacing(dp(4),1); hero.addView(sub);
         CourseUi.gap(hero,18); hero.addView(CourseUi.action(this,"全部同步",true,this::syncAll),CourseUi.row(dp(48)));
         section("我的学业"); for (CampusServices.Service s:CampusServices.ALL) if (s.academic) moduleCard(s);
         section("校园生活"); for (CampusServices.Service s:CampusServices.ALL) if (!s.academic && !s.id.equals("notices") && !s.id.equals("calendar")) moduleCard(s);
@@ -94,7 +94,7 @@ public class CampusActivity extends Activity {
         intro.addView(text(m==null?"尚未同步":CampusServices.status(m.optString("state"))+" · "+time(m.optLong("updated")),12,Ui.SUB,false));
         if (count>0 && !"ok".equals(m.optString("state"))) { CourseUi.gap(intro,8); intro.addView(text("以下为上次成功读取的数据，本次没有覆盖。",12,Ui.SUB,false)); }
         CourseUi.gap(intro,16); intro.addView(CourseUi.action(this,s.id.equals("electric")?"查询 / 选择宿舍":"打开校方页面并同步",true,() -> open(s)),CourseUi.row(dp(48)));
-        if (count==0) { note("在校方页面登录并打开对应的信息页。应用会读取页面中已加载的字段和表格；尚未适配的页面会如实提示。需要校内网络的服务，请先连接校园网。"); return; }
+        if (count==0) { note("应用会复用翱翔门户登录状态进入此服务，并读取已加载的字段和表格。若入口或页面尚未适配，会如实提示；需要校内网络的服务，请先连接校园网。"); return; }
         JSONArray fields=m.optJSONArray("fields");
         if (fields!=null && fields.length()>0) {
             LinearLayout c=card();
