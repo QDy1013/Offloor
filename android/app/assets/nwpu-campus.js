@@ -17,6 +17,7 @@
         classroom: /^(空闲教室查询|空闲教室|自习教室查询)$/,
         sports: /^(体育场馆个人预约|体育场馆预约|场馆预约)$/,
         affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/,
+        housing: /^(智慧公寓|住宿信息|学生公寓|我的宿舍)$/,
         bus: /^(校车查询|校车服务|校车时刻|校车时刻表)$/,
         calendar: /^(校历|学年校历|西北工业大学校历、校车时刻表)$/
     };
@@ -87,8 +88,10 @@
             seen.add(label + '\0' + value); if (out.fields.length < 80) out.fields.push({label, value});
         };
         for (const dt of doc.querySelectorAll('dt')) if (dt.nextElementSibling && dt.nextElementSibling.tagName === 'DD' && visible(dt, live)) add(nodeText(dt, live), nodeText(dt.nextElementSibling, live));
-        for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label')) {
+        for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label, .layui-form-label, .el-statistic__head, .ant-statistic-title, label[for]')) {
             if (!visible(label, live)) continue;
+            const bound = label.getAttribute('for') && doc.getElementById(label.getAttribute('for'));
+            if (bound && !/^(password|hidden)$/i.test(bound.type) && visible(bound, live)) { add(nodeText(label, live), bound.tagName === 'SELECT' ? bound.options[bound.selectedIndex] && bound.options[bound.selectedIndex].text : bound.value); continue; }
             const value = label.nextElementSibling;
             if (value && !value.querySelector('input[type="password"]')) {
                 const input = value.querySelector('input:not([type="hidden"]):not([type="password"]), textarea');
@@ -107,7 +110,9 @@
             if (kv) { rows.forEach(r => add(r[0], r[1])); continue; }
             const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
             const hasHeader = !!(headerRow && headerRow.querySelector('th'));
-            let columns = hasHeader ? rows.shift() : rows[0].map((_, i) => '第' + (i + 1) + '列');
+            const component = table.closest('.el-table,.ant-table');
+            const sharedHeaders = component && component.querySelector('.el-table__header thead tr,.ant-table-thead tr');
+            let columns = hasHeader ? rows.shift() : sharedHeaders ? Array.from(sharedHeaders.querySelectorAll('th')).map(e => cut(nodeText(e, live), 600)) : rows[0].map((_, i) => '第' + (i + 1) + '列');
             // Never expose hidden credential fields or private family/identity columns.
             const keep = columns.map((c, i) => sensitive.test(c) ? -1 : i).filter(i => i >= 0).slice(0, 12);
             if (!keep.length) continue;
@@ -133,6 +138,7 @@
         const count = out.fields.length + out.tables.reduce((n, t) => n + t.rows.length, 0) + out.links.length;
         if (kind === 'electric' && !out.fields.some(f => /电量|电费/.test(f.label)) && !out.tables.some(t => t.columns.some(c => /电量|电费/.test(c)))) return empty('binding', url);
         if (count) out.state = 'ok';
+        else if (live && Array.from(doc.querySelectorAll('.el-table__empty-text,.ant-empty-description,.dataTables_empty,.no-data,.empty-data')).some(e => visible(e, true) && /暂无(?:数据|记录)|无(?:数据|记录)|没有(?:数据|记录)/.test(nodeText(e, true)))) out.state = 'empty';
         return out;
     }
     function profile(json, student) {

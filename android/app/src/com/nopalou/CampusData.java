@@ -39,7 +39,7 @@ final class CampusData {
     }
     static void validateModule(JSONObject m) throws JSONException {
         String state = string(m, "state", 30);
-        if (!java.util.Arrays.asList("ok", "login", "binding", "network", "unavailable", "unsupported").contains(state)) throw new JSONException("同步状态无效");
+        if (!java.util.Arrays.asList("ok", "empty", "login", "binding", "network", "unavailable", "unsupported").contains(state)) throw new JSONException("同步状态无效");
         String src = string(m, "source", 2000); if (!src.isEmpty() && !CampusServices.readUrl(src)) throw new JSONException("数据来源无效");
         JSONArray fields = array(m, "fields", 80), tables = array(m, "tables", 12), links = array(m, "links", 40);
         for (int i=0; i<fields.length(); i++) {
@@ -48,7 +48,7 @@ final class CampusData {
         }
         for (int i=0; i<tables.length(); i++) {
             JSONObject t = tables.getJSONObject(i); string(t, "title", 100);
-            JSONArray cols = array(t, "columns", 12), rows = array(t, "rows", 200);
+            JSONArray cols = array(t, "columns", 12), rows = array(t, "rows", 2000);
             if (cols.length() == 0) throw new JSONException("表格缺少列");
             for (int c=0; c<cols.length(); c++) if (!(cols.get(c) instanceof String) || cols.getString(c).length() > 600) throw new JSONException("表头无效");
             for (int r=0; r<rows.length(); r++) {
@@ -89,7 +89,7 @@ final class CampusData {
         for (Iterator<String> it = incoming == null ? java.util.Collections.emptyIterator() : incoming.keys(); it.hasNext();) {
             String id = it.next(); if (CampusServices.byId(id) == null) throw new JSONException("未知校园模块");
             JSONObject m = new JSONObject(incoming.getJSONObject(id).toString()); validateModule(m);
-            if ("ok".equals(m.getString("state"))) { m.put("updated", now); modules.put(id, m); }
+            if ("ok".equals(m.getString("state")) || "empty".equals(m.getString("state"))) { m.put("updated", now); modules.put(id, m); }
             else {
                 JSONObject old = modules.optJSONObject(id);
                 if (old != null && count(old) > 0) { old.put("state", m.getString("state")); old.put("attempted", now); }

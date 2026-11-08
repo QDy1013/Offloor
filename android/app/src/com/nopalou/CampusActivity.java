@@ -26,11 +26,11 @@ public class CampusActivity extends Activity {
     private LinearLayout list;
     @Override public void onCreate(Bundle b) { super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module"); render(); }
     @Override public void onResume() {
-        super.onResume(); io.execute(() -> {
+        super.onResume(); CampusAutoRefresh.maybeRefresh(this); io.execute(() -> {
             CampusData d=null; boolean broken=false;
             try { d=CampusStore.load(getApplicationContext()); } catch (Exception e) { broken=true; }
             CampusData result=d; boolean bad=broken;
-            runOnUiThread(() -> { if (isDestroyed()) return; data=result; loaded=true; render(); if (bad) toast("校园存档无法读取，请重新同步"); });
+            runOnUiThread(() -> { if (isDestroyed()) return; data=result; loaded=true; render(); if (bad) toast("校园存档无法读取"); });
         });
     }
     private int dp(float n) { return Ui.dp(this,n); }
@@ -43,7 +43,6 @@ public class CampusActivity extends Activity {
         LinearLayout head=new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL); head.setPadding(dp(16),dp(12),dp(8),dp(10)); root.addView(head);
         if (service!=null) head.addView(CourseUi.icon(this,"prev","返回校园",this::finish));
         head.addView(text(service==null?"我的校园":service.title,26,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
-        head.addView(CourseUi.icon(this,"sync",service==null?"全部同步":"同步此项",() -> { if (service==null) syncAll(); else open(service); }));
         if (service==null) head.addView(CourseUi.icon(this,"more","校园设置",this::settings));
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
         list=CourseUi.column(this); list.setPadding(dp(16),dp(4),dp(16),dp(28)); scroll.addView(list); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -64,8 +63,10 @@ public class CampusActivity extends Activity {
         int saved=0; for (CampusServices.Service s:CampusServices.ALL) if (data!=null && CampusData.count(data.module(s.id))>0) saved++;
         hero.addView(text("西北工业大学",12,Ui.ACCENT,true)); CourseUi.gap(hero,10);
         hero.addView(text(saved==0?"把校园信息，放到一起":saved+" 项校园服务已有本机数据",22,Ui.TEXT,true));
-        CourseUi.gap(hero,10); TextView sub=text("一次翱翔门户登录，自动完成各校园服务的统一认证并同步信息。宿舍选择、校方安全验证或校园网要求会单独提示。",12,Ui.SUB,false); sub.setLineSpacing(dp(4),1); hero.addView(sub);
-        CourseUi.gap(hero,18); hero.addView(CourseUi.action(this,"全部同步",true,this::syncAll),CourseUi.row(dp(48)));
+        CourseUi.gap(hero,10); TextView sub=text("登录后自动读取各项校园信息，打开应用时会按需自动刷新，无需手动同步。校方安全验证会单独提示。",12,Ui.SUB,false); sub.setLineSpacing(dp(4),1); hero.addView(sub);
+        CourseUi.gap(hero,18);
+        if (data==null || data.owner.isEmpty()) hero.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48)));
+        else hero.addView(text("自动读取已开启 · 所有数据保存在本机",12,Ui.ACCENT,true));
         section("我的学业"); for (CampusServices.Service s:CampusServices.ALL) if (s.academic) moduleCard(s);
         section("校园生活"); for (CampusServices.Service s:CampusServices.ALL) if (!s.academic && !s.id.equals("notices") && !s.id.equals("calendar")) moduleCard(s);
         section("公共信息"); for (CampusServices.Service s:CampusServices.ALL) if (s.id.equals("notices") || s.id.equals("calendar")) moduleCard(s);
@@ -92,9 +93,12 @@ public class CampusActivity extends Activity {
         JSONObject m=data==null?null:data.module(s.id); int count=CampusData.count(m);
         LinearLayout intro=card(); intro.addView(text(s.detail,15,Ui.TEXT,true)); CourseUi.gap(intro,10);
         intro.addView(text(m==null?"尚未同步":CampusServices.status(m.optString("state"))+" · "+time(m.optLong("updated")),12,Ui.SUB,false));
+        if (m!=null && m.optBoolean("partial")) { CourseUi.gap(intro,8); intro.addView(text("部分信息已读取，剩余内容会自动重试。",12,Ui.SUB,false)); }
         if (count>0 && !"ok".equals(m.optString("state"))) { CourseUi.gap(intro,8); intro.addView(text("以下为上次成功读取的数据，本次没有覆盖。",12,Ui.SUB,false)); }
-        CourseUi.gap(intro,16); intro.addView(CourseUi.action(this,s.id.equals("electric")?"查询 / 选择宿舍":"打开校方页面并同步",true,() -> open(s)),CourseUi.row(dp(48)));
-        if (count==0) { note("应用会复用翱翔门户登录状态进入此服务，并读取已加载的字段和表格。若入口或页面尚未适配，会如实提示；需要校内网络的服务，请先连接校园网。"); return; }
+        if (s.id.equals("electric") && m!=null && "binding".equals(m.optString("state"))) {
+            CourseUi.gap(intro,16); intro.addView(CourseUi.action(this,"补充本人宿舍信息",false,() -> startActivity(new Intent(this,CampusWebActivity.class).putExtra("module","electric").putExtra("bind",true))),CourseUi.row(dp(48)));
+        }
+        if (count==0) { note("登录后会自动进入此服务并读取信息，未读到的项目会自动重试。需要校内网络的服务请连接校园网；若校方未提供本人数据，会显示具体状态。"); return; }
         JSONArray fields=m.optJSONArray("fields");
         if (fields!=null && fields.length()>0) {
             LinearLayout c=card();
@@ -129,17 +133,11 @@ public class CampusActivity extends Activity {
         }; append.run();
         if (rows.length()>30) { TextView more=CourseUi.action(this,"显示更多记录",false,() -> {}); CourseUi.gap(c,12); c.addView(more);
             more.setOnClickListener(v -> { append.run(); if (shown[0]>=rows.length()) more.setVisibility(View.GONE); }); }
-        CourseUi.gap(c,10); c.addView(text(rows.length()+" 条记录"+(t.optBoolean("truncated")?" · 页面超过200条，仅保留前200条":""),11,Ui.MUTE,false));
+        CourseUi.gap(c,10); c.addView(text(rows.length()+" 条记录"+(t.optBoolean("truncated")?" · 部分记录受读取上限限制":""),11,Ui.MUTE,false));
     }
     private void cell(LinearLayout row,String value,boolean header) {
         TextView t=text(value,13,header?Ui.SUB:Ui.TEXT,header); t.setPadding(dp(12),dp(12),dp(12),dp(12)); t.setMinHeight(dp(44)); t.setTextIsSelectable(!header);
         row.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
-    }
-    private void open(CampusServices.Service s) { startActivity(new Intent(this,CampusWebActivity.class).putExtra("module",s.id)); }
-    private void syncAll() { startActivityForResult(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu").putExtra("reuse_session",true),41); }
-    @Override protected void onActivityResult(int request,int result,Intent value) {
-        super.onActivityResult(request,result,value);
-        if (request==41 && result==RESULT_OK) startActivity(new Intent(this,CampusWebActivity.class).putExtra("all",true));
     }
     private void settings() {
         new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
@@ -151,5 +149,6 @@ public class CampusActivity extends Activity {
         }).show();
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
+    @Override public void onPause() { CampusAutoRefresh.pause(this); super.onPause(); }
     @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
 }

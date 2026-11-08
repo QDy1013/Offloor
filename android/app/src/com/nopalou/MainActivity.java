@@ -190,6 +190,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     @Override
     protected void onResume() {
         super.onResume();
+        CampusAutoRefresh.maybeRefresh(this);
         if (engine == null) return;
         resumed = true;
         // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。
@@ -236,6 +237,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     @Override
     protected void onPause() {
+        CampusAutoRefresh.pause(this);
         resumed = false;
         uiHandler.removeCallbacks(queuedRender);
         uiHandler.removeCallbacks(searchRefresh);

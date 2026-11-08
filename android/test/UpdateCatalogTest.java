@@ -47,7 +47,8 @@ public class UpdateCatalogTest {
         if (args.length>0) {
             String raw=java.nio.file.Files.readString(java.nio.file.Paths.get(args[0]));
             JSONObject p=new JSONObject(raw).getJSONObject("packages");
-            for (java.util.Iterator<String> it=p.keys();it.hasNext();) { String pkg=it.next(); UpdateCatalog published=new UpdateCatalog(raw,pkg,1); check("real publication metadata accepted for "+pkg,published.versionCode==22); }
+            long expected=args.length>1?Long.parseLong(args[1]):22;
+            for (java.util.Iterator<String> it=p.keys();it.hasNext();) { String pkg=it.next(); UpdateCatalog published=new UpdateCatalog(raw,pkg,1); check("real publication metadata accepted for "+pkg,published.versionCode==expected); }
         }
         System.out.println(n+" checks passed");
     }

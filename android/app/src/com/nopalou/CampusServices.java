@@ -23,14 +23,15 @@ final class CampusServices {
         new Service("completion", "学业进度", "已修学分与未完成课程", HOME, true),
         new Service("selection", "选课结果", "已选课程与选课状态", HOME, true),
         new Service("evaluation", "课程评教", "本人可见的评教任务", HOME, true),
+        new Service("housing", "我的宿舍", "本人住宿信息与宿舍绑定", "https://xgpt.nwpu.edu.cn/", false),
+        new Service("affairs", "综测与奖助", "本人综测与申请进度", "https://xgpt.nwpu.edu.cn/", false),
         new Service("card", "一卡通", "余额与消费账单", "https://yktapp.nwpu.edu.cn/", false),
-        new Service("electric", "宿舍电量", "选择自己的宿舍，查询剩余电量", "https://yktapp.nwpu.edu.cn/", false),
+        new Service("electric", "宿舍电量", "自动匹配本人宿舍并查询剩余电量", "https://yktapp.nwpu.edu.cn/", false),
         new Service("network", "校园网", "余额、流量与套餐", "https://zizhu.nwpu.edu.cn/", false),
         new Service("library", "我的借阅", "借阅书目与应还日期", "https://tushuguan.nwpu.edu.cn/", false),
         new Service("seats", "座位预约", "个人预约与签到状态 · 需要校园网", "https://ic.nwpu.edu.cn/", false),
         new Service("classroom", "空闲教室", "按日期和节次查询自习教室", "https://idle-classroom.nwpu.edu.cn/ui/", false),
         new Service("sports", "体育场馆", "场地信息与本人预约", PORTAL, false),
-        new Service("affairs", "综测与奖助", "本人综测与申请进度", "https://xgpt.nwpu.edu.cn/", false),
         new Service("notices", "校园公告", "学校最新通知与公告", NOTICES, false),
         new Service("calendar", "校历与校车", "校历、放假与校车时刻", NOTICES, false)
     };
@@ -56,12 +57,13 @@ final class CampusServices {
     static String status(String state) {
         switch (state) {
             case "ok": return "已同步";
+            case "empty": return "暂无记录";
             case "login": return "统一认证未完成";
             case "binding": return "需要选择宿舍";
             case "network": return "连接失败";
-            case "unavailable": return "请打开校方页面同步";
+            case "unavailable": return "暂未读到，将自动重试";
             case "unsupported": return "页面暂不支持";
-            default: return "待同步";
+            default: return "等待自动读取";
         }
     }
 }

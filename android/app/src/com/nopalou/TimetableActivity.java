@@ -51,6 +51,7 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onResume() {
         super.onResume();
+        CampusAutoRefresh.maybeRefresh(this);
         io.execute(() -> {
             try {
                 Timetable loaded = TimetableStore.load(getApplicationContext());
@@ -65,6 +66,7 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onSaveInstanceState(Bundle b) { b.putInt("week", week); b.putInt("scrollY", timetableScroll == null ? savedScrollY : timetableScroll.getScrollY()); super.onSaveInstanceState(b); }
     @Override public void onPause() {
+        CampusAutoRefresh.pause(this);
         if (timetableScroll != null) savedScrollY = timetableScroll.getScrollY();
         AppNavigation.rememberTimetable(week, savedScrollY);
         super.onPause();

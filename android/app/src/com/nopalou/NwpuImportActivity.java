@@ -53,6 +53,7 @@ public class NwpuImportActivity extends Activity {
     private long trialLoadingAt;
     private String pendingAccount = "", pendingPassword = "", readToken;
     private boolean busy, submitted, reading, saving, reuseSession, courseOpened;
+    private boolean automaticFallback;
     private long deadline, courseDeadline, readDeadline;
     private int generation;
     private long loginReadyDeadline;
@@ -67,6 +68,7 @@ public class NwpuImportActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         school = TimetableSchool.byId(getIntent().getStringExtra("school_id") == null ? getPreferences(MODE_PRIVATE).getString("school", "nwpu") : getIntent().getStringExtra("school_id"));
+        automaticFallback=getIntent().getBooleanExtra("automatic_refresh",false);
         try { importScript = asset("nwpu-import.js"); loginScript = asset("nwpu-login.js"); trialScript = asset("school-import.js"); }
         catch (Exception e) { Toast.makeText(this, "导入组件无法加载", Toast.LENGTH_LONG).show(); finish(); return; }
         // Optional: without it the timetable import still works, only exams/grades are skipped.
@@ -96,7 +98,7 @@ public class NwpuImportActivity extends Activity {
         TextView back = text("‹", 29, Ui.TEXT, false); back.setGravity(Gravity.CENTER);
         back.setContentDescription("返回"); back.setOnClickListener(v -> { if (!saving) finish(); });
         bar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        bar.addView(text("导入课表", 19, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
+        bar.addView(text("校园账号登录", 19, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
         boolean testBuild = getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest");
         TextView secure = Ui.tag(this, testBuild ? "测试版" : "校方认证", Ui.ACCENT, Ui.ACCENT_BG); bar.addView(secure);
         TextView update=text("更新",12,Ui.SUB,true); update.setGravity(Gravity.CENTER); update.setContentDescription("下载最新版");
@@ -141,7 +143,7 @@ public class NwpuImportActivity extends Activity {
         form = scroll; content.addView(form, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout progress = CourseUi.column(this); progress.setGravity(Gravity.CENTER); progress.setBackgroundColor(Ui.BG);
         ProgressBar spinner = new ProgressBar(this); progress.addView(spinner, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        CourseUi.gap(progress, 22); progress.addView(text("登录 · 读取课表 · 自动保存", 13, Ui.SUB, false));
+        CourseUi.gap(progress, 22); progress.addView(text("登录 · 自动读取 · 保存到本机", 13, Ui.SUB, false));
         waiting = progress; content.addView(waiting, new FrameLayout.LayoutParams(-1, -1)); waiting.setVisibility(View.GONE);
         setContentView(root); Ui.systemBars(this, root);
     }
@@ -156,7 +158,9 @@ public class NwpuImportActivity extends Activity {
     }
     private void updateSchool() {
         schoolChoice.setText(school.name); accountCaption.setText(school.accountLabel); passwordCaption.setText(school.passwordLabel);
-        status.setText("登录一次，课表就位"); hint.setText(school.trial ? "这所学校正在测试，遇到问题可直接反馈" : "自动获取本学期课程，保存后随时查看");
+        status.setText(school.trial?"登录一次，课表就位":"登录一次，校园信息自动读取");
+        hint.setText(school.trial ? "这所学校正在测试，遇到问题可直接反馈" : "课表、成绩及各项校园信息自动读取，无需手动同步");
+        submit.setText(school.trial?"一键导入":"登录并自动读取");
     }
     private boolean schoolNavigationAllowed(Uri u) {
         return "https".equals(u.getScheme()) && (u.getPort() == -1 || u.getPort() == 443) && u.getUserInfo() == null && TimetableSchool.hostAllowed(u.getHost(), school.domains);
@@ -202,6 +206,7 @@ public class NwpuImportActivity extends Activity {
         if (busy || saving) return;
         if (account.getText().toString().trim().isEmpty()) { account.setError("请输入账号"); return; }
         if (password.length() == 0) { password.setError("请输入密码"); return; }
+        automaticFallback=false;
         pendingAccount = account.getText().toString().trim(); pendingPassword = password.getText().toString();
         ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(), 0);
         reset(false); int active = generation;
@@ -258,7 +263,7 @@ public class NwpuImportActivity extends Activity {
                     if ("error".equals(phase)) { fail(r.optString("message", "学校未通过登录验证")); return; }
                     if ("challenge".equals(phase)) { showChallenge(); schedule(600); return; }
                     if ("ready".equals(phase)) {
-                        if (reuseSession && pendingPassword.isEmpty()) { fail("登录已过期，请输入账号密码重新导入"); return; }
+                        if (reuseSession && pendingPassword.isEmpty()) { automaticFallback=false; fail("校方登录状态已过期，登录后会自动继续读取"); return; }
                         if (!submitted && !pendingPassword.isEmpty()) { submitCredentials(active); return; }
                         if (submitted) { fail("学校未完成登录验证，请核对账号密码后重试"); return; }
                     } else if ("submitted".equals(phase)) {
@@ -405,7 +410,7 @@ public class NwpuImportActivity extends Activity {
             JSONObject c = both.optJSONObject("c");
             if (!campusDone && c != null && token.equals(c.optString("token"))) {
                 String st = c.optString("status");
-                if (("ok".equals(st) || "partial".equals(st)) && c.optJSONObject("data") != null) pendingCampus = c.optJSONObject("data").toString();
+                if (("ok".equals(st) || "partial".equals(st) || "loading".equals(st)) && c.optJSONObject("data") != null) pendingCampus = c.optJSONObject("data").toString();
                 if ("ok".equals(st) || "error".equals(st)) campusDone = true;
             }
             if (tableDone && academicDone && campusDone) { finishRead(active); return; }
@@ -427,29 +432,36 @@ public class NwpuImportActivity extends Activity {
                 saving = false;
                 if (!saved) { fail(message); return; }
                 if (!current(active)) return;
-                Toast.makeText(this, "校园同步已结束；课表未更新：" + message, Toast.LENGTH_LONG).show();
-                // Callers (timetable / exams tab) reload in onResume; only a direct launch needs a page to land on.
-                setResult(RESULT_OK);
-                if (Intent.ACTION_MAIN.equals(getIntent().getAction()) || !getIntent().hasExtra("reuse_session")) startActivity(new Intent(this, CampusActivity.class));
-                finish();
+                Toast.makeText(this, "课表暂未更新，继续自动读取校园信息", Toast.LENGTH_SHORT).show();
+                completeLogin(false);
             });
         });
     }
     private void save(Timetable table, int active) { save(table, active, null); }
     private void save(Timetable table, int active, String academic) {
         saving = true; reading = false; handler.removeCallbacksAndMessages(null);
-        showProgress("课表已就位，正在保存", "保存完成后直接进入周课表");
+        showProgress("正在保存课表与成绩", "随后自动读取其他校园信息，无需操作");
         io.execute(() -> {
             try {
                 Academic extra = saveExtras(academic, pendingCampus);
                 TimetableStore.save(getApplicationContext(), table);
                 String summary = extra == null ? "" : "，" + extra.exams.size() + " 场考试、" + extra.grades.size() + " 门成绩";
-                runOnUiThread(() -> { saving = false; if (!current(active)) return; setResult(RESULT_OK);
+                runOnUiThread(() -> { saving = false; if (!current(active)) return;
                     Toast.makeText(this, "已导入 " + table.lessons.size() + " 条上课安排" + summary, Toast.LENGTH_SHORT).show();
-                    if (Intent.ACTION_MAIN.equals(getIntent().getAction())) startActivity(new Intent(this, TimetableActivity.class));
-                    finish(); });
+                    completeLogin(true); });
             } catch (Exception e) { runOnUiThread(() -> { saving = false; fail("保存未完成，请重新同步"); }); }
         });
+    }
+    private void completeLogin(boolean hasTable) {
+        setResult(RESULT_OK,new Intent().putExtra("academic_incomplete",!hasTable));
+        getIntent().putExtra("academic_incomplete",!hasTable);
+        if (CampusAutoPolicy.fullReadAfterLogin(school.id,getIntent().getBooleanExtra("auth_only",false))) {
+            showProgress("登录成功，正在读取校园信息", "自动进入各服务并保存本人可见的信息");
+            CampusAutoRefresh.afterLogin(this);
+        } else {
+            if (!getIntent().getBooleanExtra("auth_only",false) && Intent.ACTION_MAIN.equals(getIntent().getAction())) startActivity(new Intent(this,hasTable?TimetableActivity.class:CampusActivity.class));
+            finish();
+        }
     }
     private Academic saveExtras(String academic, String campus) throws Exception {
         if (campus != null) try {
@@ -470,6 +482,10 @@ public class NwpuImportActivity extends Activity {
     }
     private void fail(String message) {
         if (saving || isDestroyed()) return;
+        if (automaticFallback) {
+            automaticFallback=false; generation++; busy=false; handler.removeCallbacksAndMessages(null);
+            setResult(RESULT_OK,new Intent().putExtra("academic_incomplete",true)); finish(); return;
+        }
         generation++; busy = false; reading = false; submitted = false; pendingAccount = ""; pendingPassword = "";
         handler.removeCallbacksAndMessages(null); web.stopLoading(); password.setText("");
         web.setVisibility(View.INVISIBLE); waiting.setVisibility(View.GONE); form.setVisibility(View.VISIBLE); submit.setEnabled(true);

@@ -10,7 +10,7 @@
         network: /^(网络自助|校园网|网费|网络服务|深澜计费自助服务)$/,
         library: /^(图书馆|我的图书馆|借阅查询|图书借阅)$/, seats: /^(空间预约|座位预约|图书馆座位预约)$/,
         classroom: /^(空闲教室|空闲教室查询|自习教室查询)$/, sports: /^(体育场馆个人预约|体育场馆预约|场馆预约)$/,
-        affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/
+        affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/, housing: /^(智慧公寓|住宿信息|学生公寓|我的宿舍)$/
     };
     const central = /^(?:翱翔门户|统一身份认证|统一认证|统一登录|校园统一认证|CAS)(?:账号)?(?:登[录陆])?(?:入口)?$/i;
     function visible(e) {
@@ -77,6 +77,10 @@
         if (!re) return false;
         const e = candidates(root.document).find(e => re.test(label(e)) && (kind !== 'sso' || /登录|登陆|统一|CAS/i.test(label(e)))); if (!e) return false;
         activated.add(key);
+        return activateElement(e);
+    }
+    function activateElement(e) {
+        if (!e || !visible(e) || !root.NwpuCampus || !root.NwpuCampus.allowed(root.location.href)) return false;
         // Normal portal handlers may obtain an app ticket asynchronously and use window.open.
         // Keep that legitimate navigation in this first-party WebView; never export the ticket.
         if (!root.__louSsoOriginalOpen) root.__louSsoOriginalOpen = root.open;
@@ -88,6 +92,6 @@
         root.__louSsoOpenTimer = root.setTimeout(() => { root.open = root.__louSsoOriginalOpen; delete root.__louSsoOriginalOpen; }, 15000);
         e.click(); return true;
     }
-    const api = {inspect, routes, click};
+    const api = {inspect, routes, click, activateElement};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuSso = api;
 })(typeof window === 'undefined' ? globalThis : window);
