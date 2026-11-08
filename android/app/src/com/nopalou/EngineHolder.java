@@ -163,6 +163,17 @@ public class EngineHolder {
         } catch (Exception ex) {
             Log.w(TAG, "读取卡片失败", ex);
         }
+        // 拿不准的消息/卡片：开了 AI 识别就落盘排队，交给 AiJob 批量复核；没开就什么都不做。
+        final Context appCtx = app;
+        e.escalator = esc -> {
+            if (!AiConfig.ready(appCtx)) return;
+            try {
+                AiQueue.add(appCtx, AiQueue.fromEscalation(esc));
+                AiJob.schedule(appCtx);
+            } catch (Exception ex) {
+                diag(appCtx, "出错", "AI 复核排队失败");
+            }
+        };
         engine = e;
         return engine;
     }

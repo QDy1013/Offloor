@@ -168,6 +168,9 @@ public class NotifListener extends NotificationListenerService {
         String[] msgSenders = null;
         String[] msgTexts = null;
         long[] msgTimes = null;
+        imageUris.clear();
+        imageSenders.clear();
+        imageTimes.clear();
         try {
             List<String> senders = new ArrayList<String>();
             List<String> texts = new ArrayList<String>();
@@ -192,14 +195,36 @@ public class NotifListener extends NotificationListenerService {
 
         // 群名：标题为空说明通知没给群名，用包名兜底。
         String group = title.isEmpty() ? sbn.getPackageName() : title;
+        String gid = NotifFilter.groupId(sbn.getPackageName(), group);
+
+        // 只有“[图片]”“[语音]”的消息：正文读不到，交给引擎决定要不要出“去看一下”的提示卡；
+        // 通知里如果直接带了图片（MessagingStyle 的图片消息），顺手送去截图识别。
+        int media = 0;
+        for (NotifParser.Parsed p : NotifParser.media(title, text, msgSenders, msgTexts, msgTimes, isSummary)) {
+            long sentAt = p.time > 0 ? p.time : sbn.getPostTime();
+            if (sentAt <= 0) sentAt = System.currentTimeMillis();
+            String id = "m" + group.hashCode() + "_" + (p.sender + "|" + p.body).hashCode() + "_" + sentAt;
+            if (!markSeen(this, id)) continue;
+            String placeholder = p.body.replace("[有全体消息]", "");
+            if (eng.noteMedia(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt), placeholder)) media++;
+        }
+        for (int i = 0; i < imageUris.size(); i++) {
+            AiImages.fromNotification(this, imageUris.get(i), gid, group, imageSenders.get(i),
+                    sbn.getPackageName(), imageTimes.get(i) > 0 ? imageTimes.get(i) : sbn.getPostTime());
+        }
+        imageUris.clear();
+        imageSenders.clear();
+        imageTimes.clear();
+
         if (parsed == null || parsed.isEmpty()) {
             if (!quiet) {
-                EngineHolder.diag(this, "跳过", isSummary ? "汇总通知" : "没有可用消息（图片/表情/计数/空）");
+                EngineHolder.diag(this, media > 0 ? "收到" : "跳过", media > 0 ? group + " · 图片/语音提示 " + media + "条"
+                        : isSummary ? "汇总通知" : "没有可用消息（图片/表情/计数/空）");
             }
-            return false;
+            return media > 0;
         }
 
-        int fresh = 0;
+        int fresh = media;
         for (NotifParser.Parsed p : parsed) {
             long sentAt = p.time > 0 ? p.time : sbn.getPostTime();
             if (sentAt <= 0) sentAt = System.currentTimeMillis();
@@ -210,8 +235,7 @@ public class NotifListener extends NotificationListenerService {
             counts[0]++;
             // 会话通知每次都会带上前面几条旧消息，扫描也会读到处理过的消息：处理过的直接跳过。
             if (!markSeen(this, id)) continue;
-            eng.process(new Engine.Msg(id, NotifFilter.groupId(sbn.getPackageName(), group),
-                    group, p.sender, p.body, sbn.getPackageName(), sentAt));
+            eng.process(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt));
             fresh++;
         }
         counts[1] += fresh;
@@ -224,7 +248,7 @@ public class NotifListener extends NotificationListenerService {
     }
 
     /** 把 MessagingStyle 的消息数组追加到三个同长列表里；非 Bundle 元素跳过。 */
-    private static void collectMessages(Parcelable[] raw, List<String> senders, List<String> texts, List<Long> times) {
+    private void collectMessages(Parcelable[] raw, List<String> senders, List<String> texts, List<Long> times) {
         if (raw == null) return;
         for (Parcelable p : raw) {
             if (!(p instanceof Bundle)) continue;
@@ -234,8 +258,21 @@ public class NotifListener extends NotificationListenerService {
             senders.add(s == null ? null : s.toString());
             texts.add(t == null ? null : t.toString());
             times.add(b.getLong("time"));
+            // MessagingStyle 的图片消息：type 是 image/*，uri 指向图片（系统会给监听者读权限）。
+            String type = b.getString("type");
+            Object uri = b.get("uri");
+            if (type != null && type.startsWith("image/") && uri instanceof android.net.Uri) {
+                imageUris.add((android.net.Uri) uri);
+                imageSenders.add(s == null ? "" : s.toString());
+                imageTimes.add(b.getLong("time"));
+            }
         }
     }
+
+    /** 本条通知里带的图片，handle 用完即清空（监听回调都在主线程，不会并发）。 */
+    private final List<android.net.Uri> imageUris = new ArrayList<>();
+    private final List<String> imageSenders = new ArrayList<>();
+    private final List<Long> imageTimes = new ArrayList<>();
 
     /** 一批通知处理完：落盘"最近一次收到"和卡片。 */
     private void finishBatch() {

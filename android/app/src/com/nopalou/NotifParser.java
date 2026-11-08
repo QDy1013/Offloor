@@ -119,6 +119,53 @@ public final class NotifParser {
         return result;
     }
 
+    /** 可提示用户去看的媒体占位符（表情、位置、链接不算）。 */
+    private static final String[] MEDIA = {"[图片]", "[语音]", "[视频]", "[文件]"};
+
+    /**
+     * parse 会丢掉的“只有占位符”的消息里，挑出图片/语音/视频/文件，返回 body 为占位符本身。
+     * 规则与 parse 对称：多条消息逐条看，单条看分隔符后的正文。不抛异常，不返回 null。
+     */
+    public static List<Parsed> media(String title, String text,
+                                     String[] msgSenders, String[] msgTexts,
+                                     long[] msgTimes, boolean isSummary) {
+        List<Parsed> result = new ArrayList<Parsed>();
+        if (isSummary) return result;
+        if (msgTexts != null && msgTexts.length > 0) {
+            for (int i = 0; i < msgTexts.length; i++) {
+                String body = mediaOf(msgTexts[i]);
+                if (body == null) continue;
+                String sender = trim(msgSenders != null && i < msgSenders.length ? msgSenders[i] : null);
+                if (sender.isEmpty()) sender = FALLBACK_SENDER;
+                long time = msgTimes != null && i < msgTimes.length ? msgTimes[i] : 0L;
+                result.add(new Parsed(sender, body, time));
+            }
+            return result;
+        }
+        if (text == null) return result;
+        String s = FOLD_COUNT.matcher(text).replaceFirst("").trim();
+        String hint = "";
+        if (s.startsWith("[有全体消息]")) {
+            s = s.substring("[有全体消息]".length()).trim();
+            hint = "[有全体消息]";
+        }
+        int sep = NotifFilter.senderSeparator(s);
+        String sender = sep >= 0 ? trimmed(s.substring(0, sep)) : (trimmed(title).isEmpty() ? GROUP_SENDER : FALLBACK_SENDER);
+        String body = mediaOf(sep >= 0 ? s.substring(sep + 1) : s);
+        if (body == null) return result;
+        if (sender.isEmpty()) sender = FALLBACK_SENDER;
+        result.add(new Parsed(sender, hint + body, 0L));
+        return result;
+    }
+
+    /** 整段只是一个媒体占位符时返回它，否则 null。 */
+    private static String mediaOf(String raw) {
+        if (raw == null) return null;
+        String s = FOLD_COUNT.matcher(raw).replaceFirst("").trim();
+        for (String p : MEDIA) if (p.equals(s)) return p;
+        return null;
+    }
+
     /** 清洗正文：剥掉开头的折叠计数、去首尾空白，并把占位符和纯计数视为空。 */
     private static String clean(String raw) {
         // null 当作空串处理，避免后续空指针。

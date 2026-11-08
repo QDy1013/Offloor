@@ -1014,6 +1014,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuRow(body, holder, "通知读取权限", "系统设置里的通知使用权", Ui.TEXT,
                 () -> startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
         menuRow(body, holder, "诊断日志", "最近 30 条读取记录", Ui.TEXT, this::showDiagLog);
+        menuSection(body, "识别");
+        menuRow(body, holder, "AI 识别", AiConfig.summary(this), Ui.TEXT,
+                () -> startActivity(new Intent(this, AiActivity.class)));
+        menuRow(body, holder, "截图识别", "群里只发了图片？选截图，逐条转写成待办", Ui.TEXT,
+                () -> startActivity(new Intent(this, ShotActivity.class).putExtra(ShotActivity.EXTRA_PICK, true)));
         menuSection(body, "事项");
         menuRow(body, holder, "到期提醒", ReminderReceiver.isEnabled(this) ? "已开启 · 到期前两小时提醒" : "已关闭",
                 Ui.TEXT, this::showDeadlineReminderSettings);
@@ -1594,11 +1599,14 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if ("jielong".equals(kind)) return Ui.tag(this, "接龙", Ui.TEAL, Ui.TEAL_BG);
         if (Engine.PlatformNotice.KIND_SIGNIN.equals(kind)) return Ui.tag(this, "签到", Ui.ORANGE, Ui.ORANGE_BG);
         if (Engine.PlatformNotice.KIND_GRADE.equals(kind)) return Ui.tag(this, "成绩", Ui.GREEN, Ui.GREEN_BG);
+        if ("media".equals(kind)) return Ui.tag(this, "图片/语音", Ui.ORANGE, Ui.ORANGE_BG);
         return null;
     }
 
     /** 卡片第二行的时间文字：与详情面板同一套说法。 */
     private String dueLabel(Engine.Card c, long now) {
+        if ("media".equals(c.kind)) return "内容读不到 · " + (c.sourceText != null && c.sourceText.contains("[图片]")
+                ? "截图分享给楼外可识别" : "请到原群查看");
         return c.deadlineHint() != null ? c.deadlineHint() + " · 时刻待确认"
                 : c.deadline == 0 ? "时间待确认 · 点开补充"
                 : Engine.humanDeadline(c.deadline) + " · " + TodayView.countdown(c.deadline, now);
