@@ -32,8 +32,8 @@ final class AppNavigation {
         timetableState.putInt("scrollY", scrollY);
     }
 
-    static final int TODO = 0, TIMETABLE = 1, ACADEMIC = 2;
-    static final String[] TITLES = {"待办", "课表", "考试成绩"};
+    static final int TODO = 0, TIMETABLE = 1, ACADEMIC = 2, CAMPUS = 3;
+    static final String[] TITLES = {"待办", "课表", "考试成绩", "校园"};
 
     static void openTimetable(Activity from) {
         Intent intent = new Intent(from, TimetableActivity.class);
@@ -42,6 +42,7 @@ final class AppNavigation {
     }
 
     static void openAcademic(Activity from) { openPage(from, new Intent(from, AcademicActivity.class)); }
+    static void openCampus(Activity from) { openPage(from, new Intent(from, CampusActivity.class)); }
 
     /** 待办是栈底；课表和考试成绩互相切换时替换当前页，返回键总是回到待办。 */
     private static void openPage(Activity from, Intent intent) {
@@ -99,6 +100,7 @@ final class AppNavigation {
                 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                 if (target == TIMETABLE) openTimetable(from);
                 else if (target == ACADEMIC) openAcademic(from);
+                else if (target == CAMPUS) openCampus(from);
                 else openTodo(from);
             });
         }
@@ -130,7 +132,12 @@ final class AppNavigation {
             float s = getBounds().width() / 24f;
             canvas.scale(s, s);
             paint.setStrokeWidth(1.8f);
-            if (kind == ACADEMIC) {
+            if (kind == CAMPUS) {
+                android.graphics.Path roof = new android.graphics.Path(); roof.moveTo(2, 9); roof.lineTo(12, 3); roof.lineTo(22, 9);
+                canvas.drawPath(roof, paint); canvas.drawLine(4, 10, 20, 10, paint);
+                for (int x = 6; x <= 18; x += 6) canvas.drawLine(x, 12, x, 19, paint);
+                canvas.drawLine(3, 21, 21, 21, paint);
+            } else if (kind == ACADEMIC) {
                 // 学士帽：菱形帽顶 + 弧形帽身 + 右侧流苏
                 android.graphics.Path top = new android.graphics.Path();
                 top.moveTo(12f, 4.5f); top.lineTo(22f, 9.5f); top.lineTo(12f, 14.5f); top.lineTo(2f, 9.5f); top.close();

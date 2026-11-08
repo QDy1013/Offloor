@@ -1,0 +1,222 @@
+/* Campus adapters. Read only: use the signed-in page's own origin; never export cookies,
+ * passwords, arbitrary JSON or hidden inputs. Only follow read pages actually linked by
+ * the school. Endpoint provenance and field-test status: docs/校园数据接入.md. */
+(function (root) {
+    'use strict';
+    const SCHOOL = '西北工业大学';
+    const targets = {
+        program: /^(我的培养方案|培养方案内容|培养方案)$/,
+        completion: /^(我的培养方案完成情况|培养方案完成情况|计划完成情况)$/,
+        selection: /^(我的选课|选课结果|已选课程|本学期选课结果)$/,
+        evaluation: /^(我的评教|学生评教|评教任务|评教)$/,
+        card: /^(一卡通|校园卡|一卡通服务)$/,
+        electric: /^(电费|宿舍电费|电费查询|公寓电费)$/,
+        network: /^(网络自助|网费|校园网|网络服务)$/,
+        library: /^(我的图书馆|借阅查询|当前借阅|图书借阅|图书馆)$/,
+        seats: /^(空间预约|座位预约|图书馆座位预约)$/,
+        classroom: /^(空闲教室查询|空闲教室|自习教室查询)$/,
+        sports: /^(体育场馆个人预约|体育场馆预约|场馆预约)$/,
+        affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/,
+        bus: /^(校车查询|校车服务|校车时刻|校车时刻表)$/,
+        calendar: /^(校历|学年校历|西北工业大学校历、校车时刻表)$/
+    };
+    const clean = v => typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim() : '';
+    const cut = (v, max = 800) => clean(v).slice(0, max);
+    const sensitive = /密码|口令|验证码|身份证|证件号码|家庭|家长|监护人|银行卡|支付码|付款码|密钥|token|cookie|session|ticket|secret|password/i;
+    function nodeText(el, live) {
+        if (!el) return '';
+        if (live && typeof el.innerText === 'string') return el.innerText;
+        const copy = el.cloneNode(true);
+        for (const e of copy.querySelectorAll('script,style,template,noscript,input,textarea,[hidden],[aria-hidden="true"],[style*="display:none"],[style*="display: none"]')) e.remove();
+        return copy.textContent || '';
+    }
+    function allowed(value) {
+        try {
+            const u = new URL(value);
+            return u.protocol === 'https:' && !u.username && !u.password && (!u.port || u.port === '443') &&
+                (u.hostname === 'nwpu.edu.cn' || u.hostname.endsWith('.nwpu.edu.cn'));
+        } catch (_) { return false; }
+    }
+    function safeUrl(value, base) {
+        try {
+            const u = new URL(value, base);
+            if (!allowed(u.href) || /(?:^|\/)(?:logout|delete|remove|submit|save|pay|payment|recharge)(?:\/|$)/i.test(u.pathname)) return '';
+            // Authentication tickets and action links must never be persisted or followed by the collector.
+            if ([...u.searchParams.keys()].some(k => sensitive.test(k) || /action|operation|method/i.test(k))) return '';
+            if (sensitive.test(decodeURIComponent(u.hash))) return '';
+            if (!u.hash.startsWith('#/')) u.hash = '';
+            return u.href;
+        } catch (_) { return ''; }
+    }
+    function source(value) { try { const u = new URL(value); return allowed(value) ? u.origin + u.pathname : ''; } catch (_) { return ''; } }
+    function visible(el, live) {
+        if (!live || typeof el.getClientRects !== 'function') return true;
+        return el.getClientRects().length > 0 && (!root.getComputedStyle || root.getComputedStyle(el).visibility !== 'hidden');
+    }
+    function isLogin(doc, url, live) {
+        if (/\/cas\/login|\/student\/login|\/sso-login(?:\?|$)/.test(url)) return true;
+        return Array.from(doc.querySelectorAll('input[type="password"]')).some(e => visible(e, live));
+    }
+    function discover(doc, base) {
+        const found = {};
+        for (const a of Array.from(doc.querySelectorAll('a[href], iframe[src][title]'))) {
+            const label = clean(a.tagName === 'IFRAME' ? a.getAttribute('title') : nodeText(a, false)), href = a.getAttribute('href') || a.getAttribute('src') || '';
+            if (!label || href.startsWith('#') || /^javascript:/i.test(href)) continue;
+            const url = safeUrl(href, base); if (!url) continue;
+            for (const [id, re] of Object.entries(targets)) if (!found[id] && re.test(label)) found[id] = url;
+        }
+        return found;
+    }
+    function empty(state, url) { return {state, source: source(url), fields: [], tables: [], links: []}; }
+    function extract(doc, url, kind, live = false) {
+        if (!allowed(url)) return empty('unsupported', '');
+        if (isLogin(doc, url, live)) return empty('login', url);
+        const host = new URL(url).hostname;
+        const required = {profile: 'jwxt.nwpu.edu.cn', program: 'jwxt.nwpu.edu.cn', completion: 'jwxt.nwpu.edu.cn', selection: 'jwxt.nwpu.edu.cn', evaluation: 'jwxt.nwpu.edu.cn',
+            card: 'yktapp.nwpu.edu.cn', electric: 'yktapp.nwpu.edu.cn', network: 'zizhu.nwpu.edu.cn', seats: 'ic.nwpu.edu.cn', classroom: 'idle-classroom.nwpu.edu.cn'};
+        if (required[kind] && host !== required[kind]) return empty('unavailable', url);
+        // Portal tiles and library news are entry points, not personal records. Wait until the
+        // user (or a labelled link) has opened the actual service page before collecting data.
+        if (host === 'ecampus.nwpu.edu.cn' || host === 'uis.nwpu.edu.cn') return empty('unavailable', url);
+        if (['program', 'completion', 'selection', 'evaluation'].includes(kind) && /\/student\/home\/?$/.test(new URL(url).pathname)) return empty('unavailable', url);
+        if (kind === 'library' && !/借阅|应还|到期|续借/.test(Array.from(doc.querySelectorAll('h1,h2,h3,.panel-title,.page-title,th')).map(e => e.textContent).join(' '))) return empty('unavailable', url);
+        const out = empty('unavailable', url), seen = new Set();
+        const add = (label, value) => {
+            label = cut(label, 80).replace(/[:：]\s*$/, ''); value = cut(value);
+            if (!label || !value || sensitive.test(label) || label === value || seen.has(label + '\0' + value)) return;
+            seen.add(label + '\0' + value); if (out.fields.length < 80) out.fields.push({label, value});
+        };
+        for (const dt of doc.querySelectorAll('dt')) if (dt.nextElementSibling && dt.nextElementSibling.tagName === 'DD' && visible(dt, live)) add(nodeText(dt, live), nodeText(dt.nextElementSibling, live));
+        for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label')) {
+            if (!visible(label, live)) continue;
+            const value = label.nextElementSibling;
+            if (value && !value.querySelector('input[type="password"]')) {
+                const input = value.querySelector('input:not([type="hidden"]):not([type="password"]), textarea');
+                add(nodeText(label, live), input ? input.value : nodeText(value, live));
+            }
+        }
+        for (const table of doc.querySelectorAll('table')) {
+            if (!visible(table, live) || table.closest('nav, header, footer, .sidebar, .navbar, .menu') || table.querySelector('table')) continue;
+            const rows = Array.from(table.querySelectorAll('tr')).filter(r => visible(r, live)).map(tr =>
+                Array.from(tr.children).filter(c => /^(TD|TH)$/.test(c.tagName)).map(c => cut(nodeText(c, live), 600))
+            ).filter(r => r.length && r.some(Boolean));
+            if (!rows.length) continue;
+            // Label/value tables are common in student profiles and network self service.
+            const kv = rows.length > 0 && rows.every(r => r.length === 2 && r[0].length < 45) &&
+                rows.some(r => /姓名|学号|年级|专业|余额|流量|套餐|状态|宿舍|电量|学分/.test(r[0]));
+            if (kv) { rows.forEach(r => add(r[0], r[1])); continue; }
+            const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
+            const hasHeader = !!(headerRow && headerRow.querySelector('th'));
+            let columns = hasHeader ? rows.shift() : rows[0].map((_, i) => '第' + (i + 1) + '列');
+            // Never expose hidden credential fields or private family/identity columns.
+            const keep = columns.map((c, i) => sensitive.test(c) ? -1 : i).filter(i => i >= 0).slice(0, 12);
+            if (!keep.length) continue;
+            const data = rows.filter(r => !r.some(cell => sensitive.test(cell))).slice(0, 200).map(r => keep.map(i => r[i] || ''));
+            if (!data.length || !data.some(r => r.some(Boolean))) continue;
+            if (out.tables.length < 12) out.tables.push({title: cut(table.caption && table.caption.textContent || '', 100), columns: keep.map(i => columns[i]), rows: data, truncated: rows.length > 200});
+        }
+        // Text-only balance cards: require a labelled value, never collect entire body text.
+        const text = (live && doc.body && doc.body.innerText || '').slice(0, 120000);
+        const metrics = /((?:账户|帐户|校园卡|一卡通|可用|当前|剩余)?(?:总?余额|剩余电量|已用流量|剩余流量|使用流量|基础套餐|当前套餐))\s*[:：]\s*([^\n]{1,90})/g;
+        let m; while ((m = metrics.exec(text))) add(m[1], m[2]);
+        if (['notices', 'calendar', 'bus'].includes(kind)) {
+            for (const a of doc.querySelectorAll('a[href]')) {
+                if (!visible(a, live) || a.closest('nav, header, footer, .sidebar, .navbar, .menu')) continue;
+                const title = cut(a.textContent, 180), href = a.getAttribute('href') || '';
+                if (!title || title.length < 6 || !/通知|公告|校历|校车|班车|安排|讲座|报名|学术/.test(title)) continue;
+                const u = safeUrl(href, url); if (!u || out.links.some(l => l.url === u)) continue;
+                if (kind === 'calendar' && !/校历|校车|班车|放假/.test(title)) continue;
+                if (kind === 'bus' && !/校车|班车/.test(title)) continue;
+                if (out.links.length < 40) out.links.push({title, url: u});
+            }
+        }
+        const count = out.fields.length + out.tables.reduce((n, t) => n + t.rows.length, 0) + out.links.length;
+        if (kind === 'electric' && !out.fields.some(f => /电量|电费/.test(f.label)) && !out.tables.some(t => t.columns.some(c => /电量|电费/.test(c)))) return empty('binding', url);
+        if (count) out.state = 'ok';
+        return out;
+    }
+    function profile(json, student) {
+        const s = json && json.student;
+        if (!s || String(s.id) !== String(student)) throw new Error('identity');
+        const fields = [], add = (label, value) => { value = cut(value, 200); if (value) fields.push({label, value}); };
+        const name = x => x && typeof x === 'object' ? x.nameZh || x.name || '' : '';
+        add('姓名', s.nameZh || s.name); add('学号', s.code); add('年级', s.grade);
+        add('学院', name(s.department)); add('专业', name(s.major)); add('班级', name(s.adminclass || s.adminClass));
+        add('校区', name(s.campus)); add('学籍状态', name(s.stdStatus));
+        if (!fields.length) throw new Error('schema');
+        return {state: 'ok', source: 'https://jwxt.nwpu.edu.cn/student/for-std/student-portrait', fields, tables: [], links: []};
+    }
+    async function get(path, kind = 'html') {
+        const base = root.location.href, target = new URL(path, base);
+        if (target.origin !== root.location.origin || !safeUrl(target.href, base)) throw new Error('origin');
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
+        try {
+            const r = await root.fetch(target.href, {method: 'GET', credentials: 'same-origin', signal: controller.signal, headers: {'Accept': kind === 'json' ? 'application/json' : 'text/html'}});
+            if (!r.ok || !r.url || new URL(r.url).origin !== target.origin || /\/login(?:\?|$)/.test(r.url)) throw new Error('login');
+            const body = await r.text(); if (body.length > 2500000) throw new Error('size');
+            return kind === 'json' ? JSON.parse(body) : new root.DOMParser().parseFromString(body, 'text/html');
+        } finally { clearTimeout(timer); }
+    }
+    function start(token, student) {
+        const data = {version: 1, school: SCHOOL, identity: String(student), modules: {}, routes: {}};
+        root.__louCampusResult = {token, status: 'loading', data};
+        (async () => {
+            if (!/^\d{1,20}$/.test(String(student)) || root.location.origin !== 'https://jwxt.nwpu.edu.cn') throw new Error('origin');
+            const publish = () => { root.__louCampusResult = {token, status: 'partial', data: JSON.parse(JSON.stringify(data))}; };
+            const p = (async () => {
+                try { data.modules.profile = profile(await get('/student/for-std/student-portrait/getStdInfo?bizTypeAssoc=2&cultivateTypeAssoc=1', 'json'), student); }
+                catch (_) { data.modules.profile = empty('unavailable', 'https://jwxt.nwpu.edu.cn/student/for-std/student-portrait'); }
+                publish();
+            })();
+            Object.assign(data.routes, discover(root.document, root.location.href));
+            try { Object.assign(data.routes, discover(await get('/student/home'), 'https://jwxt.nwpu.edu.cn/student/home')); } catch (_) { }
+            await Promise.all(['program', 'completion', 'selection', 'evaluation'].map(async id => {
+                const url = data.routes[id];
+                if (!url || new URL(url).origin !== root.location.origin) { data.modules[id] = empty('unavailable', 'https://jwxt.nwpu.edu.cn/student/home'); publish(); return; }
+                try { data.modules[id] = extract(await get(url), url, id); } catch (_) { data.modules[id] = empty('network', url); }
+                publish();
+            }));
+            await p; root.__louCampusResult = {token, status: 'ok', data};
+        })().catch(() => { root.__louCampusResult = {token, status: 'error'}; });
+    }
+    function capture(kind) {
+        const url = root.location.href, data = extract(root.document, url, kind, true);
+        return {version: 1, school: SCHOOL, modules: {[kind]: data}, routes: discover(root.document, url)};
+    }
+    function electricForm(level, binding) {
+        if (![0, 1, 2, 3].includes(level)) throw new Error('level');
+        const b = binding || {}, p = new URLSearchParams({feeitemid: '182', type: level === 3 ? 'IEC' : 'select', level: String(level)});
+        for (const [i, key] of ['campus', 'building', 'room'].entries()) if (level > i) {
+            if (!clean(b[key]) || clean(b[key]).length > 120) throw new Error('binding'); p.set(key, clean(b[key]));
+        }
+        return p.toString();
+    }
+    function electricNormalize(json, level) {
+        const map = json && json.map; if (!map) throw new Error('schema');
+        if (level < 3) {
+            if (!Array.isArray(map.data) || map.data.length > 5000) throw new Error('schema');
+            return map.data.map(x => { const name = cut(x.name, 120), value = cut(x.value, 120); if (!name || !value) throw new Error('schema'); return {name, value}; });
+        }
+        const value = map.showData && map.showData['当前剩余电量'];
+        const n = typeof value === 'number' ? value : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim()) ? +value : NaN;
+        if (!Number.isFinite(n) || Math.abs(n) > 1000000) throw new Error('schema');
+        const d = map.data || {};
+        return {state: 'ok', source: 'https://yktapp.nwpu.edu.cn/jfdt/charge/feeitem/getThirdData',
+            fields: [{label: '宿舍', value: ['campus', 'building', 'room'].map(k => cut(d[k], 120)).filter(Boolean).join(' ')}, {label: '当前剩余电量', value: n + ' 度'}].filter(x => x.value), tables: [], links: []};
+    }
+    function electricStart(token, level, binding) {
+        root.__louElectricResult = {token, status: 'loading'};
+        (async () => {
+            if (root.location.origin !== 'https://yktapp.nwpu.edu.cn') throw new Error('origin');
+            const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
+            try {
+                const r = await root.fetch('/jfdt/charge/feeitem/getThirdData', {method: 'POST', credentials: 'same-origin', redirect: 'error', signal: controller.signal,
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'}, body: electricForm(level, binding)});
+                if (!r.ok) throw new Error('http'); const body = await r.text(); if (body.length > 2000000) throw new Error('size');
+                root.__louElectricResult = {token, status: 'ok', data: electricNormalize(JSON.parse(body), level)};
+            } finally { clearTimeout(timer); }
+        })().catch(() => { root.__louElectricResult = {token, status: 'error'}; });
+    }
+    const api = {allowed, safeUrl, source, discover, extract, profile, start, capture, electricForm, electricNormalize, electricStart};
+    if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuCampus = api;
+})(typeof window === 'undefined' ? globalThis : window);

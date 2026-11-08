@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nopalou"
-    android:versionCode="19"
-    android:versionName="0.19">
+    android:versionCode="20"
+    android:versionName="0.20">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
@@ -48,6 +48,8 @@
         <activity android:name=".TimetableActivity" android:exported="false" android:label="我的课表" />
         <activity android:name=".NwpuImportActivity" android:exported="false" android:label="课表导入" />
         <activity android:name=".AcademicActivity" android:exported="false" android:label="考试与成绩" />
+        <activity android:name=".CampusActivity" android:exported="false" android:label="我的校园" />
+        <activity android:name=".CampusWebActivity" android:exported="false" android:label="校园服务同步" />
 
         <service
             android:name=".NotifListener"

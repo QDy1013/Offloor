@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "school": "西北工业大学",
+  "owner": "",
+  "routes": {},
+  "modules": {
+    "notices": {
+      "state": "ok",
+      "source": "https://xygg.nwpu.edu.cn/xygg/xngg.htm",
+      "fields": [],
+      "tables": [],
+      "links": [
+        {
+          "title": "西北工业大学校历、校车时刻表",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/22073.htm"
+        },
+        {
+          "title": "军工素质教育实践中心无人机馆展陈初步设计竞选结果公告",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/37087.htm"
+        },
+        {
+          "title": "关于下载使用学校新版宣传片的通知",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/32907.htm"
+        },
+        {
+          "title": "定期存款银行竞争性选择项目评审结果公告",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/32347.htm"
+        },
+        {
+          "title": "西北工业大学定期存款银行竞争性选择公告",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/32337.htm"
+        },
+        {
+          "title": "定期存款银行竞争性选择项目评审结果公告",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/30367.htm"
+        },
+        {
+          "title": "【通知公告】西北工业大学长安校区暑期校园参观预约通知",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/30207.htm"
+        },
+        {
+          "title": "【论坛预告】西北工业大学首届“智能空天”前沿论坛通知",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/29277.htm"
+        },
+        {
+          "title": "【学术报告】​翱翔名家讲堂——亚运...",
+          "url": "https://xygg.nwpu.edu.cn/info/1007/37307.htm"
+        },
+        {
+          "title": "【学术报告】​翱翔名家讲堂——毛鑫...",
+          "url": "https://xygg.nwpu.edu.cn/info/1007/37317.htm"
+        },
+        {
+          "title": "【学术报告】翱翔灵犀学术殿堂——Jea...",
+          "url": "https://xygg.nwpu.edu.cn/info/1007/36927.htm"
+        },
+        {
+          "title": "【学术报告】​翱翔名家讲堂——徐建...",
+          "url": "https://xygg.nwpu.edu.cn/info/1007/36947.htm"
+        }
+      ],
+      "updated": 1794122343583
+    },
+    "calendar": {
+      "state": "ok",
+      "source": "https://xygg.nwpu.edu.cn/xygg/xngg.htm",
+      "fields": [],
+      "tables": [],
+      "links": [
+        {
+          "title": "西北工业大学校历、校车时刻表",
+          "url": "https://xygg.nwpu.edu.cn/info/1003/22073.htm"
+        }
+      ],
+      "updated": 1794122343583
+    }
+  }
+}

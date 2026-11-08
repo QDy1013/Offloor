@@ -441,7 +441,7 @@ public class TimetableActivity extends Activity {
     void settings() {
         if (table == null) { importTable(false); return; }
         alert().setTitle("课表设置")
-                .setItems(new String[]{"重新同步当前账号", "使用其他账号导入", "校准开学日期", "未排课课程", "删除本机课表（含考试成绩）"}, (d, which) -> {
+                .setItems(new String[]{"重新同步当前账号", "使用其他账号导入", "校准开学日期", "未排课课程", "删除本机课表、成绩与校园数据"}, (d, which) -> {
                     if (which == 0) importTable(true);
                     if (which == 1) importTable(false);
                     if (which == 2) chooseMonday();
@@ -452,7 +452,7 @@ public class TimetableActivity extends Activity {
                     }
                     if (which == 4) alert().setTitle("删除本机课表？").setMessage("删除后可重新导入。")
                             .setNegativeButton("取消", null).setPositiveButton("删除", (x, y) -> io.execute(() -> {
-                                TimetableStore.clear(getApplicationContext()); AcademicStore.clear(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
+                                TimetableStore.clear(getApplicationContext()); AcademicStore.clear(getApplicationContext()); CampusStore.clear(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
                             })).show();
                 }).setNegativeButton("关闭", null).show();
     }
