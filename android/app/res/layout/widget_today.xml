@@ -26,6 +26,7 @@
         android:paddingTop="8dp">
 
         <TextView
+            android:id="@+id/w_course_head"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="课程"
@@ -57,6 +58,7 @@
         android:paddingTop="8dp">
 
         <TextView
+            android:id="@+id/w_todo_head"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="待办"

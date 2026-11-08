@@ -19,9 +19,10 @@ public class Step44Test {
    check("按节次排序",r.courses.get(1).text.startsWith("英语")&&r.courses.get(2).text.startsWith("体育"));
    check("没待办",r.todos.isEmpty()&&r.todoNote.equals("没有待办"));
 
-   // 放不下：最后一行变成“还有 N 节课”，总行数不超过上限
+   // 放不下：行数不超过上限，总数写进小标题（真机发现单独占一行太浪费）
    r=TodayPlan.plan(true,10,today,tomorrow,new ArrayList<>(),now,2,3);
-   check("截断:"+r.courses.size(),r.courses.size()==2&&r.courses.get(1).text.equals("还有 2 节课"));
+   check("截断:"+r.courses.size(),r.courses.size()==2&&r.courseHead.equals("课程 · 还剩 3 节")&&r.courses.get(1).text.startsWith("英语"));
+   check("放得下时小标题不变",TodayPlan.plan(true,10,today,tomorrow,new ArrayList<>(),now,4,3).courseHead.equals("课程"));
    r=TodayPlan.plan(true,10,today,tomorrow,new ArrayList<>(),now,1,3);
    check("只放一行时显示下一节",r.courses.size()==1&&r.courses.get(0).text.startsWith("数据结构"));
 
@@ -53,7 +54,23 @@ public class Step44Test {
    check("考试带前缀且24小时内高亮",r.todos.get(1).text.equals("考试 · 数据结构")&&r.todos.get(1).highlight);
    check("没时间的排最后",r.todos.get(3).left.equals("待确认")&&r.todos.get(3).text.equals("填问卷"));
    r=TodayPlan.plan(true,10,today,tomorrow,cards,now,4,2);
-   check("待办截断",r.todos.size()==2&&r.todos.get(1).text.equals("还有 3 项"));
+   check("待办截断",r.todos.size()==2&&r.todoHead.equals("待办 · 共 4 项")&&r.todos.get(1).text.equals("考试 · 数据结构"));
+
+   // 真机发现：课程区只占 1 行提示时，剩下的行要给待办
+   r=TodayPlan.fit(true,10,new ArrayList<>(),tomorrow,cards,now,3,4,3);
+   check("没课时待办拿到 2 行:"+r.todos.size(),r.todos.size()==2&&r.courseNote.startsWith("今天没有课"));
+   r=TodayPlan.fit(true,10,today,tomorrow,cards,now,4,4,3);
+   check("有课时课程优先、待办至少 1 行",r.courses.size()==3&&r.todos.size()==1);
+   r=TodayPlan.fit(true,10,today,tomorrow,cards,now,2,4,3);
+   check("最少两行",r.courses.size()==1&&r.todos.size()==1);
+   // 短时间
+   check("今天",TodayPlan.shortWhen(now+3600_000L,now).equals("今天 11:40"));
+   check("明天",TodayPlan.shortWhen(now+86400_000L,now).equals("明天 10:40"));
+   check("本周",TodayPlan.shortWhen(now+3*86400_000L,now).equals("周四 10:40"));
+   check("更远",TodayPlan.shortWhen(now+10*86400_000L,now).equals("11/19 10:40"));
+   // 标题已含“考试”不再加前缀
+   r=TodayPlan.plan(true,10,today,tomorrow,Arrays.asList(K("面向对象编程与设计G 考试",now+10*86400_000L,false,"exam")),now,4,3);
+   check("不重复考试二字:"+r.todos.get(0).text,r.todos.get(0).text.equals("面向对象编程与设计G 考试")&&r.todos.get(0).left.equals("11/19 10:40"));
    System.out.println("PASS "+count);
   }finally{TimeZone.setDefault(original);}
  }

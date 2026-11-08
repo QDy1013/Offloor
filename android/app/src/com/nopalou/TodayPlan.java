@@ -33,6 +33,7 @@ final class TodayPlan {
 
     static final class Result {
         String header = "";
+        String courseHead = "课程", todoHead = "待办";   // 放不下时把总数写进小标题，不占一行
         String courseNote = "";            // 课程区为空时的一句话
         final List<Line> courses = new ArrayList<>();
         String todoNote = "";
@@ -63,15 +64,14 @@ final class TodayPlan {
             int total = sorted.size();
             List<Course> remaining = new ArrayList<>();
             for (Course k : sorted) if (k.end.isEmpty() || k.end.compareTo(clock) > 0) remaining.add(k);
-            // 放不下时最后一行改成“还有 N 节课”，总行数不超过 maxCourses
-            int shown = remaining.size() <= maxCourses ? remaining.size() : Math.max(1, maxCourses - 1);
+            int shown = Math.min(remaining.size(), Math.max(1, maxCourses));
             for (int i = 0; i < shown; i++) {
                 Course k = remaining.get(i);
                 boolean now_ = !k.start.isEmpty() && k.start.compareTo(clock) <= 0;
                 r.courses.add(new Line(now_ ? "上课中" : k.start.isEmpty() ? "第" + k.unit + "节" : k.start,
                         k.name + (k.room.isEmpty() ? "" : " · " + k.room), now_));
             }
-            if (remaining.size() > shown && shown < maxCourses) r.courses.add(new Line("", "还有 " + (remaining.size() - shown) + " 节课", false));
+            if (remaining.size() > shown) r.courseHead = "课程 · 还剩 " + remaining.size() + " 节";
             if (r.courses.isEmpty()) {
                 List<Course> next = sort(tomorrow);
                 String first = next.isEmpty() ? "" : "，明天 " + (next.get(0).start.isEmpty() ? "第" + next.get(0).unit + "节" : next.get(0).start)
@@ -92,16 +92,49 @@ final class TodayPlan {
             if (a.deadline != b.deadline) return Long.compare(a.deadline, b.deadline);
             return Long.compare(b.sourceTs, a.sourceTs);
         });
-        int shownTodos = list.size() <= maxTodos ? list.size() : Math.max(1, maxTodos - 1);
+        int shownTodos = Math.min(list.size(), Math.max(1, maxTodos));
         for (Engine.Card k : list) {
             if (r.todos.size() >= shownTodos) break;
-            String when = k.deadline == 0 ? "待确认" : k.deadline < now ? "已过期" : Engine.humanDeadline(k.deadline);
+            String when = k.deadline == 0 ? "待确认" : k.deadline < now ? "已过期" : shortWhen(k.deadline, now);
             boolean soon = k.deadline > 0 && k.deadline - now < 24 * 3600_000L;
-            r.todos.add(new Line(when, ("exam".equals(k.kind) ? "考试 · " : "") + k.displayTitle(), soon));
+            String title = k.displayTitle() == null ? "" : k.displayTitle();
+            boolean prefix = "exam".equals(k.kind) && !title.contains("考试") && !title.contains("测验");
+            r.todos.add(new Line(when, (prefix ? "考试 · " : "") + title, soon));
         }
-        if (list.size() > r.todos.size() && r.todos.size() < maxTodos) r.todos.add(new Line("", "还有 " + (list.size() - r.todos.size()) + " 项", false));
+        if (list.size() > r.todos.size()) r.todoHead = "待办 · 共 " + list.size() + " 项";
         if (r.todos.isEmpty()) r.todoNote = "没有待办";
         return r;
+    }
+
+    /**
+     * 按总行数分配：课程先拿它需要的（至少 1 行，最多 rows-1），剩下的全给待办（至少 1 行）。
+     * 课程区空着（今天没课 / 上完了）时只占 1 行提示，其余行都给待办。
+     */
+    static Result fit(boolean hasTimetable, int week, List<Course> today, List<Course> tomorrow,
+                      List<Engine.Card> cards, long now, int rows, int maxCourses, int maxTodos) {
+        int total = Math.max(2, rows);
+        Result first = plan(hasTimetable, week, today, tomorrow, cards, now,
+                Math.max(1, Math.min(maxCourses, total - 1)), 1);
+        int used = Math.max(1, first.courses.size());
+        return plan(hasTimetable, week, today, tomorrow, cards, now,
+                Math.max(1, Math.min(maxCourses, total - 1)), Math.max(1, Math.min(maxTodos, total - used)));
+    }
+
+    /** 小组件左栏的短时间：今天/明天/本周用“周X”，再远用“11/19”。 */
+    static String shortWhen(long deadline, long now) {
+        Calendar a = Calendar.getInstance(), b = Calendar.getInstance();
+        a.setTimeInMillis(now);
+        b.setTimeInMillis(deadline);
+        String hm = String.format(Locale.ROOT, "%02d:%02d", b.get(Calendar.HOUR_OF_DAY), b.get(Calendar.MINUTE));
+        Calendar a0 = (Calendar) a.clone(), b0 = (Calendar) b.clone();
+        for (Calendar c : new Calendar[]{a0, b0}) {
+            c.set(Calendar.HOUR_OF_DAY, 12); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0);
+        }
+        long days = Math.round((b0.getTimeInMillis() - a0.getTimeInMillis()) / 86400000.0);
+        if (days == 0) return "今天 " + hm;
+        if (days == 1) return "明天 " + hm;
+        if (days >= 2 && days <= 6) return "周" + "一二三四五六日".charAt((b.get(Calendar.DAY_OF_WEEK) + 5) % 7) + " " + hm;
+        return (b.get(Calendar.MONTH) + 1) + "/" + b.get(Calendar.DAY_OF_MONTH) + " " + hm;
     }
 
     static List<Course> sort(List<Course> in) {

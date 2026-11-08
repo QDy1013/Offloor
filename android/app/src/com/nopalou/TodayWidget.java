@@ -64,7 +64,11 @@ public class TodayWidget extends AppWidgetProvider {
         try {
             for (int id : ids) {
                 android.os.Bundle o = manager.getAppWidgetOptions(id);
-                int h = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+                // 竖屏按文档应取 MAX_HEIGHT，但 vivo 桌面报的 MAX 比实际给的高，最后一行会被截；
+                // 取两者中较小的、非零的那个，宁可少一行也不截字。
+                int max = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+                int min = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+                int h = min > 0 && max > 0 ? Math.min(min, max) : Math.max(min, max);
                 manager.updateAppWidget(id, build(c, h));
             }
         } catch (Throwable t) {
@@ -77,17 +81,18 @@ public class TodayWidget extends AppWidgetProvider {
         return r.getIdentifier(name, type, c.getPackageName());
     }
 
-    /** 按小组件高度算能放几行：去掉边距、日期和两个小标题，每行约 19dp；课程优先，待办至少一行。 */
-    static int[] capacity(int heightDp) {
-        if (heightDp <= 0) return new int[]{2, 2};
-        int rows = Math.max(2, (heightDp - 28 - 20 - 2 * 22) / 19);
-        int todos = Math.max(1, Math.min(MAX_TODOS, rows / 3));
-        int courses = Math.max(1, Math.min(MAX_COURSES, rows - todos));
-        return new int[]{courses, todos};
+    /**
+     * 按小组件高度算总行数。真机（vivo，4×密度）实测：上下边距 28dp、日期 15dp、
+     * 两个小标题各约 20dp（含上边距），合计约 82dp；每行约 16dp。
+     * 另外 vivo 桌面报的高度（2 格报 156dp）比实际卡片（约 131dp）多出约 24dp 的名称和留白，一并扣掉。
+     */
+    static int rows(int heightDp) {
+        if (heightDp <= 0) return 3;
+        return Math.max(2, (heightDp - 82 - 24) / 16);
     }
 
     static RemoteViews build(Context c, int heightDp) {
-        int[] cap = capacity(heightDp);
+        int rows = rows(heightDp);
         String pkg = c.getPackageName();
         long now = System.currentTimeMillis();
 
@@ -105,7 +110,7 @@ public class TodayWidget extends AppWidgetProvider {
         }
         Engine eng = EngineHolder.get(c);
         List<Engine.Card> cards = eng == null ? Collections.<Engine.Card>emptyList() : new ArrayList<>(eng.all());
-        TodayPlan.Result plan = TodayPlan.plan(table != null, week, today, tomorrow, cards, now, cap[0], cap[1]);
+        TodayPlan.Result plan = TodayPlan.fit(table != null, week, today, tomorrow, cards, now, rows, MAX_COURSES, MAX_TODOS);
 
         RemoteViews v = new RemoteViews(pkg, res(c, "layout", "widget_today"));
         int row = res(c, "layout", "widget_row"), left = res(c, "id", "w_left"), text = res(c, "id", "w_text");
@@ -114,6 +119,8 @@ public class TodayWidget extends AppWidgetProvider {
         int sub = c.getResources().getColor(res(c, "color", "widget_sub"), null);
 
         v.setTextViewText(res(c, "id", "w_header"), plan.header);
+        v.setTextViewText(res(c, "id", "w_course_head"), plan.courseHead);
+        v.setTextViewText(res(c, "id", "w_todo_head"), plan.todoHead);
         v.removeAllViews(courseList);
         for (TodayPlan.Line l : plan.courses) v.addView(courseList, line(pkg, row, left, text, l, accent, sub));
         note(v, res(c, "id", "w_course_note"), plan.courseNote);
