@@ -76,6 +76,50 @@ function check(name, fn) { fn(); count++; console.log('PASS ' + name); }
         await page.evaluate(k => NwpuAuto.act('card', k), r.actions[0].key);
         const opened = await page.evaluate(() => !!window.opened);
         check('inert SPA menu anchor uses its normal page handler automatically', () => assert.equal(opened, true));
+        const walk = async (kind, limit = 150) => {
+            const visited = [], found = []; let fingerprint = '', stable = 0;
+            for (let i = 0; i < limit; i++) {
+                const r = await page.evaluate(({kind, visited}) => NwpuAuto.inspect(kind, visited), {kind, visited});
+                const m = r.snapshot.modules[kind], current = JSON.stringify(m);
+                if (r.settling || fingerprint !== current) { stable = 0; fingerprint = current; } else stable++;
+                if (!r.settling && stable > 0) {
+                    if (!r.actions.length) { if (m.state === 'ok') found.push(m); break; }
+                    const a = r.actions[0];
+                    if (!r.preparing && m.state === 'ok') found.push(m);
+                    visited.push(a.key); assert.equal(await page.evaluate(({kind,key}) => NwpuAuto.act(kind,key), {kind,key:a.key}), true);
+                    stable = 0;
+                }
+                await page.waitForTimeout(50);
+            }
+            return {visited, found};
+        };
+        await load('<label for=semester>学期</label><select id=semester><option value=2>2026春</option><option value=1>2025秋</option><option value=0>2025春</option></select><button onclick="window.queries.push(semester.value);rows.innerHTML=\'<tr><td>\'+semester.value+\'</td><td>3</td></tr>\'">查询</button><table><thead><tr><th>编号</th><th>学分</th></tr></thead><tbody id=rows></tbody></table><script>window.queries=[];</script>');
+        const history = await walk('card');
+        const queried = await page.evaluate(() => window.queries);
+        check('every offered semester is queried automatically exactly once', () => assert.deepEqual(queried.sort(), ['0','1','2']));
+        check('historical tables keep their semester context', () => assert.deepEqual([...new Set(history.found.flatMap(m => m.tables.map(t => t.title)))].sort(), ['2025春','2025秋','2026春']));
+        await load('<label for=filterStatus>状态</label><select id=filterStatus><option value=current>当前</option><option value=all>全部</option><option value=old>历史</option></select><button onclick="window.values.push(filterStatus.value);rows.innerHTML=\'<tr><td>\'+filterStatus.value+\'</td><td>4</td></tr>\'">查询</button><table><tr><th>状态</th><th>金额</th></tr><tbody id=rows></tbody></table><script>window.values=[];</script>');
+        await walk('card');
+        const allValues = await page.evaluate(() => window.values);
+        check('all-records filter avoids redundant queries of each status', () => assert.deepEqual(allValues, ['all']));
+        await load('<div class=el-form-item><label>学期</label><div class=el-select onclick="popup.style.display=popup.style.display===\'none\'?\'block\':\'none\'"><input readonly value="2026春"></div></div><ul id=popup class=el-select-dropdown style="display:none"><li class=el-select-dropdown__item onclick="document.querySelector(\'.el-select input\').value=\'2026春\';popup.style.display=\'none\'">2026春</li><li class=el-select-dropdown__item onclick="document.querySelector(\'.el-select input\').value=\'2025秋\';popup.style.display=\'none\'">2025秋</li></ul><button onclick="window.terms.push(document.querySelector(\'.el-select input\').value);rows.innerHTML=\'<tr><td>\'+window.terms[window.terms.length-1]+\'</td><td>1</td></tr>\'">查询</button><table><thead><tr><th>学期</th><th>学分</th></tr></thead><tbody id=rows></tbody></table><script>window.terms=[];</script>');
+        await walk('card');
+        const customTerms = await page.evaluate(() => window.terms);
+        check('component dropdown history is traversed using its normal handlers', () => assert.deepEqual(customTerms.sort(), ['2025秋','2026春']));
+        await load('<table><tr><th>课程</th><th>学分</th><th>操作</th></tr><tr><td>合成数学</td><td>3</td><td><button onclick="detail.style.display=\'block\'">详情</button></td></tr></table><div id=detail role=dialog style="display:none"><dl><dt>考核方式</dt><dd>考试</dd></dl><button onclick="detail.style.display=\'none\'">关闭</button></div>');
+        const details = await walk('card');
+        check('record detail dialog is read and closed before continuing the list', () => assert.ok(details.found.some(m => m.fields.some(f => f.label === '考核方式' && f.value === '考试' && f.group.includes('合成数学')))));
+        check('detail traversal returns to the record list automatically', () => assert.ok(details.visited.some(k => k.includes('|close:'))));
+        await page.goto('https://ecampus.nwpu.edu.cn/main.html');
+        await page.setContent('<main id=app></main>'); await page.addScriptTag({content:scripts});
+        await page.evaluate(() => { document.getElementById('app').__vue__ = {$data:{apps:[{appName:'体测查询',appUrl:'https://sports.nwpu.edu.cn/personal'},{appName:'一卡通',appUrl:'https://yktapp.nwpu.edu.cn/personal'},{appName:'非法入口',appUrl:'https://evil.test/'},{appName:'带票据',appUrl:'https://sports.nwpu.edu.cn/personal?ticket=PRIVATE'}]}}; });
+        const catalog = await page.evaluate(() => NwpuSso.inspect());
+        check('portal discovers additional services without extending a fixed list', () => assert.ok(catalog.apps.some(a=>a.title==='体测查询' && a.url==='https://sports.nwpu.edu.cn/personal')));
+        check('ticket-backed app keeps only its portal tile, never its transient ticket', () => assert.ok(catalog.apps.some(a=>a.title==='带票据' && a.url==='https://ecampus.nwpu.edu.cn/main.html')));
+        check('discovered catalog excludes tickets and external destinations', () => assert.ok(!JSON.stringify(catalog).includes('PRIVATE') && !JSON.stringify(catalog).includes('evil.test')));
+        await load('<div class=virtual-list style="height:50px;overflow:auto" onscroll="cell.textContent=Math.min(3,Math.floor(this.scrollTop/100))"><div style="height:400px"><div role=grid style="position:sticky;top:0"><div role=row><span role=columnheader>编号</span><span role=columnheader>数量</span></div><div role=row><span id=cell role=gridcell>0</span><span role=gridcell>1</span></div></div></div></div>');
+        const virtual = await walk('card');
+        check('virtual record list scrolls to read rows beyond the first viewport', () => assert.deepEqual([...new Set(virtual.found.flatMap(m=>m.tables.flatMap(t=>t.rows.map(row=>row[0]))))].sort(), ['0','1','2','3']));
         await browser.close(); console.log(count + ' checks passed');
     } finally { if (browser.isConnected()) await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

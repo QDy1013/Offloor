@@ -45,7 +45,8 @@ final class CampusAutoRefresh {
                     boolean same=owner.equals(p.getString("owner",""));
                     if (!force && same && !CampusAutoPolicy.due(now,p.getLong("started",0),p.getBoolean("active",false),p.getLong("next",0),p.getLong("version",0),version(context))) return;
                     String token=java.util.UUID.randomUUID().toString();
-                    p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).apply();
+                    String entry=a.getIntent().getStringExtra("course_url"); if (!CampusServices.readUrl(entry)) entry=same?p.getString("academic_entry",NwpuImportActivity.COURSE_URL):NwpuImportActivity.COURSE_URL;
+                    p.edit().putString("owner",owner).putString("run",token).putBoolean("active",true).putLong("started",now).putString("academic_entry",entry).putInt("done",0).putInt("total",0).apply();
                     a.startActivity(new Intent(a,CampusWebActivity.class).putExtra("all",true).putExtra("automatic",true).putExtra("fresh_login",closeLogin).putExtra("academic_incomplete",a.getIntent().getBooleanExtra("academic_incomplete",false)).putExtra("run",token));
                     if (closeLogin) a.finish();
                 }
@@ -67,6 +68,9 @@ final class CampusAutoRefresh {
     }
     static void rebind(Context c,String run,String owner) {
         synchronized (LOCK) { SharedPreferences p=prefs(c); if (run!=null && run.equals(p.getString("run",""))) p.edit().putString("owner",owner).putLong("started",System.currentTimeMillis()).apply(); }
+    }
+    static void heartbeat(Context c,String run,String owner) {
+        synchronized (LOCK) { if (owns(c,run,owner)) prefs(c).edit().putLong("started",System.currentTimeMillis()).apply(); }
     }
     static void finish(Context c,String run,String owner,boolean completed,boolean incomplete) {
         synchronized (LOCK) {

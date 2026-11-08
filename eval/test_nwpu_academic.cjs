@@ -124,6 +124,18 @@ check('exact HTTPS jwxt origin required', () => {
         const d = global.__louAcademicResult.data;
         assert.equal(global.__louAcademicResult.status, 'ok'); assert.deepEqual(d.failed, ['grades']); assert.equal(d.grades, null); assert.equal(d.gpa, null);
     });
+    const terms = [];
+    global.fetch = async url => {
+        if (url.includes('semester-index')) return respond(url,'<option value="321">2026春</option><option value="322">2025秋</option><option value="323">2025春</option>');
+        if (url.includes('grade/sheet/info')) { const term=new URL(url,'https://jwxt.nwpu.edu.cn').searchParams.get('semester'); terms.push(term); if (term==='321') return {ok:false,status:500}; const j=gradeJson(); j.semesterId2studentGrades[term]=j.semesterId2studentGrades['321']; delete j.semesterId2studentGrades['321']; return respond(url,term==='323'?{semesterId2studentGrades:{}}:j); }
+        return respond(url,url.includes('getMyGrades')?{gpa:3.9}:'<html></html>');
+    };
+    api.start('history','123'); await wait();
+    check('one failed semester cannot discard other readable historical semesters', () => {
+        const d=global.__louAcademicResult.data;
+        assert.deepEqual(terms.sort(),['321','322','323']); assert.deepEqual(d.failed,['grades']);
+        assert.deepEqual(d.gradeSemestersRead.sort(),['322','323']); assert.equal(d.grades.length,2); assert.equal(d.gradeProgress.finished,3);
+    });
     global.fetch = async url => ({ok: true, url: 'https://jwxt.nwpu.edu.cn/student/login', text: async () => '<html>LOGIN SECRET</html>'});
     api.start('t3', '123'); await wait();
     check('expired session: generic error, no body leaked', () => {

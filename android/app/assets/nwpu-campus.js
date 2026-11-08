@@ -78,25 +78,33 @@
         if (required[kind] && host !== required[kind]) return empty('unavailable', url);
         // Portal tiles and library news are entry points, not personal records. Wait until the
         // user (or a labelled link) has opened the actual service page before collecting data.
-        if (host === 'ecampus.nwpu.edu.cn' || host === 'uis.nwpu.edu.cn') return empty('unavailable', url);
+        if ((host === 'ecampus.nwpu.edu.cn' && /^\/(?:main\.html)?$/.test(new URL(url).pathname)) || host === 'uis.nwpu.edu.cn') return empty('unavailable', url);
         if (['program', 'completion', 'selection', 'evaluation'].includes(kind) && /\/student\/home\/?$/.test(new URL(url).pathname)) return empty('unavailable', url);
         if (kind === 'library' && !/借阅|应还|到期|续借/.test(Array.from(doc.querySelectorAll('h1,h2,h3,.panel-title,.page-title,th')).map(e => e.textContent).join(' '))) return empty('unavailable', url);
         const out = empty('unavailable', url), seen = new Set();
         const add = (label, value) => {
             label = cut(label, 80).replace(/[:：]\s*$/, ''); value = cut(value);
             if (!label || !value || sensitive.test(label) || label === value || seen.has(label + '\0' + value)) return;
-            seen.add(label + '\0' + value); if (out.fields.length < 80) out.fields.push({label, value});
+            seen.add(label + '\0' + value); if (out.fields.length < 2000) out.fields.push({label, value});
         };
         for (const dt of doc.querySelectorAll('dt')) if (dt.nextElementSibling && dt.nextElementSibling.tagName === 'DD' && visible(dt, live)) add(nodeText(dt, live), nodeText(dt.nextElementSibling, live));
         for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label, .layui-form-label, .el-statistic__head, .ant-statistic-title, label[for]')) {
             if (!visible(label, live)) continue;
-            const bound = label.getAttribute('for') && doc.getElementById(label.getAttribute('for'));
-            if (bound && !/^(password|hidden)$/i.test(bound.type) && visible(bound, live)) { add(nodeText(label, live), bound.tagName === 'SELECT' ? bound.options[bound.selectedIndex] && bound.options[bound.selectedIndex].text : bound.value); continue; }
+            if (/^(学年|学期|年度|年份|状态|交易类型|记录类型|查询范围)[:：]?$/.test(clean(nodeText(label, live)))) continue;
+            const bound = label.getAttribute('for') && (doc.getElementById ? doc : doc.ownerDocument).getElementById(label.getAttribute('for'));
+            if (bound && !/^(password|hidden)$/i.test(bound.type) && visible(bound, live)) {
+                if (bound.readOnly || bound.disabled) add(nodeText(label, live), bound.tagName === 'SELECT' ? bound.options[bound.selectedIndex] && bound.options[bound.selectedIndex].text : bound.value);
+                continue;
+            }
             const value = label.nextElementSibling;
             if (value && !value.querySelector('input[type="password"]')) {
                 const input = value.querySelector('input:not([type="hidden"]):not([type="password"]), textarea');
-                add(nodeText(label, live), input ? input.value : nodeText(value, live));
+                if (!input || input.readOnly || input.disabled) add(nodeText(label, live), input ? input.value : nodeText(value, live));
             }
+        }
+        for (const label of doc.querySelectorAll('.info-label,.detail-label,.item-label')) {
+            const value = label.nextElementSibling;
+            if (visible(label, live) && value && visible(value, live) && !label.closest('nav,header,footer')) add(nodeText(label, live), nodeText(value, live));
         }
         for (const table of doc.querySelectorAll('table')) {
             if (!visible(table, live) || table.closest('nav, header, footer, .sidebar, .navbar, .menu') || table.querySelector('table')) continue;
@@ -114,16 +122,35 @@
             const sharedHeaders = component && component.querySelector('.el-table__header thead tr,.ant-table-thead tr');
             let columns = hasHeader ? rows.shift() : sharedHeaders ? Array.from(sharedHeaders.querySelectorAll('th')).map(e => cut(nodeText(e, live), 600)) : rows[0].map((_, i) => '第' + (i + 1) + '列');
             // Never expose hidden credential fields or private family/identity columns.
-            const keep = columns.map((c, i) => sensitive.test(c) ? -1 : i).filter(i => i >= 0).slice(0, 12);
+            const keep = columns.map((c, i) => sensitive.test(c) ? -1 : i).filter(i => i >= 0).slice(0, 30);
             if (!keep.length) continue;
-            const data = rows.filter(r => !r.some(cell => sensitive.test(cell))).slice(0, 200).map(r => keep.map(i => r[i] || ''));
+            const data = rows.filter(r => !r.some(cell => sensitive.test(cell))).slice(0, 10000).map(r => keep.map(i => r[i] || ''));
             if (!data.length || !data.some(r => r.some(Boolean))) continue;
-            if (out.tables.length < 12) out.tables.push({title: cut(table.caption && table.caption.textContent || '', 100), columns: keep.map(i => columns[i]), rows: data, truncated: rows.length > 200});
+            if (out.tables.length < 80) out.tables.push({title: cut(table.caption && table.caption.textContent || '', 100), columns: keep.map(i => columns[i]), rows: data, truncated: rows.length > 10000});
+        }
+        for (const grid of doc.querySelectorAll('[role="grid"],[role="table"]')) {
+            if (grid.tagName === 'TABLE' || grid.querySelector('table') || !visible(grid, live)) continue;
+            let columns = Array.from(grid.querySelectorAll('[role="columnheader"]')).filter(e => visible(e, live)).map(e => cut(nodeText(e, live), 600));
+            const rows = Array.from(grid.querySelectorAll('[role="row"]')).filter(e => visible(e, live)).map(row => Array.from(row.querySelectorAll('[role="gridcell"],[role="cell"]')).filter(e => visible(e, live)).map(e => cut(nodeText(e, live), 600))).filter(row => row.length);
+            if (!rows.length) continue;
+            if (!columns.length) columns = rows[0].map((_, i) => '第' + (i + 1) + '列');
+            const keep = columns.map((c, i) => sensitive.test(c) ? -1 : i).filter(i => i >= 0).slice(0, 30);
+            if (keep.length && out.tables.length < 80) out.tables.push({title: '', columns: keep.map(i => columns[i]), rows: rows.slice(0, 10000).map(row => keep.map(i => row[i] || '')), truncated: rows.length > 10000});
         }
         // Text-only balance cards: require a labelled value, never collect entire body text.
         const text = (live && doc.body && doc.body.innerText || '').slice(0, 120000);
         const metrics = /((?:账户|帐户|校园卡|一卡通|可用|当前|剩余)?(?:总?余额|剩余电量|已用流量|剩余流量|使用流量|基础套餐|当前套餐))\s*[:：]\s*([^\n]{1,90})/g;
         let m; while ((m = metrics.exec(text))) add(m[1], m[2]);
+        for (const a of doc.querySelectorAll('a[href]')) {
+            if (!visible(a, live) || a.closest('nav,header,footer,.sidebar,.navbar,.menu')) continue;
+            const href = safeUrl(a.getAttribute('href'), url), title = cut(nodeText(a, live), 180);
+            if (title && /\.(?:pdf|docx?|xlsx?)(?:[?#]|$)/i.test(href) && !out.links.some(l => l.url === href) && out.links.length < 400) out.links.push({title, url: href});
+        }
+        const article = doc.querySelector('article,.article-content,.detail-content,.notice-content');
+        if (article && visible(article, live)) {
+            const body = cut(nodeText(article, live), 40000);
+            for (let i = 0; i < body.length && out.fields.length < 80; i += 800) add(i ? '正文（续' + (i / 800 + 1) + '）' : '正文', body.slice(i, i + 800));
+        }
         if (['notices', 'calendar', 'bus'].includes(kind)) {
             for (const a of doc.querySelectorAll('a[href]')) {
                 if (!visible(a, live) || a.closest('nav, header, footer, .sidebar, .navbar, .menu')) continue;
@@ -185,9 +212,17 @@
             await p; root.__louCampusResult = {token, status: 'ok', data};
         })().catch(() => { root.__louCampusResult = {token, status: 'error'}; });
     }
-    function capture(kind) {
-        const url = root.location.href, data = extract(root.document, url, kind, true);
+    function capture(kind, doc = root.document) {
+        const url = root.location.href, data = extract(doc, url, kind, true);
         return {version: 1, school: SCHOOL, modules: {[kind]: data}, routes: discover(root.document, url)};
+    }
+    function profileStart(token, student) {
+        root.__louProfileResult = {token, status: 'loading'};
+        (async () => {
+            if (root.location.origin !== 'https://jwxt.nwpu.edu.cn' || !/^\d{1,20}$/.test(String(student))) throw new Error('origin');
+            const data = {version: 1, school: SCHOOL, identity: String(student), modules: {profile: profile(await get('/student/for-std/student-portrait/getStdInfo?bizTypeAssoc=2&cultivateTypeAssoc=1', 'json'), student)}};
+            root.__louProfileResult = {token, status: 'ok', data};
+        })().catch(() => { root.__louProfileResult = {token, status: 'error'}; });
     }
     function electricForm(level, binding) {
         if (![0, 1, 2, 3].includes(level)) throw new Error('level');
@@ -223,6 +258,6 @@
             } finally { clearTimeout(timer); }
         })().catch(() => { root.__louElectricResult = {token, status: 'error'}; });
     }
-    const api = {allowed, safeUrl, source, discover, extract, profile, start, capture, electricForm, electricNormalize, electricStart};
+    const api = {allowed, safeUrl, source, discover, extract, profile, profileStart, start, capture, electricForm, electricNormalize, electricStart};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuCampus = api;
 })(typeof window === 'undefined' ? globalThis : window);

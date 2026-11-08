@@ -9,9 +9,10 @@ import java.util.Iterator;
 
 /** Bounded snapshots. Failed reads keep the last successful content and its timestamp. */
 final class CampusData {
-    static final int MAX_BYTES = 2_000_000;
+    static final int MAX_BYTES = 24_000_000;
     final JSONObject json, modules, routes;
     final String owner;
+    final JSONArray catalog;
     CampusData(String value) throws JSONException {
         if (value == null || value.length() > MAX_BYTES) throw new JSONException("校园数据过大");
         json = new JSONObject(value);
@@ -20,12 +21,14 @@ final class CampusData {
         if (!owner.isEmpty() && !owner.matches("[a-f0-9]{64}")) throw new JSONException("账号标记无效");
         modules = json.optJSONObject("modules") == null ? new JSONObject() : json.getJSONObject("modules");
         routes = json.optJSONObject("routes") == null ? new JSONObject() : json.getJSONObject("routes");
+        catalog=json.optJSONArray("catalog")==null?new JSONArray():json.getJSONArray("catalog");
+        try { CampusCatalog.validate(catalog); } catch (Exception e) { throw new JSONException("校园服务目录无效"); }
         for (Iterator<String> it = modules.keys(); it.hasNext();) {
-            String id = it.next(); if (CampusServices.byId(id) == null) throw new JSONException("未知校园模块");
+            String id = it.next(); if (service(id) == null) throw new JSONException("未知校园模块");
             validateModule(modules.getJSONObject(id));
         }
         for (Iterator<String> it = routes.keys(); it.hasNext();) {
-            String id = it.next(); if (CampusServices.byId(id) == null || !CampusServices.readUrl(routes.getString(id))) throw new JSONException("校园入口无效");
+            String id = it.next(); if (service(id) == null || !CampusServices.readUrl(routes.getString(id))) throw new JSONException("校园入口无效");
         }
     }
     static String string(JSONObject j, String key, int max) throws JSONException {
@@ -41,14 +44,16 @@ final class CampusData {
         String state = string(m, "state", 30);
         if (!java.util.Arrays.asList("ok", "empty", "login", "binding", "network", "unavailable", "unsupported").contains(state)) throw new JSONException("同步状态无效");
         String src = string(m, "source", 2000); if (!src.isEmpty() && !CampusServices.readUrl(src)) throw new JSONException("数据来源无效");
-        JSONArray fields = array(m, "fields", 80), tables = array(m, "tables", 12), links = array(m, "links", 40);
+        JSONArray fields = array(m, "fields", 2000), tables = array(m, "tables", 80), links = array(m, "links", 400);
         for (int i=0; i<fields.length(); i++) {
             JSONObject f = fields.getJSONObject(i);
+            string(f,"group",180);
+            String record=string(f,"record",2500); if (!record.isEmpty() && !record.startsWith("https://")) throw new JSONException("记录来源无效");
             if (string(f, "label", 80).isEmpty() || string(f, "value", 800).isEmpty()) throw new JSONException("字段缺失");
         }
         for (int i=0; i<tables.length(); i++) {
             JSONObject t = tables.getJSONObject(i); string(t, "title", 100);
-            JSONArray cols = array(t, "columns", 12), rows = array(t, "rows", 2000);
+            JSONArray cols = array(t, "columns", 30), rows = array(t, "rows", 10000);
             if (cols.length() == 0) throw new JSONException("表格缺少列");
             for (int c=0; c<cols.length(); c++) if (!(cols.get(c) instanceof String) || cols.getString(c).length() > 600) throw new JSONException("表头无效");
             for (int r=0; r<rows.length(); r++) {
@@ -86,10 +91,21 @@ final class CampusData {
         JSONObject next = previous == null || changed ? new JSONObject("{\"version\":1,\"school\":\"西北工业大学\",\"modules\":{},\"routes\":{}}") : new JSONObject(previous.encode());
         next.put("owner", owner);
         JSONObject modules = next.getJSONObject("modules"), routes = next.getJSONObject("routes"), incoming = f.optJSONObject("modules");
+        JSONArray catalog=next.optJSONArray("catalog"); if (catalog==null) { catalog=new JSONArray(); next.put("catalog",catalog); }
+        JSONArray apps=CampusCatalog.normalize(f.optJSONArray("catalog"));
+        for (int i=0;i<apps.length();i++) if (CampusCatalog.find(catalog,apps.getJSONObject(i).getString("id"))==null && catalog.length()<CampusCatalog.MAX) catalog.put(apps.getJSONObject(i));
         for (Iterator<String> it = incoming == null ? java.util.Collections.emptyIterator() : incoming.keys(); it.hasNext();) {
-            String id = it.next(); if (CampusServices.byId(id) == null) throw new JSONException("未知校园模块");
+            String id = it.next(); if (CampusServices.byId(id) == null && CampusCatalog.find(catalog,id)==null) throw new JSONException("未知校园模块");
             JSONObject m = new JSONObject(incoming.getJSONObject(id).toString()); validateModule(m);
-            if ("ok".equals(m.getString("state")) || "empty".equals(m.getString("state"))) { m.put("updated", now); modules.put(id, m); }
+            if ("ok".equals(m.getString("state")) || "empty".equals(m.getString("state"))) {
+                JSONObject old=modules.optJSONObject(id);
+                if (m.optBoolean("partial") && old!=null && count(old)>0 && "ok".equals(m.getString("state"))) {
+                    JSONObject keep=new JSONObject(old.toString()).put("state","ok");
+                    CampusReadSession accumulated=new CampusReadSession(); accumulated.add(keep); accumulated.add(m);
+                    m=accumulated.result(); m.put("partial",true);
+                }
+                m.put("updated", now); modules.put(id, m);
+            }
             else {
                 JSONObject old = modules.optJSONObject(id);
                 if (old != null && count(old) > 0) { old.put("state", m.getString("state")); old.put("attempted", now); }
@@ -98,11 +114,15 @@ final class CampusData {
         }
         JSONObject discovered = f.optJSONObject("routes");
         for (Iterator<String> it = discovered == null ? java.util.Collections.emptyIterator() : discovered.keys(); it.hasNext();) {
-            String id = it.next(); if (CampusServices.byId(id) != null && CampusServices.readUrl(discovered.optString(id))) routes.put(id, discovered.getString(id));
+            String id = it.next(); if ((CampusServices.byId(id) != null || CampusCatalog.find(catalog,id)!=null) && CampusServices.readUrl(discovered.optString(id))) routes.put(id, discovered.getString(id));
         }
         return new CampusData(next.toString());
     }
     JSONObject module(String id) { return modules.optJSONObject(id); }
+    CampusServices.Service service(String id) { CampusServices.Service s=CampusServices.byId(id); return s==null?CampusCatalog.find(catalog,id):s; }
+    java.util.List<CampusServices.Service> services() {
+        java.util.List<CampusServices.Service> result=new java.util.ArrayList<>(java.util.Arrays.asList(CampusServices.ALL)); result.addAll(CampusCatalog.services(catalog)); return result;
+    }
     String route(CampusServices.Service s) { return routes.optString(s.id, s.entry); }
     String encode() { return json.toString(); }
 }

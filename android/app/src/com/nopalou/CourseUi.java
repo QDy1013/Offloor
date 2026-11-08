@@ -17,8 +17,10 @@ import android.graphics.drawable.Drawable;
 final class CourseUi {
     static TextView text(Context c, String value, float size, int color, boolean bold) {
         TextView t = new TextView(c); t.setText(value); t.setTextSize(size); t.setTextColor(color);
-        t.setIncludeFontPadding(false);
-        if (bold) t.setTypeface(Ui.medium());
+        t.setIncludeFontPadding(true);
+        t.setTypeface(bold?Ui.medium():android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL),android.graphics.Typeface.NORMAL);
+        t.getPaint().setTextSkewX(0); t.setTextScaleX(1); t.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        t.setTextAlignment(android.view.View.TEXT_ALIGNMENT_GRAVITY);
         return t;
     }
     static TextView action(Context c, String value, boolean primary, Runnable click) {
@@ -32,7 +34,7 @@ final class CourseUi {
         return t;
     }
     static LinearLayout column(Context c) {
-        LinearLayout v = new LinearLayout(c); v.setOrientation(LinearLayout.VERTICAL); return v;
+        LinearLayout v = new LinearLayout(c); v.setOrientation(LinearLayout.VERTICAL); v.setBaselineAligned(false); return v;
     }
     static ImageView icon(Context c, String type, String description, Runnable click) {
         ImageView v = new ImageView(c); v.setImageDrawable(glyph(c, type));

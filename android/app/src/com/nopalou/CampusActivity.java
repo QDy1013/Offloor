@@ -23,14 +23,23 @@ public class CampusActivity extends Activity {
     private CampusData data;
     private String detail;
     private boolean loaded;
+    private boolean resumed;
     private LinearLayout list;
+    private ScrollView scroll;
+    private final android.os.Handler updates=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable changed=() -> { if (resumed) { updates.removeCallbacks(this.refresh); updates.postDelayed(this.refresh,250); } };
+    private final Runnable refresh=this::reload;
     @Override public void onCreate(Bundle b) { super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module"); render(); }
     @Override public void onResume() {
-        super.onResume(); CampusAutoRefresh.maybeRefresh(this); io.execute(() -> {
+        super.onResume(); resumed=true; CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload();
+    }
+    private void reload() {
+        if (isDestroyed() || io.isShutdown()) return;
+        io.execute(() -> {
             CampusData d=null; boolean broken=false;
             try { d=CampusStore.load(getApplicationContext()); } catch (Exception e) { broken=true; }
             CampusData result=d; boolean bad=broken;
-            runOnUiThread(() -> { if (isDestroyed()) return; data=result; loaded=true; render(); if (bad) toast("校园存档无法读取"); });
+            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); data=result; loaded=true; render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); if (bad) toast("校园存档无法读取"); });
         });
     }
     private int dp(float n) { return Ui.dp(this,n); }
@@ -39,12 +48,12 @@ public class CampusActivity extends Activity {
     private void render() {
         if (isFinishing() || isDestroyed()) return;
         LinearLayout root=CourseUi.column(this); root.setBackgroundColor(Ui.BG); setContentView(root); Ui.systemBars(this,root);
-        CampusServices.Service service=CampusServices.byId(detail);
-        LinearLayout head=new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL); head.setPadding(dp(16),dp(12),dp(8),dp(10)); root.addView(head);
+        CampusServices.Service service=data==null?CampusServices.byId(detail):data.service(detail);
+        LinearLayout head=new LinearLayout(this); head.setBaselineAligned(false); head.setGravity(Gravity.CENTER_VERTICAL); head.setPadding(dp(16),dp(12),dp(8),dp(10)); root.addView(head);
         if (service!=null) head.addView(CourseUi.icon(this,"prev","返回校园",this::finish));
         head.addView(text(service==null?"我的校园":service.title,26,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
         if (service==null) head.addView(CourseUi.icon(this,"more","校园设置",this::settings));
-        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
+        scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
         list=CourseUi.column(this); list.setPadding(dp(16),dp(4),dp(16),dp(28)); scroll.addView(list); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if (!loaded) note("正在读取本机数据…");
         else if (service!=null) renderDetail(service);
@@ -60,22 +69,27 @@ public class CampusActivity extends Activity {
     private static String time(long t) { return t<=0?"尚未同步":new SimpleDateFormat("M月d日 HH:mm",Locale.CHINA).format(new Date(t)); }
     private void renderOverview() {
         LinearLayout hero=card();
-        int saved=0; for (CampusServices.Service s:CampusServices.ALL) if (data!=null && CampusData.count(data.module(s.id))>0) saved++;
+        int saved=0; if (data!=null) for (CampusServices.Service s:data.services()) if (CampusData.count(data.module(s.id))>0) saved++;
         hero.addView(text("西北工业大学",12,Ui.ACCENT,true)); CourseUi.gap(hero,10);
         hero.addView(text(saved==0?"把校园信息，放到一起":saved+" 项校园服务已有本机数据",22,Ui.TEXT,true));
         CourseUi.gap(hero,10); TextView sub=text("登录后自动读取各项校园信息，打开应用时会按需自动刷新，无需手动同步。校方安全验证会单独提示。",12,Ui.SUB,false); sub.setLineSpacing(dp(4),1); hero.addView(sub);
         CourseUi.gap(hero,18);
         if (data==null || data.owner.isEmpty()) hero.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48)));
-        else hero.addView(text("自动读取已开启 · 所有数据保存在本机",12,Ui.ACCENT,true));
+        else {
+            android.content.SharedPreferences p=getSharedPreferences("campus-auto",MODE_PRIVATE);
+            boolean active=p.getBoolean("active",false);
+            hero.addView(text(active?"正在自动读取 · "+p.getInt("done",0)+" / "+p.getInt("total",0)+" 项 · 结果实时更新":"自动读取已开启 · 所有数据保存在本机",12,Ui.ACCENT,true));
+        }
         section("我的学业"); for (CampusServices.Service s:CampusServices.ALL) if (s.academic) moduleCard(s);
         section("校园生活"); for (CampusServices.Service s:CampusServices.ALL) if (!s.academic && !s.id.equals("notices") && !s.id.equals("calendar")) moduleCard(s);
         section("公共信息"); for (CampusServices.Service s:CampusServices.ALL) if (s.id.equals("notices") || s.id.equals("calendar")) moduleCard(s);
+        if (data!=null && data.catalog.length()>0) { section("门户中的其他服务"); for (CampusServices.Service s:CampusCatalog.services(data.catalog)) moduleCard(s); }
         note("数据保存在本机。页面没有读到内容时会保留上次成功同步的数据，并显示本次结果。预约、缴费等操作请在校方页面完成。");
     }
     private void moduleCard(CampusServices.Service s) {
         JSONObject m=data==null?null:data.module(s.id); int count=CampusData.count(m);
         LinearLayout c=card(); c.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,18),Ui.press(),18)); c.setFocusable(true);
-        LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); c.addView(row);
+        LinearLayout row=new LinearLayout(this); row.setBaselineAligned(false); row.setGravity(Gravity.CENTER_VERTICAL); c.addView(row);
         row.addView(text(s.title,16,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
         String state=m==null?"":m.optString("state");
         row.addView(Ui.tag(this,CampusServices.status(state),"ok".equals(state)?Ui.ACCENT:Ui.SUB,"ok".equals(state)?Ui.ACCENT_BG:Ui.FILL));
@@ -103,7 +117,8 @@ public class CampusActivity extends Activity {
         if (fields!=null && fields.length()>0) {
             LinearLayout c=card();
             for (int i=0;i<fields.length();i++) { JSONObject f=fields.optJSONObject(i); if (f==null) continue;
-                TextView label=text(f.optString("label"),12,Ui.SUB,false); c.addView(label); CourseUi.gap(c,5);
+                String group=f.optString("group");
+                TextView label=text((group.isEmpty()?"":group+" · ")+f.optString("label"),12,Ui.SUB,false); c.addView(label); CourseUi.gap(c,5);
                 TextView value=text(f.optString("value"),16,Ui.TEXT,true); value.setTextIsSelectable(true); c.addView(value); if (i<fields.length()-1) CourseUi.gap(c,18);
             }
         }
@@ -149,6 +164,6 @@ public class CampusActivity extends Activity {
         }).show();
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
-    @Override public void onPause() { CampusAutoRefresh.pause(this); super.onPause(); }
+    @Override public void onPause() { resumed=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
     @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
 }

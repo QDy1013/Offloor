@@ -140,16 +140,20 @@
             doc = parseHtml(await get('/student/for-std/exam-arrange/info/' + student, 'html'));
         return normalizeExams(examRows(doc));
     }
-    async function grades(student) {
+    async function grades(student, progress) {
         const sems = semesterOptions(await get('/student/for-std/grade/sheet/semester-index/' + student, 'html'));
         if (!sems.length) throw new Error('没有读到成绩学期');
-        const all = [];
+        const results = new Map(), failed = []; let finished = 0;
+        const current = () => sems.flatMap(s => results.get(s.id) || []);
         for (let i = 0; i < sems.length; i += 4) {           // small batches, gentle on the school server
-            const batch = await Promise.all(sems.slice(i, i + 4).map(s =>
-                get('/student/for-std/grade/sheet/info/' + student + '?semester=' + s.id, 'json').then(j => normalizeGrades(j, s.id, s.name))));
-            batch.forEach(b => all.push(...b));
+            await Promise.all(sems.slice(i, i + 4).map(async s => {
+                try { results.set(s.id, normalizeGrades(await get('/student/for-std/grade/sheet/info/' + student + '?semester=' + s.id, 'json'), s.id, s.name)); }
+                catch (_) { failed.push(s.id); }
+                finished++; progress(current(), Array.from(results.keys()), finished, sems.length);
+            }));
         }
-        return all;
+        if (!results.size) throw new Error('没有读到成绩');
+        return {rows: current(), read: Array.from(results.keys()), failed};
     }
     function start(token, student) {
         root.__louAcademicResult = {token, status: 'loading'};
@@ -160,17 +164,20 @@
                 root.__louAcademicResult = {token, status: 'error', message: '请先登录教务系统'}; return;
             }
             const sid = String(student);
+            let revision = 0;
+            const publish = () => { root.__louAcademicResult = {token, revision: ++revision, status: 'partial', data: JSON.parse(JSON.stringify(data))}; };
             const done = (part, value) => {
                 data[part] = value; data.failed = data.failed.filter(p => p !== part);
-                root.__louAcademicResult = {token, status: 'partial', data: JSON.parse(JSON.stringify(data))};
+                publish();
             };
             await Promise.all([
                 exams(sid).then(v => done('exams', v), () => {}),
-                grades(sid).then(v => done('grades', v), () => {}),
+                grades(sid, (rows, read, finished, total) => { data.grades = rows; data.gradeSemestersRead = read; data.gradeProgress = {finished, total}; publish(); })
+                    .then(v => { data.gradeSemestersRead = v.read; data.gradeSemestersFailed = v.failed; if (!v.failed.length) done('grades', v.rows); else { data.grades = v.rows; publish(); } }, () => {}),
                 get('/student/for-std/student-portrait/getMyGrades?studentAssoc=' + sid + '&semesterAssoc=', 'json')
                     .then(j => done('gpa', normalizeGpa(j)), () => {}),
             ]);
-            root.__louAcademicResult = data.failed.length === 3
+            root.__louAcademicResult = data.failed.length === 3 && !(data.gradeSemestersRead || []).length
                 ? {token, status: 'error', message: '考试和成绩暂时没有读到'}
                 : {token, status: 'ok', data};
         })().catch(() => { root.__louAcademicResult = {token, status: 'error', message: '考试和成绩暂时没有读到'}; });

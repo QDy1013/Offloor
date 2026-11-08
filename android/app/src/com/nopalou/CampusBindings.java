@@ -8,7 +8,7 @@ import java.util.Set;
 /** Match only explicit personal housing fields to live school options. Never guess a room. */
 final class CampusBindings {
     static JSONObject match(CampusData data,JSONArray options,int level) {
-        if (data==null || level<0 || level>2) return null;
+        if (data==null || options==null || level<0 || level>2) return null;
         Set<String> hints=new HashSet<>();
         for (String module:new String[]{"housing","affairs"}) {
             JSONObject m=data.module(module);

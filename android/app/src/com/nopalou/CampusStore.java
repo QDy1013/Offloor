@@ -8,6 +8,12 @@ import java.nio.charset.StandardCharsets;
 
 /** App-private campus snapshots. No credentials or full server response bodies are stored. */
 final class CampusStore {
+    private static final java.util.List<java.lang.ref.WeakReference<Runnable>> observers=new java.util.ArrayList<>();
+    private static final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
+    static synchronized void observe(Runnable callback) { unobserve(callback); observers.add(new java.lang.ref.WeakReference<>(callback)); }
+    static synchronized void unobserve(Runnable callback) { observers.removeIf(ref -> ref.get()==null || ref.get()==callback); }
+    private static void changed() { for (java.lang.ref.WeakReference<Runnable> ref:observers) { Runnable callback=ref.get(); if (callback!=null) main.post(callback); } }
+    static synchronized void signalChanged() { changed(); }
     private static AtomicFile file(Context c) { return new AtomicFile(new File(c.getFilesDir(), "campus.json")); }
     static synchronized CampusData load(Context c) throws Exception {
         AtomicFile f = file(c);
@@ -31,7 +37,19 @@ final class CampusStore {
         AtomicFile f=file(c); FileOutputStream out=null;
         try { out=f.startWrite(); out.write(bytes); f.finishWrite(out); }
         catch (Exception e) { if (out != null) f.failWrite(out); throw e; }
-        return next;
+        changed(); return next;
     }
-    static synchronized void clear(Context c) { file(c).delete(); c.getSharedPreferences("campus-binding", Context.MODE_PRIVATE).edit().clear().apply(); }
+    static synchronized CampusData bind(Context c,String fresh) throws Exception {
+        String key=CampusData.accountKey(new org.json.JSONObject(fresh).getString("identity"));
+        CampusData old=null; try { old=load(c); } catch (Exception ignored) { }
+        if (old==null || !key.equals(old.owner)) clearAll(c);
+        return update(c,fresh,null);
+    }
+    static synchronized Academic updateAcademic(Context c,String fresh,String owner,String run) throws Exception {
+        CampusData current=load(c);
+        if (current==null || !owner.equals(current.owner) || !CampusAutoRefresh.owns(c,run,owner)) throw new java.io.IOException("账号或读取任务已变化");
+        Academic result=AcademicStore.update(c,fresh); changed(); return result;
+    }
+    static synchronized void clearAll(Context c) { AcademicStore.clear(c); TimetableStore.clear(c); clear(c); }
+    static synchronized void clear(Context c) { file(c).delete(); c.getSharedPreferences("campus-binding", Context.MODE_PRIVATE).edit().clear().apply(); changed(); }
 }

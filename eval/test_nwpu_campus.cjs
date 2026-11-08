@@ -91,7 +91,7 @@ check('electricity validates the observed school schema, negative balance remain
             assert.equal(requests.every(r => r.method==='GET'),true); assert.equal(requests.some(r => r.url.includes('/submit')),false);
         });
         const maxRows = await extract('<table><tr><th>课程</th><th>学分</th></tr>'+Array.from({length:205},(_,i)=>`<tr><td>合成课${i}</td><td>1</td></tr>`).join('')+'</table>','https://jwxt.nwpu.edu.cn/student/for-std/observed-plan','program');
-        check('large tables are bounded and explicitly mark truncation', () => { assert.equal(maxRows.tables[0].rows.length,200); assert.equal(maxRows.tables[0].truncated,true); });
+        check('a fully loaded table is no longer silently cut at 200 records', () => { assert.equal(maxRows.tables[0].rows.length,205); assert.equal(maxRows.tables[0].truncated,false); });
         const notices = await extract('<nav><a href="/info/1.htm">导航通知公告</a></nav><a href="/info/2.htm">2026年合成校历与校车时刻表</a><a href="/info/3.htm?ticket=PRIVATE">私人通知</a>','https://xygg.nwpu.edu.cn/xygg/xngg.htm','calendar');
         check('public info retains official links and drops nav or ticket links', () => { assert.equal(notices.links.length,1); assert.equal(notices.links[0].url,'https://xygg.nwpu.edu.cn/info/2.htm'); });
         if (process.argv[2]) fs.writeFileSync(process.argv[2],JSON.stringify(result.data));

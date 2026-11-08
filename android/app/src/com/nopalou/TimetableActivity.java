@@ -454,7 +454,7 @@ public class TimetableActivity extends Activity {
                     }
                     if (which == 4) alert().setTitle("删除本机课表？").setMessage("删除后可重新导入。")
                             .setNegativeButton("取消", null).setPositiveButton("删除", (x, y) -> io.execute(() -> {
-                                TimetableStore.clear(getApplicationContext()); AcademicStore.clear(getApplicationContext()); CampusStore.clear(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
+                                CampusStore.clearAll(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
                             })).show();
                 }).setNegativeButton("关闭", null).show();
     }

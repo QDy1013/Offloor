@@ -57,7 +57,7 @@ function check(name,fn) { fn(); count++; console.log('PASS '+name); }
         await page.setContent('<main id="app"><div data-url="https://xgpt.nwpu.edu.cn/">学生工作平台</div></main>');
         await page.evaluate(() => { document.getElementById('app').__vue__={$data:{apps:[{appName:'一卡通',appUrl:'https://yktapp.nwpu.edu.cn/sso-entry'},{appName:'座位预约',appUrl:'https://ic.nwpu.edu.cn/home?ticket=PRIVATE'}],access_token:'PRIVATE'}}; });
         r=await page.evaluate(() => NwpuSso.inspect());
-        check('portal app catalog yields only observed safe service URLs',() => { assert.equal(r.routes.card,'https://yktapp.nwpu.edu.cn/sso-entry'); assert.equal(r.routes.affairs,'https://xgpt.nwpu.edu.cn/'); assert.equal(r.routes.seats,undefined); assert.equal(JSON.stringify(r).includes('PRIVATE'),false); });
+        check('portal app catalog keeps safe URLs or the normal portal entry, never tickets',() => { assert.equal(r.routes.card,'https://yktapp.nwpu.edu.cn/sso-entry'); assert.equal(r.routes.affairs,'https://xgpt.nwpu.edu.cn/'); assert.equal(r.routes.seats,'https://ecampus.nwpu.edu.cn/main.html'); assert.equal(JSON.stringify(r).includes('PRIVATE'),false); });
         await page.setContent('<button onclick="window.hit=(window.hit||0)+1">统一身份认证登录</button>');
         const once=await page.evaluate(() => [NwpuSso.click('sso','one-action'),window.hit]);
         await page.addScriptTag({content:sso});

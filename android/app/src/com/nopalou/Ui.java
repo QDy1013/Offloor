@@ -375,6 +375,7 @@ final class Ui {
         t.setText(text == null ? "" : text);
         t.setTextSize(11);
         t.setTypeface(medium());
+        t.getPaint().setTextSkewX(0); t.setGravity(android.view.Gravity.CENTER_VERTICAL);
         t.setTextColor(textColor);
         t.setIncludeFontPadding(false);
         t.setBackground(round(c, bgColor, 6));

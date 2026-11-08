@@ -54,6 +54,9 @@ final class CampusServices {
             return !params.matches(".*(?:ticket|token|password|session|secret|cookie|action|operation|method)=.*");
         } catch (Exception e) { return false; }
     }
+    static boolean isPortal(String value) {
+        try { URI u=new URI(value); return "ecampus.nwpu.edu.cn".equals(u.getHost()) && ("/".equals(u.getPath()) || "/main.html".equals(u.getPath()) || "".equals(u.getPath())); } catch (Exception e) { return false; }
+    }
     static String status(String state) {
         switch (state) {
             case "ok": return "已同步";
