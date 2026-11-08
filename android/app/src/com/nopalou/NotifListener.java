@@ -209,8 +209,11 @@ public class NotifListener extends NotificationListenerService {
             if (eng.noteMedia(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt), placeholder)) media++;
         }
         for (int i = 0; i < imageUris.size(); i++) {
+            long at = imageTimes.get(i) > 0 ? imageTimes.get(i) : sbn.getPostTime();
+            // 会话通知每次都带上前面的旧消息：同一张图只识别一次
+            if (!markSeen(this, "i" + (gid + "|" + imageUris.get(i) + "|" + at).hashCode())) continue;
             AiImages.fromNotification(this, imageUris.get(i), gid, group, imageSenders.get(i),
-                    sbn.getPackageName(), imageTimes.get(i) > 0 ? imageTimes.get(i) : sbn.getPostTime());
+                    sbn.getPackageName(), at);
         }
         imageUris.clear();
         imageSenders.clear();

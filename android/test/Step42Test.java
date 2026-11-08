@@ -50,7 +50,7 @@ public class Step42Test {
    check("用户改的标题保留","交班费".equals(c2.displayTitle()));
 
    // ---- 复核认为不是待办：移到已移除，可恢复 ----
-   e.process(new Engine.Msg("m3",g,"软工2301班","张老师","@所有人 请大家尽快看一下群公告",wx,t+120_000L));
+   e.process(new Engine.Msg("m3",g,"软工2301班","张老师","@所有人 请大家尽快提交返校问卷",wx,t+120_000L));
    Engine.Card c3=find(e,"m3");
    check("第三张卡",c3!=null);
    Engine.AiVerdict v3=new Engine.AiVerdict();v3.cardId=c3.id;v3.todo=false;v3.confidence=0.92;v3.note="只是提醒看公告";
@@ -102,7 +102,7 @@ public class Step42Test {
    ByteArrayOutputStream bytes=new ByteArrayOutputStream();e.saveState(bytes);
    Engine back=engine(args[0]);back.loadState(new ByteArrayInputStream(bytes.toByteArray()));
    check("复核标记保留",find(back,"m1")!=null&&find(back,"m1").aiChecked);
-   check("提示卡保留",find(back,"i2")!=null&&"media".equals(find(back,"i2").kind));
+   check("提示卡保留",find(back,"i3")!=null&&"media".equals(find(back,"i3").kind)&&find(back,"i3").title.contains("图片和语音"));
 
    // ---- NotifParser.media ----
    List<NotifParser.Parsed> p=NotifParser.media("软工2301班","张老师: [图片]",null,null,null,false);
