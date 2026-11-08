@@ -1031,6 +1031,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 () -> AppNavigation.openTimetable(this));
         menuRow(body, holder, "成绩与课表提醒", "出成绩、考试改期、课表变化、电量不足时通知", Ui.TEXT,
                 this::showCampusAlerts);
+        menuRow(body, holder, "桌面小组件", "把今天的课和最近的待办放到桌面", Ui.TEXT, () -> {
+            if (!TodayWidget.requestPin(this)) {
+                alert().setTitle("手动添加小组件")
+                        .setMessage("这台手机的桌面不支持应用直接添加。请长按桌面空白处 → 小组件（或“安卓组件”），找到“楼外 / Offloor · 今日课程与待办”，拖到桌面。")
+                        .setPositiveButton("知道了", null).show();
+            }
+        });
         menuSection(body, "演示");
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
@@ -1571,10 +1578,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout meta = new LinearLayout(this);
         meta.setGravity(Gravity.CENTER_VERTICAL);
         meta.addView(sourceMark(c, 15));
-        StringBuilder metaText = new StringBuilder(sourceName(c));
-        if (!TextUtils.isEmpty(c.groupName)) metaText.append(" · ").append(c.groupName);
-        if (!TextUtils.isEmpty(c.sender)) metaText.append(" · ").append(c.sender);
-        TextView metaLine = uiText(metaText.toString(), 12, Ui.SUB, false);
+        TextView metaLine = uiText(joinDistinct(sourceName(c), c.groupName, c.sender), 12, Ui.SUB, false);
         metaLine.setSingleLine(true);
         metaLine.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams mtLp = new LinearLayout.LayoutParams(0, -2, 1);
@@ -1829,6 +1833,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
      * 来源应用名：只信引擎/main 侧给出的真实名称，空值统一显示「来源待确认」，
      * 不按包名猜应用名，避免把系统通知误标成某个具体平台。
      */
+    /** “来源 · 群 · 发送者”：空的和与前面重复的跳过（教务系统卡三处都是“教务系统”）。 */
+    static String joinDistinct(String... parts) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String p : parts) {
+            if (p == null || p.trim().isEmpty()) continue;
+            if (!out.contains(p.trim())) out.add(p.trim());
+        }
+        return TextUtils.join(" · ", out);
+    }
+
     String sourceName(Engine.Card c) {
         String name = c.sourceAppName();
         return TextUtils.isEmpty(name) || name.trim().isEmpty() ? "来源待确认" : name.trim();
@@ -1908,7 +1922,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(sourceMark(c, 18));
-        TextView from = uiText(sourceName(c) + (TextUtils.isEmpty(c.groupName) ? "" : " · " + c.groupName), 13, Ui.SUB, true);
+        TextView from = uiText(joinDistinct(sourceName(c), c.groupName), 13, Ui.SUB, true);
         from.setSingleLine(true);
         from.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams fromLp = new LinearLayout.LayoutParams(0, -2, 1);
@@ -2640,7 +2654,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             i.putExtra(CalendarContract.Events.TITLE, "【Offloor】" + c.displayTitle());
             // 描述不写群消息原文，避免系统日历云同步把原文外泄；只写来源与考试要点。
             StringBuilder desc = new StringBuilder();
-            desc.append("来源：").append(sourceName(c)).append(" · ").append(c.groupName).append(" · ").append(c.sender);
+            desc.append("来源：").append(joinDistinct(sourceName(c), c.groupName, c.sender));
             if ("exam".equals(c.kind)) {
                 if (!TextUtils.isEmpty(c.place)) desc.append("\n地点：").append(c.place);
                 if (!TextUtils.isEmpty(c.bring)) desc.append("\n带：").append(c.bring);

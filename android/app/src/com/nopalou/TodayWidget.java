@@ -48,6 +48,18 @@ public class TodayWidget extends AppWidgetProvider {
         });
     }
 
+    /** 请求桌面把小组件钉上（Android 8+，桌面会弹确认框）。桌面不支持时返回 false。 */
+    static boolean requestPin(Context c) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 26) return false;
+            AppWidgetManager m = AppWidgetManager.getInstance(c);
+            if (m == null || !m.isRequestPinAppWidgetSupported()) return false;
+            return m.requestPinAppWidget(new ComponentName(c, TodayWidget.class), null, null);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private static void render(Context c, AppWidgetManager manager, int[] ids) {
         try {
             for (int id : ids) {
