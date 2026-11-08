@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Offloor</string>
-    <string name="read_service_desc">用来导入以前的群消息：在 QQ 或微信的群里点「Offloor · 导入」，Offloor 会自动往上翻一个月的聊天记录，把作业、考试、接龙整理成待办。只在你点按钮时读取，只存本机，不发送任何消息。</string>
-</resources>
