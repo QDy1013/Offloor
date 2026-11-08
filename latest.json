@@ -2,31 +2,31 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 22,
-      "versionName": "0.22",
-      "size": 251177,
-      "sha256": "24e42a2d3c5670cd507442056500f2e3dc793bd254ab7298ce71638c95ce6bf3",
+      "versionCode": 23,
+      "versionName": "0.23",
+      "size": 255338,
+      "sha256": "648d0d39c1b7619e4b96a4dd6aed7c307019781f345d501af616ab63bf216194",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/24e42a2d3c5670cd507442056500f2e3dc793bd254ab7298ce71638c95ce6bf3/offloor.apk",
-      "notes": "新增应用内下载更新，保留校园信息与统一登录功能。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/648d0d39c1b7619e4b96a4dd6aed7c307019781f345d501af616ab63bf216194/offloor.apk",
+      "notes": "登录一次后自动读取课表、成绩及校园信息；自动进入个人只读页面、查询并读取分页，失败自动重试，无需手动同步。"
     },
     "com.nopalou.preview": {
-      "versionCode": 22,
-      "versionName": "0.22",
-      "size": 251177,
-      "sha256": "1d04ffc28c192621aa777fe816f7eac79f1c193519aff5e606661d2c747dfd5d",
+      "versionCode": 23,
+      "versionName": "0.23",
+      "size": 255338,
+      "sha256": "ef09ce7fd5ffc7b979771497d4b5f1734015e2fb188ff0177604ce3d1b957151",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/1d04ffc28c192621aa777fe816f7eac79f1c193519aff5e606661d2c747dfd5d/offloor-preview.apk",
-      "notes": "新增应用内下载更新，保留校园信息与统一登录功能。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/ef09ce7fd5ffc7b979771497d4b5f1734015e2fb188ff0177604ce3d1b957151/offloor-preview.apk",
+      "notes": "登录一次后自动读取课表、成绩及校园信息；自动进入个人只读页面、查询并读取分页，失败自动重试，无需手动同步。"
     },
     "com.nopalou.timetabletest": {
-      "versionCode": 22,
-      "versionName": "0.22",
-      "size": 247081,
-      "sha256": "4d08ea61a311ca03a065783bd97df326f0517f8c048b6ba37f05cc288a8948b5",
+      "versionCode": 23,
+      "versionName": "0.23",
+      "size": 255338,
+      "sha256": "4a2ab53808d86ac9fd8e17fe64fd6b695454df892a47d93dd1e08e60eb561330",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/4d08ea61a311ca03a065783bd97df326f0517f8c048b6ba37f05cc288a8948b5/offloor-timetable-test.apk",
-      "notes": "新增应用内下载更新，保留校园信息与统一登录功能。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/4a2ab53808d86ac9fd8e17fe64fd6b695454df892a47d93dd1e08e60eb561330/offloor-timetable-test.apk",
+      "notes": "登录一次后自动读取课表、成绩及校园信息；自动进入个人只读页面、查询并读取分页，失败自动重试，无需手动同步。"
     }
   }
 }
