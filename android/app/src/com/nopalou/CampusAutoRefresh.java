@@ -54,7 +54,7 @@ final class CampusAutoRefresh {
                     if (p.getBoolean("active",false) && !p.getString("run","").equals(liveRun)) p.edit().putBoolean("active",false).putLong("next",0).apply();
                     boolean same=owner.equals(p.getString("owner",""));
                     // 自动续登失败或安全验证等用户处理，不反复尝试密码
-                    if (!force && !p.getString(CampusSilentRefresh.ATTENTION,"").isEmpty()) return;
+                    if (!force && !CampusSilentRefresh.attention(context).isEmpty()) return;
                     if (!force && CampusSilentRefresh.running()) return;
                     if (!force && same && !CampusAutoPolicy.due(now,p.getLong("started",0),p.getBoolean("active",false),p.getLong("next",0),p.getLong("version",0),version(context))) return;
                     String token=java.util.UUID.randomUUID().toString();

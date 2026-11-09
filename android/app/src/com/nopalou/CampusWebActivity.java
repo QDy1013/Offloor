@@ -255,7 +255,7 @@ public class CampusWebActivity extends Activity {
     private void primaryAction() {
         if (centralExpired) {
             authPaused=true; handler.removeCallbacksAndMessages(null);
-            startActivityForResult(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu").putExtra("auth_only",true),42);
+            startActivityForResult(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu").putExtra("reuse_session",true).putExtra("auth_only",true),42);
         } else if (bootstrapping || challengeActive) inspect(true);
         else if (service!=null && service.id.equals("electric")) bindElectric(); else inspect(true);
     }

@@ -220,7 +220,7 @@ public class NwpuImportActivity extends Activity {
         pendingAccount = account.getText().toString().trim(); pendingPassword = password.getText().toString();
         saveAccount="nwpu".equals(school.id)?pendingAccount:""; savePassword="nwpu".equals(school.id)?pendingPassword:"";
         // Stop any old account's reader before changing the shared school session.
-        CampusSilentRefresh.cancelAll(); CampusCredentials.clear(this);
+        CampusSilentRefresh.cancelAll(); CampusRefreshJob.cancel(this);
         ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(), 0);
         reset(false); int active = generation;
         // A freshly entered account must never accidentally import a different existing session.
@@ -233,7 +233,7 @@ public class NwpuImportActivity extends Activity {
     private void startWithSession() {
         if ("nwpu".equals(school.id)) {
             CampusCredentials.Login login=CampusCredentials.load(this);
-            if (login!=null) { pendingAccount=login.account; pendingPassword=login.password; }
+            if (login!=null) { pendingAccount=login.account; pendingPassword=login.password; saveAccount=login.account; savePassword=login.password; }
         }
         reset(true); web.loadUrl(school.entry); schedule(500);
     }
@@ -263,9 +263,21 @@ public class NwpuImportActivity extends Activity {
         if (isCourse(url)) {
             if (courseDeadline == 0) courseDeadline = android.os.SystemClock.elapsedRealtime() + 20_000;
             showProgress("正在读取本学期课表", "自动识别学期与开学日期");
-            web.evaluateJavascript(importScript + "\nJSON.stringify((function(){try{NwpuImport.context(window,document);return {ready:true};}catch(e){return {ready:false};}})())", value -> {
+            web.evaluateJavascript(importScript + "\nJSON.stringify((function(){try{return {ready:true,identity:String(NwpuImport.context(window,document).student)};}catch(e){return {ready:false};}})())", value -> {
                 if (!current(active)) return;
-                try { if (result(value).optBoolean("ready")) { beginRead(); return; } } catch (Exception ignored) { }
+                try {
+                    JSONObject ready=result(value);
+                    if (ready.optBoolean("ready")) {
+                        // Authentication has succeeded; data-fetch failures must not lose the login.
+                        if (!savePassword.isEmpty()) {
+                            try { CampusCredentials.save(this,saveAccount,savePassword,CampusData.accountKey(ready.getString("identity"))); }
+                            catch (Exception e) { Toast.makeText(this,"账号密码未能保存，请稍后重试",Toast.LENGTH_LONG).show(); }
+                        }
+                        CampusSilentRefresh.clearAttention(this);
+                        CampusRefreshJob.schedule(this);
+                        beginRead(); return;
+                    }
+                } catch (Exception ignored) { }
                 if (android.os.SystemClock.elapsedRealtime() > courseDeadline) { fail("未能取得当前学期课表，请稍后重试"); return; }
                 schedule(500);
             }); return;

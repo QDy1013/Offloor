@@ -63,11 +63,20 @@ final class CampusSilentRefresh {
     static boolean running() { return current != null; }
 
     static String attention(Context c) {
-        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(ATTENTION, "");
+        SharedPreferences prefs=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        String state=prefs.getString(ATTENTION,"");
+        if ("login".equals(state) && !prefs.getBoolean("credentials_rejected",false)) {
+            CampusCredentials.Login login=CampusCredentials.load(c);
+            if (CampusLoginPolicy.recover(state,false,login==null?null:login.owner,prefs.getString("owner",""))) {
+                prefs.edit().remove(ATTENTION).putLong("next",0).apply();
+                return "";
+            }
+        }
+        return state;
     }
 
     static void clearAttention(Context c) {
-        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(ATTENTION).apply();
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(ATTENTION).remove("credentials_rejected").apply();
     }
 
     /** 在 host 里后台跑一轮。run 是 CampusAutoRefresh 发的租约令牌。 */
@@ -195,7 +204,7 @@ final class CampusSilentRefresh {
         long now = SystemClock.elapsedRealtime();
         if (System.currentTimeMillis() - lastBeat > 60_000) { lastBeat = System.currentTimeMillis(); CampusAutoRefresh.heartbeat(app, run, owner); }
         if (now - bootStarted > 60_000) {
-            if (loginAttempted) needsUser("login"); else end(false, true);
+            end(false, true);
             return;
         }
         if (probing) return;
@@ -294,7 +303,7 @@ final class CampusSilentRefresh {
             }
             public void challenge(WebView view, boolean visible) { if (visible) needsUser("challenge"); }
             public void loginRequired() {
-                if (sessionRecoveryAttempted || loginAttempted) { needsUser("login"); return; }
+                if (sessionRecoveryAttempted || loginAttempted) { end(false, true); return; }
                 sessionRecoveryAttempted=true;
                 if (batch != null) { batch.stop(); batch = null; }
                 bootstrap();
@@ -320,9 +329,9 @@ final class CampusSilentRefresh {
                 JSONObject result=raw instanceof String?new JSONObject((String)raw):new JSONObject();
                 String phase=result.optString("phase");
                 if ("challenge".equals(phase)) { needsUser("challenge"); return; }
-                if ("error".equals(phase)) { needsUser("login"); return; }
+                if ("error".equals(phase)) { rejectedCredentials(); return; }
                 if ("ready".equals(phase)) {
-                    if (loginAttempted) { needsUser("login"); return; }
+                    if (loginAttempted) { rejectedCredentials(); return; }
                     loginAttempted=true;
                     web.evaluateJavascript("JSON.stringify(NwpuLogin.submit("+JSONObject.quote(login.account)+","+JSONObject.quote(login.password)+"))", ignored -> {
                         if (!stopped && active==generation) schedule(600);
@@ -330,10 +339,15 @@ final class CampusSilentRefresh {
                     return;
                 }
                 // A submitted form may wait for school authentication; never resubmit it.
-                if (SystemClock.elapsedRealtime()>authDeadline) { needsUser("login"); return; }
-            } catch (Exception e) { needsUser("login"); return; }
+                if (SystemClock.elapsedRealtime()>authDeadline) { end(false,true); return; }
+            } catch (Exception e) { end(false,true); return; }
             schedule(600);
         });
+    }
+
+    private void rejectedCredentials() {
+        app.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean("credentials_rejected",true).apply();
+        needsUser("login");
     }
 
     /** 登录失败或安全验证：停下并提示用户，避免反复尝试凭据。 */
