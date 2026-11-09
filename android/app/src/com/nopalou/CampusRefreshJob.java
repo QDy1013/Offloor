@@ -13,12 +13,21 @@ public class CampusRefreshJob extends JobService {
     private boolean running;
     private final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
     static void schedule(Context c) {
-        if (CampusCredentials.load(c)==null) return;
-        JobScheduler scheduler=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler!=null && scheduler.getPendingJob(JOB_ID)==null)
-            scheduler.schedule(new JobInfo.Builder(JOB_ID,new ComponentName(c,CampusRefreshJob.class))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(true)
-                .setPeriodic(15*60_000L).build());
+        try {
+            if (CampusCredentials.load(c)==null) return;
+            ComponentName service=new ComponentName(c,CampusRefreshJob.class);
+            // The standalone timetable test variant deliberately omits background services.
+            try { c.getPackageManager().getServiceInfo(service,0); }
+            catch (android.content.pm.PackageManager.NameNotFoundException absent) { return; }
+            JobScheduler scheduler=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            if (scheduler!=null && scheduler.getPendingJob(JOB_ID)==null)
+                scheduler.schedule(new JobInfo.Builder(JOB_ID,service)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPersisted(true)
+                    .setPeriodic(15*60_000L).build());
+        } catch (RuntimeException e) {
+            // A rejected background job must never prevent opening the app or logging in.
+            EngineHolder.diag(c,"出错","校园后台任务登记失败："+e.getClass().getSimpleName());
+        }
     }
     static void cancel(Context c) {
         JobScheduler scheduler=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
