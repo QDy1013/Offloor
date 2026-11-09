@@ -299,7 +299,8 @@ final class CampusSilentRefresh {
         for (CampusServices.Service s : CampusServices.CAMPUS) queue.add(s);
         batch = new CampusBatch(host, stage, saved, queue, run, campusJs, ssoJs, autoJs, new CampusBatch.Listener() {
             public void progress(int done, int total, int ok, int failed, String active) {
-                app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("done", done).putInt("total", total).apply();
+                app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("done", done).putInt("total", total)
+                        .putString("sync_phase",active.isEmpty()?"正在保存读取结果":active).apply();
             }
             public void challenge(WebView view, boolean visible) { if (visible) needsUser("challenge"); }
             public void loginRequired() {

@@ -41,7 +41,7 @@ final class CampusBatch {
     private final Set<String> successfulIds=new HashSet<>();
     private final List<Lane> lanes=new ArrayList<>();
     private CampusData saved;
-    private final int total;
+    private final int total,initialDone;
     private int success,failed,done;
     private boolean stopped,loginRequested;
     private Lane interactive;
@@ -58,7 +58,7 @@ final class CampusBatch {
         } catch (Exception ignored) { }
         academicScripts=academic;
         String entry=activity.getSharedPreferences("campus-auto",0).getString("academic_entry",NwpuImportActivity.COURSE_URL);
-        CampusServices.Service history=new CampusServices.Service("_academic","全部学期成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true);
+        CampusServices.Service history=new CampusServices.Service("_academic","课表、成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true);
         for (CampusServices.Service service:services) if (CampusServices.selected(service.id)) {
             JSONObject current=saved.module(service.id);
             boolean portalBalance=(service.id.equals("network") || service.id.equals("card")) && current!=null && "ok".equals(current.optString("state")) && current.optLong("updated")>=wallStarted-30_000;
@@ -66,7 +66,7 @@ final class CampusBatch {
         }
         if (activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty()) waiting.add(1,new CampusServices.Service("housing","电费","本人宿舍匹配",CampusServices.byId("housing").entry,false)); else doneIds.add("housing");
         waiting.add(history);
-        total=waiting.size();
+        total=waiting.size(); initialDone=doneIds.size();
     }
     void start() { for (int i=0;i<3;i++) lanes.add(new Lane()); pump(); }
     void stop() {
@@ -89,10 +89,8 @@ final class CampusBatch {
     }
     private void notifyProgress() {
         StringBuilder active=new StringBuilder();
-        for (Lane lane:lanes) if (lane.service!=null && (CampusServices.selected(lane.service.id) || lane.service.id.equals("housing"))) { if (active.length()>0) active.append(" · "); active.append(lane.service.title); }
-        int visibleDone=0,visibleSuccess=0;
-        for (String id:doneIds) if (CampusServices.selected(id)) { visibleDone++; if (successfulIds.contains(id)) visibleSuccess++; }
-        listener.progress(visibleDone,CampusServices.CAMPUS.length,visibleSuccess,visibleDone-visibleSuccess,active.toString());
+        for (Lane lane:lanes) if (lane.service!=null) { if (active.length()>0) active.append(" · "); active.append(lane.service.title); }
+        listener.progress(initialDone+done,initialDone+total,successfulIds.size(),failed,active.toString());
     }
     private void store(Lane lane,JSONObject module,boolean ok) {
         if (!alive() || lane.writing || lane.service==null) return;
@@ -128,7 +126,7 @@ final class CampusBatch {
         String host="",lastPhase="";
         int generation;
         long started,deadline,loaded,lastPreview;
-        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry,timetableDone;
+        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry,timetableDone,timetableFailed;
         long timetableDeadline;
         int academicRevision;
         int mainHttpStatus;
@@ -300,7 +298,7 @@ final class CampusBatch {
         void beginAcademic() {
             if (academicScripts.isEmpty()) { fail("unsupported"); return; }
             int active=generation; String token=java.util.UUID.randomUUID().toString(); querying=true;
-            timetableDone=false; timetableDeadline=SystemClock.elapsedRealtime()+22_000;
+            timetableDone=false; timetableFailed=false; timetableDeadline=SystemClock.elapsedRealtime()+22_000;
             String code=(academicInjected?"":academicScripts)+"\nJSON.stringify((function(){try{var sid=String(NwpuImport.context(window,document).student);NwpuImport.start("+JSONObject.quote(token)+");NwpuAcademic.start("+JSONObject.quote(token)+",sid);return {ready:true,identity:sid};}catch(e){return {ready:false};}})())";
             academicInjected=true;
             web.evaluateJavascript(code,raw -> {
@@ -328,13 +326,17 @@ final class CampusBatch {
                             synchronized (CampusStore.class) {
                                 if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) {
                                     CampusData current=CampusStore.load(activity);
-                                    if (current!=null && owner.equals(current.owner)) TimetableStore.save(activity,new Timetable(encoded));
+                                    if (current!=null && owner.equals(current.owner)) {
+                                        Timetable parsed=new Timetable(encoded);
+                                        if (parsed.firstMonday.isEmpty() || parsed.lessons.isEmpty()) throw new java.io.IOException("课表不完整");
+                                        TimetableStore.save(activity,parsed); CampusStore.signalChanged();
+                                    }
                                 }
                             }
-                        } catch (Exception ignored) { } });
-                    } else if ("error".equals(state)) timetableDone=true;
+                        } catch (Exception ignored) { timetableFailed=true; } });
+                    } else if ("error".equals(state)) { timetableDone=true; timetableFailed=true; }
                 }
-                if (SystemClock.elapsedRealtime()>timetableDeadline) timetableDone=true;
+                if (!timetableDone && SystemClock.elapsedRealtime()>timetableDeadline) { timetableDone=true; timetableFailed=true; }
                 if (!profileSaved && p!=null && token.equals(p.optString("token")) && "ok".equals(p.optString("status")) && p.optJSONObject("data")!=null) {
                     profileSaved=true; String profile=p.optJSONObject("data").toString();
                     io.execute(() -> { try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) { CampusData data=CampusStore.update(activity.getApplicationContext(),profile,owner); handler.post(() -> { if (alive() && active==generation) saved=data; }); } } catch (Exception ignored) { } });
@@ -360,7 +362,7 @@ final class CampusBatch {
             if (writing || service==null) return; writing=true; querying=false;
             int active=generation; String value=academicPending;
             io.execute(() -> {
-                boolean ok=false, partial=incomplete;
+                boolean ok=false, partial=incomplete || timetableFailed;
                 try {
                     if (value!=null && !stopped && CampusAutoRefresh.owns(activity,run,owner)) {
                         Academic data=CampusStore.updateAcademic(activity.getApplicationContext(),value,owner,run); ok=true;

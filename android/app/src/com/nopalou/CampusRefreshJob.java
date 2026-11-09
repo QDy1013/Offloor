@@ -34,7 +34,7 @@ public class CampusRefreshJob extends JobService {
         if (scheduler!=null) scheduler.cancel(JOB_ID);
     }
     @Override public boolean onStartJob(JobParameters params) {
-        if (CampusCredentials.load(this)==null || !CampusSilentRefresh.attention(this).isEmpty() || CampusSilentRefresh.running()) return false;
+        if (getSharedPreferences("campus-auto",0).getBoolean("after_login_pending",false) || CampusCredentials.load(this)==null || !CampusSilentRefresh.attention(this).isEmpty() || CampusSilentRefresh.running()) return false;
         running=true;
         new Thread(() -> {
             CampusData data=null;

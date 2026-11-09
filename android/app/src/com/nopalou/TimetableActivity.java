@@ -42,6 +42,9 @@ public class TimetableActivity extends Activity {
     VelocityTracker velocity;
     static final int GUTTER = 34;
     final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private boolean resumed;
+    private final Runnable reloadTask=this::reload;
+    private final Runnable dataChanged=() -> { if (resumed) { this.uiTick.removeCallbacks(reloadTask); this.uiTick.postDelayed(reloadTask,250); } };
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -51,7 +54,13 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onResume() {
         super.onResume();
+        resumed=true; CampusStore.observe(dataChanged);
         CampusAutoRefresh.maybeRefresh(this);
+        reload();
+    }
+    private void reload() {
+        if (isFinishing() || isDestroyed() || io.isShutdown()) return;
+        if (timetableScroll!=null) savedScrollY=timetableScroll.getScrollY();
         io.execute(() -> {
             try {
                 Timetable loaded = TimetableStore.load(getApplicationContext());
@@ -66,6 +75,7 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onSaveInstanceState(Bundle b) { b.putInt("week", week); b.putInt("scrollY", timetableScroll == null ? savedScrollY : timetableScroll.getScrollY()); super.onSaveInstanceState(b); }
     @Override public void onPause() {
+        resumed=false; CampusStore.unobserve(dataChanged); uiTick.removeCallbacks(reloadTask);
         CampusAutoRefresh.pause(this);
         if (timetableScroll != null) savedScrollY = timetableScroll.getScrollY();
         AppNavigation.rememberTimetable(week, savedScrollY);
@@ -93,14 +103,14 @@ public class TimetableActivity extends Activity {
     void render() {
         if (isFinishing() || isDestroyed()) return;
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG);
-        root.setPadding(dp(12), dp(8), dp(12), dp(4));
+        root.setPadding(dp(12), dp(4), dp(12), dp(4));
         setContentView(root);
         Ui.systemBars(this, root);
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(toolbar, CourseUi.row(dp(52)));
-        // 和待办、考试成绩一样是底部导航里的一页：大标题、不放返回箭头（系统返回键照常回到待办）。
-        TextView title = text("我的课表", 26, Ui.TEXT, true);
+        root.addView(toolbar, CourseUi.row(dp(46)));
+        // Compact header leaves the screen to the timetable; system back still returns to tasks.
+        TextView title = text("我的课表", 21, Ui.TEXT, true);
         title.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
         title.setPadding(dp(8), 0, 0, 0);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
@@ -108,23 +118,24 @@ public class TimetableActivity extends Activity {
             toolbar.addView(Ui.tag(this, "测试版", Ui.SUB, Ui.FILL));
         if (table != null) toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
         toolbar.addView(icon("more", "课表设置", this::settings));
+        CampusSyncBanner.add(this,root);
         if (table == null) { empty(root); addNavigation(root); return; }
 
         TextView school = text(table.school.name + "  /  " + table.termName, 11, Ui.SUB, false);
-        school.setPadding(dp(8), dp(6), 0, dp(16)); root.addView(school);
+        school.setPadding(dp(8),0,dp(8),dp(6)); school.setSingleLine(true); school.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(school);
         swipeStart = school;
         LinearLayout navigation = new LinearLayout(this); navigation.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(navigation);
-        LinearLayout weekInfo = CourseUi.column(this); weekInfo.setPadding(dp(8), 0, 0, 0);
+        LinearLayout weekInfo = CourseUi.column(this); weekInfo.setPadding(dp(8),0,0,0); weekInfo.setMinimumHeight(dp(44)); weekInfo.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout weekTitle = new LinearLayout(this); weekTitle.setGravity(Gravity.CENTER_VERTICAL);
-        TextView number = text("第 " + week + " 周", 27, Ui.TEXT, true);
+        TextView number = text("第 " + week + " 周", 20, Ui.TEXT, true);
         number.setContentDescription("第" + week + "周，点击选择教学周");
         weekTitle.addView(number);
         ImageView down = new ImageView(this); down.setImageDrawable(CourseUi.glyph(this, "down"));
         LinearLayout.LayoutParams arrow = new LinearLayout.LayoutParams(dp(17), dp(17)); arrow.leftMargin = dp(8); weekTitle.addView(down, arrow);
         weekInfo.addView(weekTitle); weekInfo.setOnClickListener(v -> chooseWeek()); weekInfo.setFocusable(true);
         String date = date(1).replace('-', '.') + " — " + date(7).replace('-', '.');
-        TextView range = text(date, 11, Ui.SUB, false); range.setPadding(0, dp(7), 0, 0); weekInfo.addView(range);
+        TextView range = text(date, 11, Ui.SUB, false); range.setPadding(0,dp(2),0,0); weekInfo.addView(range);
         navigation.addView(weekInfo, new LinearLayout.LayoutParams(0, -2, 1));
         TextView today = text("本周", 12, week == table.currentWeek() ? Ui.SUB : Ui.ACCENT, true);
         today.setPadding(dp(10), dp(10), dp(10), dp(10));
@@ -139,7 +150,7 @@ public class TimetableActivity extends Activity {
         previous.setEnabled(week > 1); previous.setAlpha(week > 1 ? 1f : .25f); navigation.addView(previous);
         ImageView next = icon("next", "下一周", () -> changeWeek(week + 1, true));
         next.setEnabled(week < table.maxWeek); next.setAlpha(week < table.maxWeek ? 1f : .25f); navigation.addView(next);
-        CourseUi.gap(root, 20);
+        CourseUi.gap(root,8);
         swipeBoard = CourseUi.column(this); root.addView(swipeBoard, new LinearLayout.LayoutParams(-1, 0, 1));
         weekdayHeader(swipeBoard);
 
@@ -172,7 +183,7 @@ public class TimetableActivity extends Activity {
     }
     void weekdayHeader(LinearLayout root) {
         FrameLayout days = new FrameLayout(this);
-        root.addView(days, CourseUi.row(dp(50)));
+        root.addView(days,CourseUi.row(dp(46)));
         days.post(() -> {
         days.removeAllViews(); float columnWidth = (days.getWidth() - dp(GUTTER)) / 7f;
         TextView month = text(date(1).substring(0, 2) + "\n月", 10, Ui.SUB, true);

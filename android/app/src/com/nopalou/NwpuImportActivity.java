@@ -281,14 +281,7 @@ public class NwpuImportActivity extends Activity {
                 try {
                     JSONObject ready=result(value);
                     if (ready.optBoolean("ready")) {
-                        // Authentication has succeeded; data-fetch failures must not lose the login.
-                        if (!savePassword.isEmpty()) {
-                            try { CampusCredentials.save(this,saveAccount,savePassword,CampusData.accountKey(ready.getString("identity"))); }
-                            catch (Exception e) { Toast.makeText(this,"账号密码未能保存，请稍后重试",Toast.LENGTH_LONG).show(); }
-                        }
-                        CampusSilentRefresh.clearAttention(this);
-                        CampusRefreshJob.schedule(this);
-                        beginRead(); return;
+                        handoffAuthenticated(ready.getString("identity"),active); return;
                     }
                 } catch (Exception ignored) { }
                 if (android.os.SystemClock.elapsedRealtime() > courseDeadline) { fail("未能取得当前学期课表，请稍后重试"); return; }
@@ -404,6 +397,39 @@ public class NwpuImportActivity extends Activity {
             schedule(500);
         });
     }
+    /** Bind only the verified identity here; fetching data must not hold the login page open. */
+    private void handoffAuthenticated(String identity,int active) {
+        if (!current(active) || saving) return;
+        CampusSilentRefresh.cancelAll();
+        saving=true; reading=true; handler.removeCallbacksAndMessages(null);
+        final String username=saveAccount, secret=savePassword, courseUrl=web.getUrl();
+        io.execute(() -> {
+            boolean ok=false, credentialsSaved=true;
+            try {
+                CampusData bound=CampusStore.bind(getApplicationContext(),new JSONObject().put("version",1)
+                        .put("school","西北工业大学").put("identity",identity).put("modules",new JSONObject()).toString());
+                if (!secret.isEmpty()) {
+                    try { CampusCredentials.save(getApplicationContext(),username,secret,bound.owner); }
+                    catch (Exception e) { credentialsSaved=false; }
+                }
+                ok=true;
+            } catch (Exception ignored) { }
+            final boolean bound=ok, stored=credentialsSaved;
+            runOnUiThread(() -> {
+                saving=false; reading=false;
+                if (!current(active)) return;
+                if (!bound) { fail("账号认证成功，但本机登录状态未能保存，请重试"); return; }
+                saveAccount=""; savePassword=""; pendingAccount=""; pendingPassword=""; password.setText("");
+                CampusSilentRefresh.clearAttention(this);
+                if (!stored) Toast.makeText(this,"登录成功，密码未能保存；本次仍会继续同步",Toast.LENGTH_LONG).show();
+                if (isCourse(courseUrl) && CampusServices.readUrl(courseUrl)) getIntent().putExtra("course_url",courseUrl);
+                setResult(RESULT_OK,new Intent().putExtra("course_url",courseUrl));
+                if (getIntent().getBooleanExtra("auth_only",false)) finish();
+                else CampusAutoRefresh.afterLogin(this);
+            });
+        });
+    }
+
     private void beginRead() {
         if (reading || saving || !busy) return;
         reading = true; readToken = java.util.UUID.randomUUID().toString();

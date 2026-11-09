@@ -94,6 +94,7 @@ public class AcademicActivity extends Activity {
         String sub = subtitle();
         if (sub != null) { TextView s = text(sub, 12, Ui.MUTE, false); s.setPadding(0, dp(4), 0, 0); titles.addView(s); }
 
+        CampusSyncBanner.add(this,root);
         if (!loaded) { root.addView(new View(this), new LinearLayout.LayoutParams(-1, 0, 1)); addNavigation(root); return; }
         if (data == null) { empty(root); addNavigation(root); return; }
 

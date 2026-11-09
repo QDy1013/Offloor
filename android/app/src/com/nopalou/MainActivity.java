@@ -110,9 +110,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView searchClear;
     private ScrollView listScroll;
     private TextView headline;
-    /** 今日概览卡和其中的七天截止分布条。 */
+    /** Compact daily overview; task content remains the main focus. */
     private LinearLayout hero;
-    private LinearLayout weekStrip;
     private LinearLayout emptyBox;
     private View emptyIcon;
     private TextView emptyTitle;
@@ -454,6 +453,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
         page.addView(top, lp(-1, dp(this, 60)));
+        CampusSyncBanner.add(this,page);
         updateBanner=uiText("",13,Ui.ACCENT,true);
         updateBanner.setPadding(dp(this,16),dp(this,13),dp(this,16),dp(this,13));
         updateBanner.setBackground(Ui.ripple(this,Ui.round(this,Ui.ACCENT_BG,18),Ui.press(),18));
@@ -465,37 +465,28 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         page.addView(updateBanner,updateLp);
         showUpdateNotice();
 
-        // 今日概览：深墨渐变卡。日期 → 一句话结论 → 补充数量 → 未来七天的截止分布。
+        // Compact overview: current date, deadline status and pending count.
         hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(this, 22), dp(this, 20), dp(this, 22), dp(this, 18));
+        hero.setPadding(dp(this,20),dp(this,14),dp(this,20),dp(this,14));
         hero.setBackground(Ui.heroSurface(this, 26));
         Ui.lift(hero, 8f);
         sub = uiText(subLine(), 13, Ui.HERO_SUB, true);
         sub.setSingleLine(true);
         sub.setLetterSpacing(0.02f);
         hero.addView(sub);
-        headline = uiText("", 26, Ui.ON_HERO, false);
+        headline = uiText("",22,Ui.ON_HERO,false);
         headline.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         headline.setLineSpacing(dp(this, 2), 1f);
         headline.setLetterSpacing(-0.01f);
         LinearLayout.LayoutParams hlLp = lp(-1, -2);
-        hlLp.topMargin = dp(this, 12);
+        hlLp.topMargin = dp(this,7);
         hero.addView(headline, hlLp);
         stats = uiText("", 13, Ui.HERO_SUB, false);
         stats.setLineSpacing(dp(this, 3), 1f);
         LinearLayout.LayoutParams stLp = lp(-1, -2);
-        stLp.topMargin = dp(this, 8);
+        stLp.topMargin = dp(this,5);
         hero.addView(stats, stLp);
-        View heroRule = new View(this);
-        heroRule.setBackgroundColor(Ui.withAlpha(Color.WHITE, 22));
-        LinearLayout.LayoutParams ruleLp = lp(-1, 1);
-        ruleLp.topMargin = dp(this, 18);
-        hero.addView(heroRule, ruleLp);
-        weekStrip = new LinearLayout(this);
-        LinearLayout.LayoutParams wsLp = lp(-1, -2);
-        wsLp.topMargin = dp(this, 14);
-        hero.addView(weekStrip, wsLp);
         LinearLayout.LayoutParams heroLp = lp(-1, -2);
         heroLp.topMargin = dp(this, 6);
         page.addView(hero, heroLp);
@@ -837,81 +828,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private static final int HERO_ORANGE = Color.parseColor("#FFB46B");
     private static final int HERO_ACCENT = Color.parseColor("#AEB6FF");
 
-    /**
-     * 未来七天的截止分布：每天一列「星期 / 日期 / 圆点」，圆点数 = 当天截止的未完成事项（最多三颗），
-     * 颜色跟随时间压力。今天的日期衬一枚白色圆片。扫一眼就知道这一周哪天最挤。
-     */
-    private void updateWeekStrip(Engine shown, long now) {
-        if (weekStrip == null) return;
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(now);
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-        long dayStart = cal.getTimeInMillis();
-        int[] count = new int[7];
-        int[] level = new int[7];
-        for (Engine.Card c : shown.all()) {
-            if (c.done || c.deadline <= 0 || c.needsConfirm) continue;
-            if (c.deadline < dayStart) continue;
-            Calendar d = Calendar.getInstance();
-            d.setTimeInMillis(c.deadline);
-            int diff = 0;
-            Calendar probe = (Calendar) cal.clone();
-            while (diff < 7 && !(probe.get(Calendar.YEAR) == d.get(Calendar.YEAR)
-                    && probe.get(Calendar.DAY_OF_YEAR) == d.get(Calendar.DAY_OF_YEAR))) {
-                probe.add(Calendar.DAY_OF_MONTH, 1);
-                diff++;
-            }
-            if (diff >= 7) continue;
-            count[diff]++;
-            level[diff] = Math.max(level[diff], TodayView.urgency(c.deadline, false, false, now));
-        }
-        String key = java.util.Arrays.toString(count) + java.util.Arrays.toString(level) + dayStart;
-        if (key.equals(weekStrip.getTag())) return;
-        weekStrip.setTag(key);
-        weekStrip.removeAllViews();
-        String[] names = {"日", "一", "二", "三", "四", "五", "六"};
-        Calendar day = (Calendar) cal.clone();
-        StringBuilder spoken = new StringBuilder("未来七天：");
-        for (int i = 0; i < 7; i++) {
-            boolean today = i == 0;
-            LinearLayout col = new LinearLayout(this);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setGravity(Gravity.CENTER_HORIZONTAL);
-            TextView wd = uiText(today ? "今" : names[day.get(Calendar.DAY_OF_WEEK) - 1], 11,
-                    today ? Ui.ON_HERO : Ui.HERO_SUB, today);
-            col.addView(wd);
-            TextView num = uiText(String.valueOf(day.get(Calendar.DAY_OF_MONTH)), 15,
-                    today ? Ui.HERO_TOP : Ui.ON_HERO, true);
-            num.setGravity(Gravity.CENTER);
-            if (today) num.setBackground(Ui.disc(this, Ui.ON_HERO));
-            LinearLayout.LayoutParams numLp = lp(dp(this, 30), dp(this, 30));
-            numLp.topMargin = dp(this, 6);
-            col.addView(num, numLp);
-            LinearLayout dots = new LinearLayout(this);
-            dots.setGravity(Gravity.CENTER);
-            int dotColor = level[i] >= 2 ? HERO_RED : level[i] == 1 ? HERO_ORANGE : HERO_ACCENT;
-            for (int k = 0; k < Math.min(3, count[i]); k++) {
-                View dot = Ui.dot(this, dotColor, 4.5f);
-                LinearLayout.LayoutParams dLp = lp(dp(this, 4.5f), dp(this, 4.5f));
-                if (k > 0) dLp.leftMargin = dp(this, 3);
-                dots.addView(dot, dLp);
-            }
-            LinearLayout.LayoutParams dotsLp = lp(-1, dp(this, 5));
-            dotsLp.topMargin = dp(this, 7);
-            col.addView(dots, dotsLp);
-            weekStrip.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
-            if (count[i] > 0) {
-                spoken.append(today ? "今天" : (day.get(Calendar.MONTH) + 1) + "月" + day.get(Calendar.DAY_OF_MONTH) + "日")
-                        .append(" ").append(count[i]).append(" 件；");
-            }
-            day.add(Calendar.DAY_OF_MONTH, 1);
-        }
-        weekStrip.setContentDescription(spoken.length() > 5 ? spoken.toString() : "未来七天没有截止的事项");
-    }
-
     /** 大标题和副标题：先说最要紧的一件事，再补充其余数量。 */
     private void updateHeadline(Engine shown, long now) {
         int total = 0, open = 0, today = 0, tomorrow = 0, overdue = 0, confirm = 0, urgent = 0, soon = 0;
@@ -965,7 +881,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
         headline.setText(onHero);
         if (compactTitle != null) compactTitle.setText(s);
-        updateWeekStrip(shown, now);
 
         List<String> parts = new ArrayList<>();
         if (tomorrow > 0 && !"tomorrow".equals(lead)) parts.add("明天 " + tomorrow + " 件");
