@@ -11,13 +11,13 @@
       "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
     },
     "com.nopalou.preview": {
-      "versionCode": 26,
-      "versionName": "0.26",
-      "size": 288174,
-      "sha256": "6537a9c52dd1acf0d594b8c622d5483cb94464e9cb2af76169f3930ec67e7068",
+      "versionCode": 30,
+      "versionName": "0.30",
+      "size": 358090,
+      "sha256": "d0ae9957a6928e98b500df2f8a57f0830fd6c97d7bddf9a77897c17437da240c",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/6537a9c52dd1acf0d594b8c622d5483cb94464e9cb2af76169f3930ec67e7068/offloor-preview.apk",
-      "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/d0ae9957a6928e98b500df2f8a57f0830fd6c97d7bddf9a77897c17437da240c/offloor-preview.apk",
+      "notes": "v0.30 可靠性测试版：存档恢复、变更核对与历史、过期 AI 保护、调用上限、密钥加密和账号边界。已完成电脑回归，真机后台与真实服务仍待验证。"
     },
     "com.nopalou.timetabletest": {
       "versionCode": 26,
