@@ -21,11 +21,13 @@ final class TimetableStore {
                 if (out.size() + n > Timetable.MAX_BYTES) throw new java.io.IOException("课表存档过大");
                 out.write(buffer, 0, n);
             }
-            return new Timetable(new String(out.toByteArray(), StandardCharsets.UTF_8));
+            String encoded=new String(out.toByteArray(), StandardCharsets.UTF_8);
+            if(!AccountFiles.visible(new org.json.JSONObject(encoded),AccountFiles.current(c))) return null;
+            return new Timetable(encoded);
         }
     }
     static synchronized void save(Context c, Timetable t) throws Exception {
-        byte[] bytes = t.encode().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = AccountFiles.protect(c,t.encode()).getBytes(StandardCharsets.UTF_8);
         if (bytes.length > Timetable.MAX_BYTES) throw new java.io.IOException("课表过大");
         Timetable previous = null;
         try { previous = load(c); } catch (Exception ignored) { }
@@ -44,4 +46,5 @@ final class TimetableStore {
         TodayWidget.refresh(c);
     }
     static synchronized void clear(Context c) { file(c).delete(); TodayWidget.refresh(c); }
+    static synchronized void stampOwner(Context c,String owner) throws Exception { AccountFiles.stamp(c,"timetable.json",owner); }
 }

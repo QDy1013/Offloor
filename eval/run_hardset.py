@@ -171,12 +171,15 @@ def main() -> None:
                 "text": "更正一下，作业截止改到下周一 23:59。"})
     upd = [c for c in p2.active_cards() if c.updated]
     rev_ok = len(upd) == 1 and upd[0].deadline == datetime.fromisoformat("2026-10-19T23:59:00")
+    out["revision"] = {"passed": rev_ok}
     print(f"  变更/撤销（消息流）  {'✓' if rev_ok else '✗'}  "
           f"{'卡片被更新为 10-19 23:59' if rev_ok else '未按预期更新'}")
 
     dest = ROOT / "eval" / "hardset_report.json"
     dest.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n两种设定的召回/精确已写入 {dest}")
+    if not rev_ok:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

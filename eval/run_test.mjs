@@ -38,7 +38,13 @@ if (/^test_[a-z0-9_]+$/.test(name)) {
   const diff = path.join(root, 'android/app/src/com/nopalou/ChangeDiff.java');
   const sections = path.join(root, 'android/app/src/com/nopalou/SectionTimes.java');
   const plan = path.join(root, 'android/app/src/com/nopalou/TodayPlan.java');
-  const files = [engine, ...[filter, demo, reminder, today, clash, parser, diag, health, diff, sections, plan].filter(existsSync), src];
+  const format = path.join(root, 'android/app/src/com/nopalou/StateFormat.java');
+  const store = path.join(root, 'android/app/src/com/nopalou/StateStore.java');
+  const changes = path.join(root, 'android/app/src/com/nopalou/TaskChanges.java');
+  const chatTime = path.join(root, 'android/app/src/com/nopalou/ChatTime.java');
+  const secrets = path.join(root, "android/app/src/com/nopalou/SecretCodec.java");
+  const budget = path.join(root, "android/app/src/com/nopalou/AiBudgetCore.java");
+  const files = [engine, ...[filter, demo, reminder, today, clash, parser, diag, health, diff, sections, plan, format, store, changes, chatTime, secrets, budget].filter(existsSync), src];
   const c = spawnSync('javac', ['-J-Duser.language=en', '-nowarn', '-encoding', 'UTF-8', '-d', out, ...files], { encoding: 'utf8', timeout: 120000 });
   if (c.status !== 0) finish(c);
   const args = ['-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-cp', out, 'com.nopalou.' + name, path.join(root, 'android')];

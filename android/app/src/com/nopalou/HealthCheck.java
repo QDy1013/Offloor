@@ -55,7 +55,7 @@ public final class HealthCheck {
         /** 一句话总结：没有问题说正常，有问题说个数。 */
         public String summary() {
             // 没有问题时给正面结论。
-            if (issues.isEmpty()) return "自动读取正常";
+            if (issues.isEmpty()) return "通知服务已连接";
             // 有问题时报出问题数量。
             return "发现 " + issues.size() + " 个问题";
         }

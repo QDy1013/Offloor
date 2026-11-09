@@ -60,9 +60,15 @@ final class CampusStore {
         // 旧存档没有主人（首次、或用户只清了校园数据）时只清校园部分，课表和成绩留着，
         // 否则“清空校园数据 → 再同步但这次没读到课表”会把课表弄丢。
         boolean otherAccount=old!=null && old.owner!=null && !old.owner.isEmpty() && !key.equals(old.owner);
-        if (otherAccount) clearAll(c);
-        else if (old==null || !key.equals(old.owner)) clear(c);
-        return update(c,fresh,null);
+        // 先完整校验，新数据无效时任何旧文件都不变。
+        CampusData next=busFallback(c,CampusScope.compact(CampusData.merge(old,fresh,System.currentTimeMillis(),null)));
+        String previousOwner=old==null || old.owner.isEmpty()?key:old.owner;
+        AcademicStore.stampOwner(c,previousOwner); TimetableStore.stampOwner(c,previousOwner);
+        write(c,next);
+        // 新快照写入后，旧账号文件即使在清理中被杀进程，也会被账号边界隐藏。
+        if (otherAccount) { AcademicStore.clear(c); TimetableStore.clear(c); }
+        if (old==null || !key.equals(old.owner)) c.getSharedPreferences("campus-binding",Context.MODE_PRIVATE).edit().clear().apply();
+        changed(); CampusChanges.campus(c,next); return next;
     }
     static synchronized Academic updateAcademic(Context c,String fresh,String owner,String run) throws Exception {
         CampusData current=load(c);

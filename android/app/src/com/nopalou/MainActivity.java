@@ -78,6 +78,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView notifStatus;
     TextView empty;
     boolean accessChecked;
+    private static String storageIssueShown;
     private DemoScenario demo;
     private Button demoButton;
     private Button demoUpdate;
@@ -206,6 +207,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
+        if (EngineHolder.storageIssue != null && !EngineHolder.storageIssue.equals(storageIssueShown)) {
+            storageIssueShown = EngineHolder.storageIssue;
+            uiHandler.post(this::showStorageState);
+        }
         // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。
         try {
             android.service.notification.NotificationListenerService.requestRebind(
@@ -313,7 +318,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         boolean on = demo == null && EngineHolder.listenerConnected;
         if (on) {
             long last = EngineHolder.lastReceivedAt;
-            notifStatus.setText(statusText("自动整理中", Ui.GREEN));
+            notifStatus.setText(statusText("服务已连接", Ui.GREEN));
             notifStatus.setTextColor(Ui.SUB);
             notifStatus.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 15), Ui.press(), 15));
             notifStatus.setContentDescription(last == 0 ? "自动读取已连接，等待新消息"
@@ -1146,6 +1151,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuRow(body, holder, "通知读取权限", "系统设置里的通知使用权", Ui.TEXT,
                 () -> startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
         menuRow(body, holder, "诊断日志", "最近 30 条读取记录", Ui.TEXT, this::showDiagLog);
+        menuRow(body, holder, "存档与恢复", EngineHolder.storageIssue == null ? "本机存档与有效备份"
+                : EngineHolder.storageIssue, EngineHolder.storageBlocked() ? Ui.RED : Ui.TEXT, this::showStorageState);
         menuSection(body, "识别");
         menuRow(body, holder, "AI 识别", AiConfig.summary(this), Ui.TEXT,
                 () -> startActivity(new Intent(this, AiActivity.class)));
@@ -1182,7 +1189,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                         .setMessage("会清空本机的全部待办、已移除卡片，以及这次运行中用于识别的近期消息。")
                         .setPositiveButton("清空", (dialog, w) -> {
                             engine.clearLocalData();
-                            EngineHolder.save(this);
+                            try { AiQueue.clear(this); }
+                            catch (RuntimeException error) { EngineHolder.diag(this, "队列", "旧请求已失效，队列文件清理未成功"); }
+                            boolean saved = EngineHolder.storageBlocked() ? EngineHolder.rebuildStorage(this) : EngineHolder.save(this);
+                            if (!saved) Toast.makeText(this, "当前列表已清空，但存档未保存，请检查存档与恢复", Toast.LENGTH_LONG).show();
                         })
                         .setNegativeButton("取消", null)
                         .show());
@@ -1190,6 +1200,23 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     /** 「成绩与课表提醒」：同步后比较新旧数据，有变化才通知；第一次导入不提醒。 */
+    void showStorageState() {
+        android.app.AlertDialog.Builder dialog = alert().setTitle("存档与恢复")
+                .setMessage(EngineHolder.storageIssue == null
+                        ? "每次成功保存会保留上一份有效存档。读取时会核对完整性，损坏时尝试有效备份；没有可用备份时会暂停覆盖并保留原文件。"
+                        : EngineHolder.storageIssue);
+        if (EngineHolder.storageBlocked()) {
+            dialog.setPositiveButton("保留副本并重建", (d, w) -> alert()
+                    .setTitle("以当前列表建立新存档？")
+                    .setMessage("会先保留原文件副本，再保存当前列表。当前未恢复的旧事项不会自动出现在新列表中。")
+                    .setPositiveButton("保留副本并保存", (confirm, which) -> {
+                        boolean ok = EngineHolder.rebuildStorage(this);
+                        Toast.makeText(this, ok ? "已保存当前列表，原文件副本保留" : "保存未成功，原文件仍保留", Toast.LENGTH_LONG).show();
+                    }).setNegativeButton("返回", null).show());
+        }
+        dialog.setNegativeButton("关闭", null).show();
+    }
+
     void showCampusAlerts() {
         android.content.SharedPreferences p = CampusChanges.prefs(this);
         String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric"};
@@ -1299,7 +1326,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         StringBuilder body = new StringBuilder();
         // 没有问题：用一句话说清三项都正常。
         if (r.issues.isEmpty()) {
-            body.append("通知读取权限已开，服务已连接，电池不受限。群里有新消息会自动出现在待办里。");
+            body.append("通知读取权限已开，服务已连接，电池不受限。");
         } else {
             // 有问题：每个问题占一行，前面带「· 」，顺序就是规则顺序。
             for (int i = 0; i < r.issues.size(); i++) {
@@ -1311,7 +1338,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         // 收到过消息才补一行「最近一次自动收到」，没收到过就不提，避免显示 0。
         if (EngineHolder.lastReceivedAt > 0) {
             body.append("\n最近一次自动收到：").append(ago(EngineHolder.lastReceivedAt));
+        } else {
+            body.append("\n尚未收到可读取的消息，可以发一条测试通知检查。");
         }
+        body.append("\n\n仅能整理系统实际展示的通知文字。免打扰、折叠或被隐藏的消息，以及历史聊天和图片内部文字，不保证自动获取；可主动分享文字或截图补充。");
         // 保活说明固定接在正文末尾，原「让它一直在后台运行」的四行内容一字不改。
         body.append("\n\n保持自动读取不被系统杀掉：\n")
                 .append("1. 在系统设置里允许「Offloor」自启动和后台运行（vivo：设置 > 应用与权限 > 权限管理 > 自启动）。\n")
@@ -2120,7 +2150,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         // 截止时间块
         String deadline = c.deadlineHint() != null ? c.deadlineHint() + " · 时刻待确认"
-                : c.deadline == 0 ? "时间待确认" : dateTimeLabel(c.deadline);
+                : c.deadline == 0 ? "时间待确认" : (c.needsConfirm ? "候选时间：" : "") + dateTimeLabel(c.deadline);
         boolean unsure = c.needsConfirm || c.deadline == 0 || c.deadlineHint() != null;
         int urgency = TodayView.urgency(c.deadline, c.needsConfirm, c.done, now);
         int tone = c.done ? Ui.SUB : unsure ? Ui.AMBER_TX : urgency >= 1 ? Ui.urgencyColor(urgency) : Ui.ACCENT;
@@ -2147,6 +2177,45 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout.LayoutParams dueLp = lp(-1, -2);
         dueLp.topMargin = dp(this, 18);
         content.addView(dueBox, dueLp);
+
+        Engine shown = demo == null ? engine : demo.engine;
+        if (unsure && shown.all().contains(c)) {
+            Button editNow = button("核对标题和时间", v -> { holder[0].dismiss(); showCardEdit(c); });
+            LinearLayout.LayoutParams editLp = lp(-1, dp(this, 44)); editLp.topMargin = dp(this, 10);
+            content.addView(editNow, editLp);
+            if (c.deadline > 0 && !c.changes.hasPending()) {
+                Button confirmTime = button("确认这个候选时间", v -> {
+                    if (shown.editCard(c, c.displayTitle(), c.deadline)) {
+                        if (demo == null) EngineHolder.saveAsync(this);
+                        holder[0].dismiss(); showSource(c);
+                    }
+                });
+                content.addView(confirmTime, lp(-1, dp(this, 44)));
+            }
+        }
+        for (Engine.Msg change : c.changes.pending()) {
+            TextView changeText = uiText("待关联的变更 · " + (change.sender == null ? "来源未知" : change.sender)
+                    + "\n" + change.text, 13, Ui.AMBER_TX, false);
+            changeText.setPadding(0, dp(this, 16), 0, dp(this, 8));
+            changeText.setTextIsSelectable(true); content.addView(changeText);
+            Button applyChange = button("revoke".equals(Engine.detectRevision(change.text))
+                    ? "按这条通知取消本事项" : "这条变更对应本事项", v -> {
+                if (shown.resolvePendingChange(c, change.id)) {
+                    if (demo == null) EngineHolder.saveAsync(this);
+                    holder[0].dismiss();
+                    if (shown.all().contains(c)) showSource(c);
+                    else Toast.makeText(this, "已归入已移除卡片，可查看记录或恢复", Toast.LENGTH_LONG).show();
+                } else Toast.makeText(this, "原文时间仍不明确，请手动核对", Toast.LENGTH_LONG).show();
+            });
+            content.addView(applyChange, lp(-1, dp(this, 44)));
+            Button ignoreChange = button("忽略这条变更", v -> {
+                if (shown.ignorePendingChange(c, change.id)) {
+                    if (demo == null) EngineHolder.saveAsync(this);
+                    holder[0].dismiss(); showSource(c);
+                }
+            });
+            content.addView(ignoreChange, lp(-1, dp(this, 44)));
+        }
 
         // 关键信息
         LinearLayout info = new LinearLayout(this);
@@ -2205,6 +2274,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         section.setPadding(dp(this, 2), dp(this, 26), 0, dp(this, 10));
         content.addView(section);
         StringBuilder original = new StringBuilder(c.sourceText == null ? "原消息不可用" : c.sourceText);
+        List<TaskChanges.Event> history = c.changes.history();
+        if (!history.isEmpty()) {
+            original.append("\n\n变更记录（最近 ").append(history.size()).append(" 条）");
+            for (int i = history.size() - 1; i >= 0; i--) {
+                TaskChanges.Event event = history.get(i);
+                original.append("\n\n").append(dateTimeLabel(event.at)).append(" · ").append(event.actor == null ? "来源未知" : event.actor)
+                        .append("\n").append(event.description).append("\n").append(event.text == null ? "" : event.text);
+            }
+        }
         if (!TextUtils.isEmpty(c.lastRevisionText)) original.append("\n\n最新更正\n").append(c.lastRevisionText);
         if (c.context != null && !c.context.isEmpty()) {
             original.append("\n\n相关上下文");
@@ -2241,7 +2319,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TextView remove = linkText("移除事项", Ui.RED);
         remove.setOnClickListener(v -> alert().setTitle("移除这条事项？").setMessage("可在「更多 → 已移除的卡片」中恢复。")
                 .setNegativeButton("保留", null).setPositiveButton("移除", (d, w) -> {
-                    Engine shown = demo == null ? engine : demo.engine;
                     if (shown.dismissCard(c, System.currentTimeMillis())) {
                         holder[0].dismiss();
                         render();
@@ -2360,6 +2437,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         for (int i = 0; i < removed.size(); i++) {
             Engine.Card card = removed.get(i);
             titles[i] = card.displayTitle() + "\n" + sourceName(card) + " · " + card.groupName;
+            if (card.cancelled) titles[i] = "已被来源取消 · " + titles[i];
         }
         alert()
                 .setTitle("已移除的卡片（" + removed.size() + "）")

@@ -29,12 +29,18 @@ public final class ChatTime {
 
     /** 把分隔条文字换算成时间；now 用来确定"今天、昨天、星期几"和省略的年份。 */
     public static long parse(String text, long now) {
+        try { return parseChecked(text, now); }
+        catch (IllegalArgumentException invalid) { return -1; }
+    }
+
+    private static long parseChecked(String text, long now) {
         if (text == null) return -1;
         String s = text.trim().replace(' ', ' ');
         if (s.isEmpty() || s.length() > 24) return -1;
         Calendar base = Calendar.getInstance();
         base.setTimeInMillis(now);
         clearDay(base);
+        base.setLenient(false);
 
         Matcher m = CLOCK.matcher(s);
         if (m.matches()) {
@@ -112,5 +118,23 @@ public final class ChatTime {
         c.set(Calendar.MINUTE, 0);
         c.set(Calendar.SECOND, 0);
         c.set(Calendar.MILLISECOND, 0);
+    }
+
+    static long screenshotTime(String raw, long fallback) {
+        long parsed = parse(raw, fallback);
+        if (parsed < 0) return fallback;
+        if (raw != null && CLOCK.matcher(raw.trim()).matches() && parsed > fallback + 60000L) {
+            Calendar c=Calendar.getInstance();c.setTimeInMillis(parsed);c.add(Calendar.DAY_OF_MONTH,-1);parsed=c.getTimeInMillis();
+        }
+        return parsed <= fallback + 60000L && parsed >= fallback - 60L*86400000L ? parsed : fallback;
+    }
+    static boolean needsTimeConfirmation(String raw, String body) {
+        if (body == null || !body.matches("(?s).*(?:今天|明天|后天|今晚|明晚|本周|这周|下周|周[一二三四五六日天末]|星期|小时|分钟|上课前|下课前|放学前).*")) return false;
+        if (raw == null || raw.trim().isEmpty()) return true;
+        String text=raw.trim();
+        boolean dated=YMD.matcher(text).matches() || REL.matcher(text).matches();
+        if (!dated) return true;
+        if (body.contains("小时") || body.contains("分钟")) return !text.matches("(?s).*\\d{1,2}[:：]\\d{2}.*");
+        return false;
     }
 }

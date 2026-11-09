@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import os
 import subprocess
 
 ROOT_URL = "https://raw.githubusercontent.com/QDy1013/Offloor/updates/"
@@ -33,6 +34,37 @@ def inspect(apk, sdk):
                   "certificateSha256": certificates[0].lower(), "url": ROOT_URL + "apks/" + digest + "/" + NAMES[m[1]]}
 
 
+def prepare(paths, sdk, out, existing=None, notes="可靠性改进测试版"):
+    feed = json.loads(existing.read_text(encoding="utf-8")) if existing else {"schema":1,"packages":{}}
+    if feed.get("schema") != 1 or not isinstance(feed.get("packages"),dict):
+        raise ValueError("Existing catalog schema is not supported")
+    planned=[]; packages=set()
+    # 全部验证成功后才写文件；相同版本不能悄悄替换成另一份二进制。
+    for path in paths:
+        apk=path.resolve(); package,metadata=inspect(apk,sdk.resolve())
+        if package in packages: raise ValueError("A channel was supplied twice")
+        packages.add(package)
+        previous=feed["packages"].get(package)
+        if previous:
+            if metadata["versionCode"] < previous["versionCode"] or metadata["certificateSha256"] != previous["certificateSha256"]:
+                raise ValueError("Refusing an older version or an incompatible signing key")
+            if metadata["versionCode"] == previous["versionCode"] and metadata["sha256"] != previous["sha256"]:
+                raise ValueError("A released version code must identify one immutable APK")
+        if not 0 < metadata["size"] <= 200*1024*1024: raise ValueError("APK size is outside the update limit")
+        metadata["notes"]=notes;planned.append((apk,package,metadata))
+    for apk,package,metadata in planned:
+        destination=out/"apks"/metadata["sha256"]/NAMES[package];destination.parent.mkdir(parents=True,exist_ok=True)
+        temporary=destination.with_suffix(".tmp");shutil.copyfile(apk,temporary)
+        if hashlib.sha256(temporary.read_bytes()).hexdigest()!=metadata["sha256"]: raise ValueError("Copied APK hash mismatch")
+        os.replace(temporary,destination);feed["packages"][package]=metadata
+    out.mkdir(parents=True,exist_ok=True)
+    temporary=out/"latest.json.new"
+    with temporary.open("w",encoding="utf-8",newline="\n") as stream:
+        stream.write(json.dumps(feed,ensure_ascii=False,indent=2)+"\n");stream.flush();os.fsync(stream.fileno())
+    os.replace(temporary,out/"latest.json")
+    return feed
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
@@ -41,25 +73,7 @@ def main():
     parser.add_argument("--existing", type=Path, help="Existing public catalog to preserve other channels")
     parser.add_argument("--notes", default="新增应用内下载更新，保留校园信息与统一登录功能。")
     args = parser.parse_args()
-    feed = json.loads(args.existing.read_text(encoding="utf-8")) if args.existing else {"schema": 1, "packages": {}}
-    if feed.get("schema") != 1 or not isinstance(feed.get("packages"), dict):
-        parser.error("Existing catalog schema is not supported")
-    for path in args.apk:
-        apk = path.resolve()
-        package, metadata = inspect(apk, args.sdk.resolve())
-        previous = feed["packages"].get(package)
-        if previous and (metadata["versionCode"] < previous["versionCode"] or metadata["certificateSha256"] != previous["certificateSha256"]):
-            raise ValueError("Refusing an older version or an incompatible signing key")
-        if not 0 < metadata["size"] <= 200 * 1024 * 1024:
-            raise ValueError("APK size is outside the update limit")
-        metadata["notes"] = args.notes
-        destination = args.out / "apks" / metadata["sha256"] / NAMES[package]
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(apk, destination)
-        assert hashlib.sha256(destination.read_bytes()).hexdigest() == metadata["sha256"]
-        feed["packages"][package] = metadata
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "latest.json").write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    feed=prepare(args.apk,args.sdk,args.out,args.existing,args.notes)
     print(json.dumps({"channels": list(feed["packages"]), "catalog": str(args.out / "latest.json")}))
 
 

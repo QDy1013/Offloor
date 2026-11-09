@@ -153,6 +153,7 @@ public class Engine {
     public static class Msg {
         public String id, groupId, groupName, sender, text, pkg;
         public long ts;
+        public boolean timeUncertain;
         Msg(String id, String groupId, String groupName, String sender, String text, String pkg, long ts) {
             this.id = id; this.groupId = groupId; this.groupName = groupName;
             this.sender = sender; this.text = text; this.pkg = pkg; this.ts = ts;
@@ -178,7 +179,11 @@ public class Engine {
         public String jielongKey;      // 接龙标题（去掉时间括注），同群同标题只保留一张卡
         public String platformKey;     // 学习平台通知：课程 + 事项名，同平台同键只保留一张卡
         public boolean needsConfirm, updated;
+        public boolean sourceTimeUncertain;
         public boolean aiChecked;      // 上一级（大模型）已复核过
+        public final TaskChanges changes = new TaskChanges();
+        public boolean cancelled;
+        public long lastChangeTs;
         public double confidence;
         public String reason = "";
         public List<String> context = new ArrayList<>();
@@ -300,6 +305,21 @@ public class Engine {
     private final List<Card> removedCards = new ArrayList<>();
     private long stateRevision;
     private long savedRevision;
+    private String aiEpoch = java.util.UUID.randomUUID().toString();
+    private boolean revisionAmbiguous;
+    private final java.util.LinkedHashSet<String> notificationIds = new java.util.LinkedHashSet<>();
+    boolean notificationSeen(String id) { return notificationIds.contains(id); }
+    boolean markNotification(String id) {
+        if (blank(id) || !notificationIds.add(id)) return false;
+        while (notificationIds.size() > 8000) notificationIds.remove(notificationIds.iterator().next());
+        return true; // 随下一次有效事项存档提交；纯闲聊无需单独整份写盘。
+    }
+    boolean processNotification(Msg message, boolean platform) {
+        if (notificationSeen(message.id)) return false;
+        if (platform) processPlatform(message); else process(message);
+        markNotification(message.id);
+        return true;
+    }
     long seq;                                                // 已发出的最大卡片编号，单调递增
     final Map<String, List<Pending>> candidates = new HashMap<>();
     final Map<String, long[]> senderStat = new HashMap<>();   // group|sender -> {total, notify}
@@ -317,6 +337,25 @@ public class Engine {
     }
 
     public Profile getProfile() { return profile; }
+
+    String aiEpoch() { return aiEpoch; }
+    boolean acceptsAiEpoch(String epoch) { return epoch != null && aiEpoch.equals(epoch); }
+    String profileKey() {
+        try { return StateFormat.digest(profile.encode().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        catch (Exception error) { throw new IllegalStateException(error); }
+    }
+    String groupVersion(String group) {
+        GroupInfo g = groups.get(group);
+        return g == null ? null : g.aiVersion;
+    }
+    boolean currentRequest(Escalation request) {
+        if (request == null || request.msg == null || !acceptsAiEpoch(request.epoch)
+                || !profileKey().equals(request.profileKey)
+                || !Objects.equals(groupVersion(request.msg.groupId), request.scopeVersion)) return false;
+        if (request.cardId == null) return !MODE_IGNORE.equals(groupMode(request.msg.groupId));
+        Card c = cardById(request.cardId);
+        return c != null && !c.done && Objects.equals(aiCardState(c), request.cardState);
+    }
 
     // ---------- 档案读取（空串一律忽略，避免 contains("") 恒真）----------
     static boolean blank(String s) { return s == null || s.trim().isEmpty(); }
@@ -376,6 +415,7 @@ public class Engine {
     }
 
     final Map<String, double[]> multi = new HashMap<>();
+    private Engine() { }
 
     // ---------- 特征 ----------
     static boolean containsAny(String s, String[] arr) {
@@ -626,6 +666,11 @@ public class Engine {
 
         long base = 0; boolean high = false;
         int[] ad = absDate(t);
+        if(ad==null) {
+            if(P_ABS_CN.matcher(t).find()) return Deadline.none();
+            Matcher raw=P_ABS_NUM.matcher(t);
+            while(raw.find()) if(!isSectionNumber(t,raw.start(),raw.end())) return Deadline.none();
+        }
         if (ad != null) {
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(send);
@@ -640,7 +685,7 @@ public class Engine {
                     c.add(Calendar.YEAR, 1);
                 }
                 base = c.getTimeInMillis(); high = true;
-            }
+            } else return Deadline.none();
         }
         if (base == 0) {
             Matcher md = P_DAYONLY.matcher(t);
@@ -653,11 +698,13 @@ public class Engine {
                     int year = c.get(Calendar.YEAR);
                     c.set(year, month, dd, 0, 0, 0);
                     c.set(Calendar.MILLISECOND, 0);
+                    if(c.get(Calendar.MONTH)!=month || c.get(Calendar.DAY_OF_MONTH)!=dd) return Deadline.none();
                     base = c.getTimeInMillis();
                     if (base < at(sendCalendar(send), 0, 0) && md.group(1) == null) {
                         month++;
                         if (month > 11) { month = 0; year++; }
                         c.set(year, month, dd, 0, 0, 0);
+                        if(c.get(Calendar.MONTH)!=month || c.get(Calendar.DAY_OF_MONTH)!=dd) return Deadline.none();
                         base = c.getTimeInMillis();
                     }
                     high = true;
@@ -718,7 +765,14 @@ public class Engine {
         if (base != 0 && !hasTime && t.contains("上课前")) {
             hh = 8; mm = 0; hasTime = true;
         }
-        if (base == 0 && !hasTime) return Deadline.none();
+        if (base == 0 && !hasTime) {
+            Matcher duration = P_DURATION.matcher(t);
+            if (!duration.find()) return Deadline.none();
+            double amount = "半".equals(duration.group(1)) ? .5 : cn2int(duration.group(1));
+            long unit = "小时".equals(duration.group(2)) ? 3600000L : 60000L;
+            if (amount <= 0 || amount > 168 || duration.find()) return Deadline.none();
+            return new Deadline(send + (long)(amount * unit), true, "high");
+        }
 
         if (base == 0) {                    // 只有时刻
             if (rollover) {
@@ -741,6 +795,7 @@ public class Engine {
 
     static final Pattern P_CLASS_DEADLINE = Pattern.compile(
             "(?:(?:\\d{1,2}月\\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天])\\s*)?(?:下课前|放学前)");
+    static final Pattern P_DURATION = Pattern.compile("(?<![\\d零一二两三四五六七八九十])([\\d]{1,3}|[一二两三四五六七八九十]{1,3}|半)\\s*(小时|分钟)\\s*(?:之内|内|后截止|后提交|后交)");
 
     static String uncertainClassDeadline(String text) {
         if (blank(text) || P_CLOCK.matcher(text).find() || P_HOUR.matcher(text).find()) return null;
@@ -989,6 +1044,29 @@ public class Engine {
     }
 
     public void process(Msg m) {
+        if (m == null || !m.timeUncertain) { processCore(m); return; }
+        Escalator saved = escalator;
+        List<Escalation> pending = new ArrayList<>();
+        escalator = pending::add;
+        try {
+            processCore(m);
+            for (Card c : cards) {
+                if (Objects.equals(c.sourceId, m.id) || (Objects.equals(c.groupId, m.groupId)
+                        && c.lastChangeTs == m.ts && Objects.equals(c.lastRevisionText, m.text))) {
+                    c.sourceTimeUncertain = true;
+                    c.needsConfirm = true;
+                    c.reason = "来源缺少可靠发送日期或时刻，请核对相对时间";
+                    notifyChanged();
+                }
+            }
+            if (saved != null) for (Escalation e : pending) {
+                if (e.cardId != null) e.cardState = aiCardState(cardById(e.cardId));
+                saved.escalate(e);
+            }
+        } finally { escalator = saved; }
+    }
+
+    private void processCore(Msg m) {
         if (!splitting) {
             // 按群管理：登记这个群；用户设成“不用管”的群直接跳过，不出卡、不参与上下文。
             GroupInfo gi = touchGroup(m.groupId, m.groupName, m.pkg, m.ts);
@@ -1052,6 +1130,13 @@ public class Engine {
 
         // 考试变更先按考试名称定位，避免通用待办的关键词把同群另一场考试选中。
         String examWord = examHit(t);
+        String who = m.sender == null ? "" : m.sender;
+        if ((rev != null || (examWord != null && containsAny(t, RESCHEDULE_WORDS)))
+                && (containsAny(who, TEACHER_HINTS) || focus || P_ATALL.matcher(t).find())
+                && !t.trim().matches("^(?:我|俺|咱).*")) {
+            GroupInfo changed = groups.get(m.groupId);
+            if (changed != null) { changed.aiVersion = java.util.UUID.randomUUID().toString(); stateRevision++; }
+        }
         if (examWord != null && (containsAny(t, RESCHEDULE_WORDS)
                 || (rev != null && containsAny(t, EXAM_WORDS)))) {
             applyExamRevision(m, t, examWord, rev);
@@ -1070,21 +1155,29 @@ public class Engine {
             // 只拿卡片标题对目标，也不走"之前/刚才"指代兜底；对不上就继续走正常流程。
             boolean naturalOnly = "supersede".equals(rev) && naturalRevisionOnly(t);
             Card target = revisionTarget(m, t, naturalOnly);
+            if (revisionAmbiguous) { remember(m); return; }
             if (target != null) {
+                if (m.ts < Math.max(target.sourceTs, target.lastChangeTs)) {
+                    target.changes.record(m, "旧变更早于当前版本，已忽略"); notifyChanged(); remember(m); return;
+                }
                 if ("revoke".equals(rev)) {
-                    cards.remove(target);
+                    archiveCancellation(target, m);
                     notifyChanged();
                     remember(m);
                     return;
                 }
                 Deadline d = parseDeadline(t, m.ts);
                 if (d.ok()) {
+                    target.changes.record(m, "截止时间调整为 " + absoluteTime(d.value));
+                    target.changes.removeOlder(m.ts);
+                    target.lastChangeTs = Math.max(target.lastChangeTs, m.ts);
                     target.deadline = d.value;
                     target.deadlineText = humanDeadline(d.value);
                     target.needsConfirm = "low".equals(d.conf);
                     target.deadlineUserSet = false;
                     target.updated = true;
                     target.lastRevisionText = t;
+                    target.reason = target.needsConfirm ? TIME_UNCERTAIN : "";
                     notifyChanged();
                     remember(m);
                     return;
@@ -1391,17 +1484,23 @@ public class Engine {
             target = card;
         }
         if (target == null) return;
+        if (m.ts < Math.max(target.sourceTs, target.lastChangeTs)) {
+            target.changes.record(m, "旧考试变更早于当前版本，已忽略"); notifyChanged(); return;
+        }
         String sender = m.sender == null ? "" : m.sender;
         if (!containsAny(sender, TEACHER_HINTS) && !P_ATALL.matcher(text).find()
                 && (sender.isEmpty() || !sender.equals(target.sender))) return;
         if ("revoke".equals(revision)) {
-            cards.remove(target);
+            archiveCancellation(target, m);
         } else {
             Matcher change = P_EXAM_NEW_TIME.matcher(text);
             int start = 0;
             while (change.find()) start = change.end();
             Deadline deadline = parseDeadline(text.substring(start), m.ts);
             if (!deadline.ok()) return;
+            target.changes.record(m, "考试时间调整为 " + absoluteTime(deadline.value));
+            target.changes.removeOlder(m.ts);
+            target.lastChangeTs = Math.max(target.lastChangeTs, m.ts);
             target.deadline = deadline.value;
             target.deadlineUserSet = false;
             target.deadlineText = humanDeadline(deadline.value);
@@ -1414,7 +1513,13 @@ public class Engine {
 
     /** 撤销/更正专用来词：出现在任何卡里都说明不了指向哪一条，匹配时排除。 */
     static final String[] REVISION_STOP = {"刚才", "上条", "之前", "那条", "截止", "更正",
-            "取消", "作废", "改成", "改为", "一下", "今晚", "明天"};
+            "取消", "作废", "改成", "改为", "一下", "今晚", "明天", "大家", "上课", "下周",
+            "腾讯", "会议", "教室", "下次", "请相", "相互", "互转", "转告"};
+    static final Pattern P_GENERIC_HOMEWORK_REVISION = Pattern.compile(
+            "(?:^|[，,。；;\\s])(?:这次|本次|此次)?作业\\s*(?:截止(?:时间)?|提交时间|时间)?\\s*"
+                    + "(?:改到|改为|改成|调整为|延期到|推迟到|顺延到|提前到)");
+    static final String[] HOMEWORK_SUBJECTS = {"作业", "实验报告", "预习报告", "课后习题",
+            "读书报告", "读书笔记", "读书心得"};
 
     /** "刚才"类指代词：只认 30 分钟内发的那条。 */
     static final String[] REVISION_PRONOUN_NEAR = {"刚才", "刚刚", "那条"};
@@ -1433,6 +1538,7 @@ public class Engine {
 
     /** titleOnly 为真时只拿卡片标题对目标，不走"之前/刚才"指代兜底（自然改期词用，防调课通知误指）。 */
     Card revisionTarget(Msg m, String t, boolean titleOnly) {
+        revisionAmbiguous = false;
         t = P_ATALL.matcher(t).replaceAll(" ");
         String sender = m.sender == null ? "" : m.sender;
         String gid = m.groupId == null ? "" : m.groupId;
@@ -1450,9 +1556,11 @@ public class Engine {
         }
         Card best = null;
         int bestScore = 0;
+        boolean tied = false;
+        List<Card> bestMatches = new ArrayList<>();
         for (int i = cards.size() - 1; i >= 0; i--) {
             Card c = cards.get(i);
-            if (!gid.equals(c.groupId)) continue;
+            if (!gid.equals(c.groupId) || c.done) continue;
             if (!trusted && !sender.equals(c.sender)) continue;
             String blob = c.title == null ? "" : c.title;
             int score = 0;
@@ -1462,16 +1570,46 @@ public class Engine {
             if (score > bestScore) {
                 best = c;
                 bestScore = score;
+                tied = false;
+                bestMatches.clear();
+                bestMatches.add(c);
+            } else if (score > 0 && score == bestScore) {
+                tied = true;
+                bestMatches.add(c);
             }
         }
-        if (best != null) return best;
+        if (best != null) return tied ? deferRevision(m, t, bestMatches) : best;
+        // 泛称只接受同一发送者、最近一周内唯一的一份作业，不能靠“最新一张”猜。
+        if (P_GENERIC_HOMEWORK_REVISION.matcher(t).find() && !blank(sender)) {
+            List<Card> homework = new ArrayList<>();
+            for (Card c : cards) {
+                long age = m.ts - c.sourceTs;
+                if (!gid.equals(c.groupId) || !sender.equals(c.sender) || c.done
+                        || !"todo".equals(c.kind) || age < 0 || age > 7 * 86400_000L
+                        || !containsAny(c.sourceText == null ? "" : c.sourceText, HOMEWORK_SUBJECTS)) continue;
+                homework.add(c);
+            }
+            if (homework.size() > 1) return deferRevision(m, t, homework);
+            if (homework.size() == 1) return homework.get(0);
+        }
         if (titleOnly) return null;
+        List<Card> sourceMatches = new ArrayList<>();
+        for (int i = cards.size() - 1; i >= 0; i--) {
+            Card c = cards.get(i);
+            if (c.done || !gid.equals(c.groupId) || (!trusted && !sender.equals(c.sender))) continue;
+            if (c.sourceText != null) {
+                boolean matches = false;
+                for (String key : keys) if (c.sourceText.contains(key)) { matches = true; break; }
+                if (matches) {
+                    sourceMatches.add(c);
+                }
+            }
+        }
+        if (sourceMatches.size() > 1) return deferRevision(m, t, sourceMatches);
+        if (sourceMatches.size() == 1) return sourceMatches.get(0);
         for (int i = cards.size() - 1; i >= 0; i--) {
             Card c = cards.get(i);
             if (!gid.equals(c.groupId) || (!trusted && !sender.equals(c.sender))) continue;
-            if (c.sourceText != null) {
-                for (String key : keys) if (c.sourceText.contains(key)) return c;
-            }
             if (near) {                              // "刚才"类：30 分钟内
                 long dt = m.ts - c.sourceTs;
                 if (dt >= 0 && dt <= 30 * 60_000L) return c;
@@ -1479,6 +1617,67 @@ public class Engine {
             if (far && sender.equals(c.sender)) return c;
         }
         return null;
+    }
+
+    /** 保留原时间并暂停确定时间提醒，让用户看见待核对原因。 */
+    private Card deferRevision(Msg message, String text, List<Card> matches) {
+        revisionAmbiguous = true;
+        for (Card c : matches) {
+            c.changes.defer(message, c.needsConfirm);
+            c.needsConfirm = true;
+            c.reason = "群里有变更，但对应事项不明确，请核对：" + clip(text, 80);
+        }
+        notifyChanged();
+        return null;
+    }
+
+    private static String absoluteTime(long time) {
+        return time <= 0 ? "待确认" : new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(new java.util.Date(time));
+    }
+    private void archiveCancellation(Card card, Msg source) {
+        card.changes.record(source, "来源通知取消了该事项");
+        card.cancelled = true; card.removedAt = Math.max(1, source.ts);
+        card.lastRevisionText = source.text; card.lastChangeTs = Math.max(card.lastChangeTs, source.ts);
+        cards.remove(card);
+        if (!removedCards.contains(card)) removedCards.add(card);
+    }
+    public boolean resolvePendingChange(Card selected, String messageId) {
+        if (selected == null || !cards.contains(selected)) return false;
+        Msg change = selected.changes.find(messageId);
+        if (change == null || !Objects.equals(change.groupId, selected.groupId)) return false;
+        String revision = detectRevision(change.text);
+        Deadline deadline = parseDeadline(change.text, change.ts);
+        if (!"revoke".equals(revision) && !deadline.ok()) return false;
+        for (Card c : new ArrayList<>(cards)) {
+            if (!Objects.equals(c.groupId, change.groupId) || c.changes.find(messageId) == null) continue;
+            c.changes.remove(messageId);
+            if (!c.changes.hasPending()) {
+                c.needsConfirm = c.deadline == 0 || (!c.deadlineUserSet && c.changes.baseNeedsConfirm);
+                c.reason = c.needsConfirm ? TIME_UNCERTAIN : "";
+            }
+        }
+        if (change.ts < selected.lastChangeTs) selected.changes.record(change, "这条变更早于当前有效版本，已保留当前版本");
+        else if ("revoke".equals(revision)) archiveCancellation(selected, change);
+        else {
+            selected.changes.record(change, "本人确认对应事项，时间调整为 " + absoluteTime(deadline.value));
+            selected.deadline = deadline.value; selected.deadlineText = humanDeadline(deadline.value);
+            selected.sourceTimeUncertain = change.timeUncertain;
+            selected.needsConfirm = change.timeUncertain || "low".equals(deadline.conf) || selected.changes.hasPending();
+            selected.deadlineUserSet = false; selected.updated = true;
+            selected.lastRevisionText = change.text; selected.lastChangeTs = change.ts;
+            selected.reason = selected.needsConfirm ? TIME_UNCERTAIN : "";
+        }
+        notifyChanged(); return true;
+    }
+    public boolean ignorePendingChange(Card selected, String messageId) {
+        if (selected == null || !cards.contains(selected) || selected.changes.find(messageId) == null) return false;
+        Msg change = selected.changes.find(messageId);
+        for (Card c : cards) if (Objects.equals(c.groupId, change.groupId) && c.changes.find(messageId) != null) {
+            c.changes.remove(messageId);
+            c.changes.record(change, "本人忽略了这条变更");
+            if (!c.changes.hasPending()) { c.needsConfirm = c.deadline == 0 || (!c.deadlineUserSet && c.changes.baseNeedsConfirm); c.reason = c.needsConfirm ? TIME_UNCERTAIN : ""; }
+        }
+        notifyChanged(); return true;
     }
 
     void trackAck(Msg m) {
@@ -1567,6 +1766,7 @@ public class Engine {
 
     private static boolean isDuplicate(List<Card> source, Msg message, String flatText) {
         for (Card card : source) {
+            if (card.cancelled) continue;
             // 先跳过其他群和窗口外的卡，避免为历史原文反复生成去空格字符串。
             if (card.sourceText != null && Objects.equals(message.groupId, card.groupId)
                     && Math.abs(message.ts - card.sourceTs) <= 30 * 60_000L
@@ -1594,6 +1794,7 @@ public class Engine {
     public boolean restoreCard(Card card) {
         if (card == null || !removedCards.contains(card)) return false;
         for (Card active : cards) {
+            if (card.cancelled && Objects.equals(card.groupId, active.groupId) && Objects.equals(card.title, active.title)) return false;
             if (card.id != null && card.id.equals(active.id)) return false;
             if ("jielong".equals(card.kind) && "jielong".equals(active.kind)
                     && Objects.equals(card.groupId, active.groupId)
@@ -1604,6 +1805,7 @@ public class Engine {
         }
         removedCards.remove(card);
         card.removedAt = 0;
+        if (card.cancelled) { card.cancelled = false; card.needsConfirm = true; card.reason = "该事项曾被来源取消，请核对后确认"; }
         cards.add(card);
         notifyChanged();
         return true;
@@ -1623,7 +1825,7 @@ public class Engine {
             card.deadlineUserSet = true;
             card.deadline = deadline;
             card.deadlineText = humanDeadline(deadline);
-            card.needsConfirm = deadline == 0;
+            card.needsConfirm = deadline == 0 || card.changes.hasPending();
             if (TIME_UNCERTAIN.equals(card.reason)) card.reason = "";
         }
         notifyChanged();
@@ -1671,6 +1873,8 @@ public class Engine {
 
     /** 送去复核的一条：要么是一张已出的卡（补全/复核），要么是一条没出卡的消息（复判）。 */
     public static class Escalation {
+        public String epoch, cardState;  // 本机校验用，不发送给模型
+        public String scopeVersion, profileKey;
         public String cardId;            // 非空：复核这张卡
         public Msg msg;                  // 原消息
         public String label;             // 第一级的分类
@@ -1686,6 +1890,8 @@ public class Engine {
 
     /** 上一级的结论，字段与提示词约定的输出结构一一对应。 */
     public static class AiVerdict {
+        public String epoch, cardState;
+        public String scopeVersion, scopeGroup, profileKey;
         public String cardId;            // 复核卡片时回填
         public Msg msg;                  // 复判消息时回填
         public boolean todo;             // 是不是需要我去做的事
@@ -1715,6 +1921,9 @@ public class Engine {
         if (escalator == null || c == null) return;
         Escalation e = new Escalation();
         e.cardId = c.id;
+        e.epoch = aiEpoch;
+        prepareRequest(e, m);
+        e.cardState = aiCardState(c);
         e.msg = m;
         e.label = c.kind;
         e.prob = c.confidence;
@@ -1726,6 +1935,9 @@ public class Engine {
     void escalateMessage(Msg m, String label, double prob, String why) {
         if (escalator == null) return;
         Escalation e = new Escalation();
+        e.epoch = aiEpoch;
+        prepareRequest(e, m);
+        stateRevision++; // 未出卡的复判也要保存群版本，重启后继续验证。
         e.msg = m;
         e.label = label;
         e.prob = prob;
@@ -1738,6 +1950,34 @@ public class Engine {
         if (id == null) return null;
         for (Card c : cards) if (id.equals(c.id)) return c;
         return null;
+    }
+
+    private void prepareRequest(Escalation request, Msg m) {
+        if (!groups.containsKey(m.groupId)) touchGroup(m.groupId, m.groupName, m.pkg, m.ts);
+        request.scopeVersion = groupVersion(m.groupId);
+        request.profileKey = profileKey();
+    }
+    Escalation beginImageRequest(Msg message) {
+        Escalation request = new Escalation();
+        request.epoch = aiEpoch; request.msg = message;
+        prepareRequest(request, message);
+        stateRevision++;
+        return request;
+    }
+
+    /** 精确比较请求时的卡片内容，拒绝改期、人工修改或其他更新前排队的旧结果。 */
+    static String aiCardState(Card c) {
+        StringBuilder out = new StringBuilder();
+        for (String value : new String[]{c.id, c.kind, c.title, c.titleOverride, c.sourceId,
+                c.sourceText, c.lastRevisionText, c.channel, c.place, c.bring, c.reason,
+                String.valueOf(c.deadline), String.valueOf(c.sourceTs), String.valueOf(c.needsConfirm),
+                String.valueOf(c.deadlineUserSet), String.valueOf(c.done), String.valueOf(c.removedAt),
+                String.valueOf(c.aiChecked), String.valueOf(c.confidence), String.valueOf(c.sourceTimeUncertain)}) {
+            out.append(value == null ? -1 : value.length()).append(':');
+            if (value != null) out.append(value);
+        }
+        out.append("changes:").append(c.changes.revision);
+        return out.toString();
     }
 
     /** 上一级给出的时间要落在合理范围内：不早于消息前一天，不晚于一年后。 */
@@ -1758,10 +1998,15 @@ public class Engine {
      * @return true 表示卡片有变化
      */
     public boolean applyAi(AiVerdict v, long now) {
-        if (v == null) return false;
+        if (v == null || !Double.isFinite(v.confidence) || v.confidence > 1
+                || v.confidence < (v.todo ? AI_ADD_CONF : AI_DROP_CONF)
+                || (v.epoch != null && !aiEpoch.equals(v.epoch))) return false;
+        if (v.profileKey != null && !v.profileKey.equals(profileKey())) return false;
+        if (v.scopeVersion != null && !Objects.equals(v.scopeVersion, groupVersion(v.scopeGroup))) return false;
         if (v.cardId != null) {
             Card c = cardById(v.cardId);
             if (c == null || c.done) return false;           // 已被移除 / 已完成：不打扰
+            if (v.cardState != null && !v.cardState.equals(aiCardState(c))) return false;
             c.aiChecked = true;
             if (!v.todo) {
                 if (v.confidence >= AI_DROP_CONF && c.titleOverride == null && !c.deadlineUserSet
@@ -1791,7 +2036,8 @@ public class Engine {
             if (blank(c.place) && !blank(v.place)) { c.place = clip(v.place, 30); changed = true; }
             if (blank(c.channel) && !blank(v.channel) && !"jielong".equals(c.kind)) { c.channel = clip(v.channel, 20); changed = true; }
             if (blank(c.bring) && !blank(v.bring) && "exam".equals(c.kind)) { c.bring = clip(v.bring, 30); changed = true; }
-            boolean sure = c.deadlineUserSet || (c.deadline > 0 && v.timeSure && !blank(c.title)
+            boolean sure = c.deadlineUserSet || (!c.sourceTimeUncertain && !c.changes.hasPending() && plausibleDeadline(v.deadline, c.sourceTs)
+                    && c.deadline == v.deadline && v.timeSure && !blank(c.title)
                     && !c.title.startsWith("待确认"));
             if (c.needsConfirm && sure) {
                 c.needsConfirm = false;
@@ -1819,7 +2065,8 @@ public class Engine {
         c.title = title;
         c.deadline = plausibleDeadline(v.deadline, m.ts) ? v.deadline : 0;
         c.deadlineText = humanDeadline(c.deadline);
-        c.needsConfirm = c.deadline == 0 || !v.timeSure;
+        c.sourceTimeUncertain = m.timeUncertain;
+        c.needsConfirm = c.deadline == 0 || !v.timeSure || m.timeUncertain;
         c.channel = "exam".equals(c.kind) ? null : clip(v.channel, 20);
         c.place = clip(v.place, 30);
         c.bring = "exam".equals(c.kind) ? clip(v.bring, 30) : null;
@@ -2015,13 +2262,23 @@ public class Engine {
     }
 
     public void saveState(OutputStream out) throws Exception {
+        java.io.ByteArrayOutputStream payload = new java.io.ByteArrayOutputStream();
+        writeState(payload);
+        out.write(StateFormat.seal(payload.toByteArray()));
+        out.flush();
+    }
+
+    private void writeState(OutputStream out) throws Exception {
         Writer w = new OutputStreamWriter(out, "UTF-8");
         w.write("NPL1\n");
+        w.write("FORMAT\t2\n");
         w.write("SEQ\t" + seq + "\n");
+        w.write("AIEPOCH\t" + esc(aiEpoch) + "\n");
+        for (String id : notificationIds) w.write("SEEN\t" + esc(id) + "\n");
         // 群登记：旧版本读到 GROUP 行会跳过（不在卡片块里），不影响卡片恢复。
         for (GroupInfo g : groups.values()) {
             w.write("GROUP\t" + esc(g.id) + "\t" + esc(g.name) + "\t" + esc(g.pkg) + "\t" + g.mode
-                    + "\t" + g.lastTs + "\t" + g.count + "\n");
+                    + "\t" + g.lastTs + "\t" + g.count + "\t" + esc(g.aiVersion) + "\n");
         }
         List<Card> stored = new ArrayList<>(cards);
         stored.addAll(removedCards);
@@ -2046,11 +2303,14 @@ public class Engine {
             if (c.lastRevisionText != null) w.write("lastRevisionText\t" + esc(c.lastRevisionText) + "\n");
             w.write("deadline\t" + c.deadline + "\n");
             w.write("sourceTs\t" + c.sourceTs + "\n");
+            w.write("sourceTimeUncertain\t" + (c.sourceTimeUncertain ? "1" : "0") + "\n");
             w.write("jielongKey\t" + esc(c.jielongKey) + "\n");
             if (c.platformKey != null) w.write("platformKey\t" + esc(c.platformKey) + "\n");
             w.write("needsConfirm\t" + (c.needsConfirm ? "1" : "0") + "\n");
             w.write("updated\t" + (c.updated ? "1" : "0") + "\n");
             w.write("done\t" + (c.done ? "1" : "0") + "\n");
+            w.write("cancelled\t" + (c.cancelled ? "1" : "0") + "\nlastChangeTs\t" + c.lastChangeTs + "\n");
+            c.changes.write(w);
             if (c.removedAt > 0) w.write("removedAt\t" + c.removedAt + "\n");
             if (c.aiChecked) w.write("ai\t1\n");
             w.write("confidence\t" + Double.toString(c.confidence) + "\n");
@@ -2067,6 +2327,23 @@ public class Engine {
     }
 
     public void loadState(InputStream in) throws Exception {
+        byte[] bytes = StateFormat.read(in);
+        StateFormat.validate(bytes);
+        Engine parsed = new Engine();
+        parsed.profile = profile;
+        parsed.loadValidatedState(new java.io.ByteArrayInputStream(bytes));
+        cards.clear(); cards.addAll(parsed.cards);
+        removedCards.clear(); removedCards.addAll(parsed.removedCards);
+        groups.clear(); groups.putAll(parsed.groups);
+        seq = Math.max(seq, parsed.seq);
+        aiEpoch = parsed.aiEpoch;
+        notificationIds.clear(); notificationIds.addAll(parsed.notificationIds);
+        candidates.clear(); senderStat.clear(); recent.clear();
+        stateRevision++;
+        savedRevision = parsed.hasStateChanges() ? stateRevision - 1 : stateRevision;
+    }
+
+    private void loadValidatedState(InputStream in) throws Exception {
         BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
         String line = br.readLine();
         if (line == null || !"NPL1".equals(line.trim())) {
@@ -2086,6 +2363,8 @@ public class Engine {
             String key = t < 0 ? line : line.substring(0, t);
             String val = t < 0 ? "" : line.substring(t + 1);
             if ("SEQ".equals(key)) { loadedSeq = toLong(val, loadedSeq); continue; }
+            if ("AIEPOCH".equals(key) && cur == null && !blank(unesc(val))) { aiEpoch = unesc(val); continue; }
+            if ("SEEN".equals(key) && cur == null && !blank(unesc(val))) { markNotification(unesc(val)); continue; }
             if ("GROUP".equals(key) && cur == null) {
                 String[] f = val.split("\t", -1);
                 if (f.length >= 6 && !blank(unesc(f[0]))) {
@@ -2096,6 +2375,7 @@ public class Engine {
                     g.mode = MODE_FOCUS.equals(f[3]) || MODE_IGNORE.equals(f[3]) ? f[3] : MODE_NORMAL;
                     g.lastTs = toLong(f[4], 0);
                     g.count = (int) Math.max(0, Math.min(Integer.MAX_VALUE, toLong(f[5], 0)));
+                    if (f.length > 6 && !blank(unesc(f[6]))) g.aiVersion = unesc(f[6]);
                     loadedGroups.put(g.id, g);
                 }
                 continue;
@@ -2122,11 +2402,15 @@ public class Engine {
             else if ("lastRevisionText".equals(key)) cur.lastRevisionText = unesc(val);
             else if ("deadline".equals(key)) cur.deadline = toLong(val, 0);
             else if ("sourceTs".equals(key)) cur.sourceTs = toLong(val, 0);
+            else if ("sourceTimeUncertain".equals(key)) cur.sourceTimeUncertain = "1".equals(val);
             else if ("jielongKey".equals(key)) cur.jielongKey = unesc(val);
             else if ("platformKey".equals(key)) cur.platformKey = unesc(val);
             else if ("needsConfirm".equals(key)) cur.needsConfirm = "1".equals(val.trim());
             else if ("updated".equals(key)) cur.updated = "1".equals(val.trim());
             else if ("done".equals(key)) cur.done = "1".equals(val.trim());
+            else if ("cancelled".equals(key)) cur.cancelled = "1".equals(val.trim());
+            else if ("lastChangeTs".equals(key)) cur.lastChangeTs = StateFormat.number(val);
+            else if ("HISTORY".equals(key) || "PENDINGCHANGE".equals(key) || "changeRevision".equals(key) || "changeBase".equals(key)) cur.changes.read(key, val);
             else if ("removedAt".equals(key)) cur.removedAt = Math.max(0, toLong(val, 0));
             else if ("ai".equals(key)) cur.aiChecked = "1".equals(val.trim());
             else if ("confidence".equals(key)) cur.confidence = toDouble(val, 0);
@@ -2146,6 +2430,7 @@ public class Engine {
         if (loadedSeq > seq) seq = loadedSeq;
         boolean repairedTitle = false;
         for (Card c : loaded) {                  // 兜底：老数据里的编号也不能被撞
+            if (!blank(c.sourceId)) markNotification(c.sourceId); // 旧存档只迁移确实有卡片的来源。
             if ("todo".equals(c.kind) && deliveryOnly(c.title) && !blank(c.sourceText)) {
                 String[] corrected = findAction(c.sourceText);
                 c.title = corrected[0] == null ? "待确认：提交事项" : corrected[0];
@@ -2365,6 +2650,7 @@ public class Engine {
         public String mode = MODE_NORMAL;
         public long lastTs;
         public int count;
+        String aiVersion = java.util.UUID.randomUUID().toString();
 
         /** 学习平台按整个 App 管理，卡片的群编号是“包名|课程”。 */
         public boolean isPlatform() { return PlatformNotice.isPlatform(pkg); }
@@ -2473,6 +2759,7 @@ public class Engine {
             g.pkg = pkg == null ? "" : pkg;
             groups.put(gid, g);
         }
+        if (!g.mode.equals(mode)) g.aiVersion = java.util.UUID.randomUUID().toString();
         g.mode = mode;
         int removed = 0;
         if (MODE_IGNORE.equals(mode)) {
@@ -2490,6 +2777,7 @@ public class Engine {
     }
 
     public void clearLocalData() {
+        aiEpoch = java.util.UUID.randomUUID().toString();
         cards.clear();
         removedCards.clear();
         candidates.clear();

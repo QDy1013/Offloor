@@ -17,7 +17,7 @@ import android.widget.TextView;
 /** 「AI 识别」设置：接口、模型、复核时机、队列状态，以及截图识别入口。 */
 public class AiActivity extends Activity {
     private Switch enabled;
-    private EditText base, key, model, vision;
+    private EditText base, key, model, vision, dailyLimit;
     private RadioButton now, charging;
     private TextView status;
     private final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -51,7 +51,7 @@ public class AiActivity extends Activity {
         TextView intro = CourseUi.text(this,
                 "本机规则先即时出卡。拿不准的消息、缺事项或缺时间的卡，会排队交给大模型复核：判断是不是待办，"
                         + "补全标题、截止时间、地点和提交方式。截图识别也用它。\n"
-                        + "开启后，这些消息原文会发送到下面填写的接口；密钥只存在本机。", 13, Ui.SUB, false);
+                        + "开启后，这些消息原文会发送到下面填写的接口；密钥由 Android 系统密钥库加密保护，保存在本机。", 13, Ui.SUB, false);
         intro.setLineSpacing(dp(4), 1);
         card.addView(intro);
         CourseUi.gap(card, 14);
@@ -105,9 +105,25 @@ public class AiActivity extends Activity {
         }), CourseUi.row(dp(48)));
         CourseUi.gap(actions, 10);
         actions.addView(CourseUi.action(this, "清空队列", false, () -> {
-            AiQueue.clear(this);
-            refresh();
+            try { AiQueue.clear(this); refresh(); }
+            catch (RuntimeException error) { status.setText("队列未清空，原文件仍保留，请稍后重试"); }
         }), CourseUi.row(dp(48)));
+        CourseUi.gap(actions, 10);
+        actions.addView(CourseUi.action(this, "重试失败的请求", false, () -> {
+            try {
+                int count = AiQueue.retryFailed(this);
+                AiJob.schedule(this);
+                status.setText("已重新排队 " + count + " 条。过期或与当前事项不符的结果不会写回。\n" + AiConfig.summary(this));
+            } catch (RuntimeException error) { status.setText("请求未重新排队，请先检查队列存档"); }
+        }), CourseUi.row(dp(48)));
+
+        LinearLayout budget = section(root);
+        budget.addView(CourseUi.text(this, "每日 AI 请求上限", 16, Ui.TEXT, true));
+        dailyLimit = new EditText(this);
+        dailyLimit.setInputType(InputType.TYPE_CLASS_NUMBER);
+        dailyLimit.setText(String.valueOf(cfg.dailyLimit));
+        budget.addView(dailyLimit);
+        budget.addView(CourseUi.text(this, "范围 1–500，文字批次、图片和连接测试均计数，失败请求也计数。达到上限后保留队列，次日继续。token 数仅统计服务端已返回的用量。", 12, Ui.SUB, false));
 
         LinearLayout shot = section(root);
         shot.addView(CourseUi.text(this, "截图识别", 16, Ui.TEXT, true));
@@ -125,7 +141,7 @@ public class AiActivity extends Activity {
     }
 
     private void refresh() {
-        status.setText("当前：" + AiConfig.summary(this));
+        status.setText("当前：" + AiConfig.summary(this) + AiQueue.failureSummary(this));
     }
 
     private void preset(String b, String m, String v) {
@@ -134,22 +150,28 @@ public class AiActivity extends Activity {
         vision.setText(v);
     }
 
-    private void save() {
+    private boolean save() {
+        try {
+        int limit = Integer.parseInt(dailyLimit.getText().toString().trim());
+        if (limit < 1 || limit > 500) throw new IllegalArgumentException("每日请求上限应为 1–500");
         AiConfig.save(this, enabled.isChecked(), base.getText().toString(), key.getText().toString(),
                 model.getText().toString(), vision.getText().toString(),
-                charging.isChecked() ? AiConfig.MODE_CHARGING : AiConfig.MODE_NOW);
+                charging.isChecked() ? AiConfig.MODE_CHARGING : AiConfig.MODE_NOW, limit);
+        } catch (RuntimeException e) { status.setText(e instanceof NumberFormatException ? "请填写有效的每日请求上限" : e.getMessage()); return false; }
         AiConfig cfg = AiConfig.load(this);
         if (cfg.enabled && !cfg.base.startsWith("https://")) {
             status.setText("接口地址必须是 https:// 开头");
-            return;
+            return false;
         }
         AiJob.reschedule(this);
         refresh();
+        return true;
     }
 
     private void test() {
-        save();
+        if (!save()) return;
         AiConfig cfg = AiConfig.load(this);
+        if (!cfg.base.startsWith("https://")) { status.setText("接口地址必须是 https:// 开头"); return; }
         if (cfg.key.isEmpty()) {
             status.setText("先填写 API Key");
             return;

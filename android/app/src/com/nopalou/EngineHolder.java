@@ -34,6 +34,23 @@ public class EngineHolder {
     private static boolean diagLoaded = false;
 
     private static Engine engine;
+    private static StateStore stateStore;
+    static volatile String storageIssue;
+    static boolean storageBlocked() { return storageMigrationFailed || (stateStore != null && stateStore.blocked()); }
+
+    static boolean rebuildStorage(Context ctx) {
+        try {
+            if (stateStore == null) return false;
+            stateStore.allowRebuild();
+            storageMigrationFailed = false;
+            if (!save(ctx)) return false;
+            storageIssue = null;
+            return true;
+        } catch (Exception error) {
+            diag(ctx, "出错", "存档重建失败，原文件仍保留");
+            return false;
+        }
+    }
 
     /**
      * 记一条诊断日志并落盘。
@@ -78,7 +95,11 @@ public class EngineHolder {
             // 打开同一个诊断日志文件。
             SharedPreferences sp = app.getSharedPreferences(DIAG_PREFS, Context.MODE_PRIVATE);
             // 读出上次保存的文本；没有就是 null，DiagLog.load 会按空日志处理。
-            DiagLog.load(sp.getString(DIAG_KEY, null));
+            // 旧版日志可能包含平台原文；升级后只保留新格式的数量诊断。
+            if(sp.getInt("privacy_version",0)<1) {
+                sp.edit().remove(DIAG_KEY).putInt("privacy_version",1).apply();
+                DiagLog.reset();
+            } else DiagLog.load(sp.getString(DIAG_KEY, null));
             // 顺便把「最近一次自动收到」的时间和群名读回来，重启后界面不用显示成空白。
             lastReceivedAt = sp.getLong(KEY_LAST_AT, 0L);
             lastReceivedGroup = sp.getString(KEY_LAST_GROUP, null);
@@ -155,14 +176,20 @@ public class EngineHolder {
         // 档案必须先于任何消息进来之前装上，否则"跟我有关"的判断会用空档案。
         e.setProfile(ProfileStore.load(app));
 
-        AtomicFile file = new AtomicFile(new File(app.getFilesDir(), FILE_NAME));
-        try (InputStream in = file.openRead()) {
-            e.loadState(in);
-        } catch (FileNotFoundException firstRun) {
-            // 首次启动还没有卡片存档。
-        } catch (Exception ex) {
-            Log.w(TAG, "读取卡片失败", ex);
+        stateStore = new StateStore(new File(app.getFilesDir(), FILE_NAME));
+        StateStore.Loaded restored = stateStore.load(StateFormat::validate);
+        storageIssue = restored.message;
+        if (restored.bytes != null) {
+            try { e.loadState(new java.io.ByteArrayInputStream(restored.bytes)); }
+            catch (Exception ex) {
+                storageIssue = "存档迁移失败，原文件已保留。请在存档与恢复中处理。";
+                stateStore = new StateStore(new File(app.getFilesDir(), FILE_NAME));
+                // 迁移错误也暂停自动保存，不能用空引擎覆盖。
+                storageMigrationFailed = true;
+                Log.w(TAG, "迁移卡片失败", ex);
+            }
         }
+        if (storageIssue != null) diag(app, "存档", storageIssue);
         // 拿不准的消息/卡片：开了 AI 识别就落盘排队，交给 AiJob 批量复核；没开就什么都不做。
         final Context appCtx = app;
         e.escalator = esc -> {
@@ -175,6 +202,7 @@ public class EngineHolder {
             }
         };
         engine = e;
+        AiImages.cleanupCache(app);
         return engine;
     }
 
@@ -191,6 +219,7 @@ public class EngineHolder {
     /** 只保护真正的文件写入。 */
     private static final Object WRITE_LOCK = new Object();
     private static final int WRITTEN = 1, SKIPPED = 0, FAILED = -1;
+    private static boolean storageMigrationFailed;
 
     /** 等后台写盘排空（最多 timeoutMs）：页面退到后台时调用，进程随后被杀也不丢刚才的操作。 */
     public static void flush(long timeoutMs) {
@@ -244,17 +273,14 @@ public class EngineHolder {
     private static int writeBytes(Context app, byte[] bytes, long seq) {
         synchronized (WRITE_LOCK) {
             if (seq <= writtenSeq) return SKIPPED;
-            AtomicFile file = new AtomicFile(new File(app.getFilesDir(), FILE_NAME));
-            FileOutputStream out = null;
             try {
-                out = file.startWrite();
-                out.write(bytes);
-                file.finishWrite(out);
+                if (storageMigrationFailed) throw new java.io.IOException("存档迁移失败，保存已暂停");
+                stateStore.write(bytes, StateFormat::validate);
                 writtenSeq = seq;
                 return WRITTEN;
             } catch (Exception ex) {
-                if (out != null) file.failWrite(out);
                 Log.w(TAG, "保存卡片失败", ex);
+                diag(app, "存档", "保存失败，原存档与备份仍保留");
                 return FAILED;
             }
         }

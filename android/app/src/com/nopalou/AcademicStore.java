@@ -18,7 +18,9 @@ final class AcademicStore {
                 if (out.size() + n > Academic.MAX_BYTES) throw new java.io.IOException("考试成绩存档过大");
                 out.write(buffer, 0, n);
             }
-            return new Academic(new String(out.toByteArray(), StandardCharsets.UTF_8));
+            String encoded=new String(out.toByteArray(), StandardCharsets.UTF_8);
+            if(!AccountFiles.visible(new org.json.JSONObject(encoded),AccountFiles.current(c))) return null;
+            return new Academic(encoded);
         }
     }
     /** Merges a fresh read into the saved copy and writes it; returns what was saved. */
@@ -26,7 +28,7 @@ final class AcademicStore {
         Academic previous = null;
         try { previous = load(c); } catch (Exception ignored) { }
         Academic merged = Academic.merge(previous, fresh, System.currentTimeMillis());
-        byte[] bytes = merged.encode().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = AccountFiles.protect(c,merged.encode()).getBytes(StandardCharsets.UTF_8);
         if (bytes.length > Academic.MAX_BYTES) throw new java.io.IOException("考试成绩过大");
         AtomicFile f = file(c); FileOutputStream out = null;
         try { out = f.startWrite(); out.write(bytes); f.finishWrite(out); }
@@ -35,4 +37,5 @@ final class AcademicStore {
         return merged;
     }
     static synchronized void clear(Context c) { file(c).delete(); }
+    static synchronized void stampOwner(Context c,String owner) throws Exception { AccountFiles.stamp(c,"academic.json",owner); }
 }
