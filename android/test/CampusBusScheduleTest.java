@@ -26,6 +26,10 @@ public class CampusBusScheduleTest {
         check("past departures are skipped",work.get(0).next(481).time.equals("09:00"));
         check("no invented service after the last departure",work.get(0).next(541)==null);
         check("boarding place is retained",work.get(0).departures.get(0).place.equals("站点A"));
+        check("route filter keeps the selected direction",CampusBusSchedule.filter(work,"友谊→长安","").size()==1);
+        check("place filter keeps matching departures",CampusBusSchedule.filter(work,"","站点A").get(0).departures.size()==2);
+        check("unknown place produces no routes",CampusBusSchedule.filter(work,"","不存在").isEmpty());
+        check("route names and places are exposed",CampusBusSchedule.routeNames(work).size()==1 && CampusBusSchedule.places(work).contains("站点A"));
         List<CampusBusSchedule.Route> weekend=CampusBusSchedule.routes(module,true);
         check("weekend excludes teacher-only buses",weekend.size()==1 && weekend.get(0).departures.size()==1 && weekend.get(0).departures.get(0).time.equals("09:10"));
         check("missing timetable stays empty",CampusBusSchedule.routes(null,false).isEmpty());

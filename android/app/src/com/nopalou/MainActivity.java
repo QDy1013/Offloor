@@ -437,6 +437,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         brand.setLetterSpacing(-0.02f);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        CampusSyncBanner.add(this,top);
         notifStatus = uiText("", 12, Ui.SUB, true);
         notifStatus.setGravity(Gravity.CENTER);
         notifStatus.setPadding(dp(this, 12), 0, dp(this, 13), 0);
@@ -453,7 +454,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
         page.addView(top, lp(-1, dp(this, 60)));
-        CampusSyncBanner.add(this,page);
         updateBanner=uiText("",13,Ui.ACCENT,true);
         updateBanner.setPadding(dp(this,16),dp(this,13),dp(this,16),dp(this,13));
         updateBanner.setBackground(Ui.ripple(this,Ui.round(this,Ui.ACCENT_BG,18),Ui.press(),18));

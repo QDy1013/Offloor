@@ -2,6 +2,9 @@ package com.nopalou;
 
 /** Progress represents processed work, never a claim that every service succeeded. */
 final class CampusSyncState {
+    static boolean completed(String result) {
+        return "complete".equals(result) || "partial".equals(result);
+    }
     static int percent(int done,int total,boolean completed) {
         if (completed) return 100;
         if (total<=0) return 0;

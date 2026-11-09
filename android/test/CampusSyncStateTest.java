@@ -11,6 +11,9 @@ public class CampusSyncStateTest {
         check("discovery has no invented percentage",CampusSyncState.percent(0,0,false)==0);
         check("completed campus work does not hide pending academic work",CampusSyncState.percent(6,8,false)==75);
         check("pending result save never displays 100 percent",CampusSyncState.percent(8,8,false)==99);
+        check("complete result is successful",CampusSyncState.completed("complete"));
+        check("partial result is a successful save",CampusSyncState.completed("partial"));
+        check("interrupted result is not successful",!CampusSyncState.completed("interrupted"));
         check("only successful completion reaches 100",CampusSyncState.percent(8,8,true)==100);
         check("invalid counters stay bounded",CampusSyncState.percent(-1,8,false)==0 && CampusSyncState.percent(100,8,false)==99);
         check("queued login handoff displays progress immediately",CampusSyncState.visible(false,true,0,100));

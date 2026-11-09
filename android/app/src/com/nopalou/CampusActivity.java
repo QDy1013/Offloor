@@ -24,6 +24,7 @@ public class CampusActivity extends Activity {
     private String detail;
     private boolean loaded;
     private boolean busWeekend;
+    private String busRoute="",busPlace="";
     private CampusClassroomRefresh classroomRefresh;
     private boolean roomAttempted,roomLoading;
     private String roomCampus="长安校区",roomDate="",roomToken="",roomError="",roomLocation="";
@@ -38,8 +39,14 @@ public class CampusActivity extends Activity {
         if (!resumed) return;
         int y=scroll==null?0:scroll.getScrollY(); render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); updates.postDelayed(this,60_000);
     } };
-    @Override public void onCreate(Bundle b) { super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module"); busWeekend=b==null?CampusBusSchedule.weekend(System.currentTimeMillis()):b.getBoolean("bus_weekend"); render(); }
-    @Override public void onSaveInstanceState(Bundle b) { b.putBoolean("bus_weekend",busWeekend); super.onSaveInstanceState(b); }
+    @Override public void onCreate(Bundle b) {
+        super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module");
+        busWeekend=b==null?CampusBusSchedule.weekend(System.currentTimeMillis()):b.getBoolean("bus_weekend");
+        busRoute=b==null?"":b.getString("bus_route",""); busPlace=b==null?"":b.getString("bus_place",""); render();
+    }
+    @Override public void onSaveInstanceState(Bundle b) {
+        b.putBoolean("bus_weekend",busWeekend); b.putString("bus_route",busRoute); b.putString("bus_place",busPlace); super.onSaveInstanceState(b);
+    }
     @Override public void onResume() {
         super.onResume(); resumed=true;
         if ("classroom".equals(detail)) {
@@ -73,7 +80,7 @@ public class CampusActivity extends Activity {
         if (service!=null) head.addView(CourseUi.icon(this,"prev","返回校园",this::finish));
         head.addView(text(service==null?"我的校园":service.title,24,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
         if (service==null) head.addView(CourseUi.icon(this,"more","校园设置",this::settings));
-        CampusSyncBanner.add(this,root);
+        CampusSyncBanner.add(this,head);
         scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
         list=CourseUi.column(this); list.setPadding(dp(18),dp(4),dp(18),dp(28)); scroll.addView(list); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if (!loaded) note("正在读取本机数据…");
@@ -269,11 +276,44 @@ public class CampusActivity extends Activity {
             TextView tab=text(modes[i],14,selected?Ui.ACCENT:Ui.SUB,selected); tab.setGravity(Gravity.CENTER); tab.setSelected(selected);
             tab.setBackground(Ui.ripple(this,selected?Ui.round(this,Ui.CARD,12):null,Ui.press(),12));
             controls.addView(tab,new LinearLayout.LayoutParams(0,dp(44),1));
-            tab.setOnClickListener(v -> { if (busWeekend!=weekend) { busWeekend=weekend; render(); } });
+            tab.setOnClickListener(v -> { if (busWeekend!=weekend) { busWeekend=weekend; busRoute=""; busPlace=""; render(); } });
         }
-        java.util.List<CampusBusSchedule.Route> routes=CampusBusSchedule.routes(module,busWeekend);
+        java.util.List<CampusBusSchedule.Route> available=CampusBusSchedule.routes(module,busWeekend);
+        java.util.List<String> routeNames=CampusBusSchedule.routeNames(available);
+        if (!busRoute.isEmpty() && !routeNames.contains(busRoute)) busRoute="";
+        java.util.List<String> availablePlaces=CampusBusSchedule.places(CampusBusSchedule.filter(available,busRoute,""));
+        if (!busPlace.isEmpty() && !availablePlaces.contains(busPlace)) busPlace="";
+        LinearLayout filters=new LinearLayout(this); list.addView(filters);
+        TextView routeFilter=CourseUi.action(this,busRoute.isEmpty()?"全部路线":"路线 · "+busRoute+"  ▾",false,() -> {
+            String[] choices=new String[routeNames.size()+1]; choices[0]="全部路线";
+            for (int i=0;i<routeNames.size();i++) choices[i+1]=routeNames.get(i);
+            int selected=busRoute.isEmpty()?0:routeNames.indexOf(busRoute)+1;
+            new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择路线方向").setSingleChoiceItems(choices,selected,(dialog,which) -> {
+                busRoute=which==0?"":routeNames.get(which-1); busPlace=""; dialog.dismiss(); render();
+            }).setNegativeButton("取消",null).show();
+        });
+        routeFilter.setSingleLine(true); routeFilter.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        routeFilter.setContentDescription("路线筛选，"+(busRoute.isEmpty()?"全部路线":busRoute));
+        routeFilter.setEnabled(!routeNames.isEmpty()); routeFilter.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
+        filters.addView(routeFilter,new LinearLayout.LayoutParams(0,dp(44),1));
+        TextView placeFilter=CourseUi.action(this,busPlace.isEmpty()?"全部上车点":"上车点 · "+busPlace+"  ▾",false,() -> {
+            String[] choices=new String[availablePlaces.size()+1]; choices[0]="全部上车点";
+            for (int i=0;i<availablePlaces.size();i++) choices[i+1]=availablePlaces.get(i);
+            int selected=busPlace.isEmpty()?0:availablePlaces.indexOf(busPlace)+1;
+            new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择上车地点").setSingleChoiceItems(choices,selected,(dialog,which) -> {
+                busPlace=which==0?"":availablePlaces.get(which-1); dialog.dismiss(); render();
+            }).setNegativeButton("取消",null).show();
+        });
+        placeFilter.setSingleLine(true); placeFilter.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        placeFilter.setContentDescription("上车点筛选，"+(busPlace.isEmpty()?"全部上车点":busPlace));
+        placeFilter.setEnabled(!availablePlaces.isEmpty()); placeFilter.setAlpha(availablePlaces.isEmpty()?.5f:1f);
+        placeFilter.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
+        LinearLayout.LayoutParams placeFilterParams=new LinearLayout.LayoutParams(0,dp(44),1); placeFilterParams.leftMargin=dp(8); filters.addView(placeFilter,placeFilterParams);
+        CourseUi.gap(list,12);
+        java.util.List<CampusBusSchedule.Route> routes=CampusBusSchedule.filter(available,busRoute,busPlace);
         long now=System.currentTimeMillis(); boolean today=busWeekend==CampusBusSchedule.weekend(now); int minute=CampusBusSchedule.minute(now);
-        if (routes.isEmpty()) { note("暂未读到这一天的校车班次，可查看校方原始公告。"); }
+        if (available.isEmpty()) { note("暂未读到这一天的校车班次，可查看校方原始公告。"); }
+        else if (routes.isEmpty()) { note("没有符合当前路线和上车点的班次。"); }
         for (CampusBusSchedule.Route route:routes) {
             LinearLayout c=card(); c.addView(text(route.name,18,Ui.TEXT,true)); CourseUi.gap(c,14);
             CampusBusSchedule.Departure next=today?route.next(minute):route.departures.get(0);

@@ -36,6 +36,26 @@ final class CampusBusSchedule {
         for (int i=0;columns!=null && i<columns.length();i++) if (columns.optString(i).matches(pattern)) return i;
         return -1;
     }
+    static List<Route> filter(List<Route> source,String routeName,String place) {
+        List<Route> result=new ArrayList<>();
+        for (Route original:source) {
+            if (!routeName.isEmpty() && !routeName.equals(original.name)) continue;
+            Route route=new Route(original.name);
+            for (Departure departure:original.departures) if (place.isEmpty() || place.equals(departure.place)) route.departures.add(departure);
+            if (!route.departures.isEmpty()) result.add(route);
+        }
+        return result;
+    }
+    static List<String> routeNames(List<Route> routes) {
+        List<String> result=new ArrayList<>();
+        for (Route route:routes) if (!result.contains(route.name)) result.add(route.name);
+        return result;
+    }
+    static List<String> places(List<Route> routes) {
+        java.util.LinkedHashSet<String> seen=new java.util.LinkedHashSet<>();
+        for (Route route:routes) for (Departure departure:route.departures) if (!departure.place.isEmpty()) seen.add(departure.place);
+        return new ArrayList<>(seen);
+    }
     static List<Route> routes(JSONObject module,boolean weekend) {
         Map<String,TreeMap<Integer,Departure>> grouped=new LinkedHashMap<>();
         JSONArray tables=module==null?null:module.optJSONArray("tables");

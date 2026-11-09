@@ -11,7 +11,7 @@
         network: ['账户信息', '我的账户', '上网信息', '流量查询', '余额查询', '缴费记录', '充值记录', '上网记录'], library: ['我的图书馆', '我的借阅', '当前借阅', '借阅信息', '借阅历史', '历史借阅', '欠费信息'],
         seats: ['我的预约', '预约记录', '我的预约记录', '历史预约'], classroom: ['空闲教室查询', '空闲教室'], sports: ['我的预约', '预约记录', '我的预约记录', '历史预约']
     };
-    const state = root.__louAutoDriver || (root.__louAutoDriver = {pending: 0, started: Date.now(), detail: ''});
+    const state = root.__louAutoDriver || (root.__louAutoDriver = {pending: 0, requestSeq: 0, started: Date.now(), detail: ''});
     const focused = {
         network:['我的账户','账户信息','余额查询','上网信息','流量查询'], card:['我的账户','账户信息','账户余额','余额查询','消费明细','交易明细','账单查询'],
         electric:['电费查询','宿舍电费'], housing:['我的宿舍','住宿信息','公寓信息','智慧公寓'], classroom:['空闲教室查询','空闲教室'],
@@ -43,13 +43,25 @@
             const now=new Date(Date.now()+8*60*60*1000), min=Math.min(1438,now.getUTCHours()*60+now.getUTCMinutes());
             const time=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
             const date=requested?requested.date:now.toISOString().slice(0,10), start=requested?requested.start:time(min), end=requested?requested.end:time(Math.min(1439,min+60));
-            const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false};
+            const beforeRooms=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
+            const beforeChanged=state.changed;
+            const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false,called:false,startedAt:0,beforeRooms,beforeChanged,sawPending:false};
             vm.byWeek=false; vm.byTime=true; vm.freeListParam.campusId=String(site.value);
-            const run=()=>{try { const p=vm.freeListParam.dateTimeSegmentCmd; p.startDateTime=date;p.endDateTime=date;p.startTime=query.start;p.endTime=query.end;vm.queryFreeList(); } catch (_) {query.failed=true;} };
+            const run=()=>{try {
+                const p=vm.freeListParam.dateTimeSegmentCmd;
+                p.startDateTime=date;p.endDateTime=date;p.startTime=query.start;p.endTime=query.end;
+                query.startedAt=Date.now(); query.called=true; vm.queryFreeList();
+            } catch (_) {query.failed=true;} };
             if (typeof vm.$nextTick==='function') vm.$nextTick(run); else Promise.resolve().then(run);
         }
-        const q=state.classroom, posted=vm.posted && vm.posted.freeListParam, d=posted && posted.dateTimeSegmentCmd;
-        return {condition:q.condition,ready:!!(posted && String(posted.campusId)===q.campus && d && d.startDateTime===q.date && d.startTime===q.start && d.endTime===q.end),failed:q.failed,rows:Array.isArray(vm.freeRooms)?vm.freeRooms.length:0};
+        const q=state.classroom;
+        if (q.called && state.pending>0) q.sawPending=true;
+        const rooms=Array.isArray(vm.freeRooms)?vm.freeRooms.length:0;
+        const roomSignature=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
+        const resultChanged=roomSignature!==q.beforeRooms || state.changed!==q.beforeChanged;
+        const empty=Array.from(root.document.querySelectorAll('.el-table__empty-text,.ant-empty-description,.dataTables_empty,.no-data,.empty-data')).some(e=>visible(e) && /暂无(?:数据|记录)|无(?:数据|记录)|没有(?:数据|记录)/.test(label(e)));
+        const settled=q.called && (resultChanged || q.sawPending) && state.pending===0;
+        return {condition:q.condition,ready:!!(settled && (Array.isArray(vm.freeRooms) || empty)),failed:q.failed,rows:rooms};
     }
     function install() {
         if (state.installed) return; state.installed = true;

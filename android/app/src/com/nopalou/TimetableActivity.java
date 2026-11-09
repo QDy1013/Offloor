@@ -116,9 +116,9 @@ public class TimetableActivity extends Activity {
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         if (getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest"))
             toolbar.addView(Ui.tag(this, "测试版", Ui.SUB, Ui.FILL));
+        CampusSyncBanner.add(this,toolbar);
         if (table != null) toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
         toolbar.addView(icon("more", "课表设置", this::settings));
-        CampusSyncBanner.add(this,root);
         if (table == null) { empty(root); addNavigation(root); return; }
 
         TextView school = text(table.school.name + "  /  " + table.termName, 11, Ui.SUB, false);
