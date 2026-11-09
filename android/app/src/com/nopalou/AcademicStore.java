@@ -23,11 +23,11 @@ final class AcademicStore {
     }
     /** Merges a fresh read into the saved copy and writes it; returns what was saved. */
     static synchronized Academic update(Context c, String fresh) throws Exception {
-        Academic previous = null;
-        try { previous = load(c); } catch (Exception ignored) { }
+        Academic previous=load(c);
         Academic merged = Academic.merge(previous, fresh, System.currentTimeMillis());
         byte[] bytes = merged.encode().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > Academic.MAX_BYTES) throw new java.io.IOException("考试成绩过大");
+        UpgradeDataBackup.beforeWrite(c);
         AtomicFile f = file(c); FileOutputStream out = null;
         try { out = f.startWrite(); out.write(bytes); f.finishWrite(out); }
         catch (Exception e) { if (out != null) f.failWrite(out); throw e; }

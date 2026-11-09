@@ -40,7 +40,7 @@ final class CampusServices {
     static final Service[] CAMPUS={
         new Service("network","网费","账户余额、套餐与到期状态","https://zizhu.nwpu.edu.cn/",false),
         new Service("electric","电费","剩余电量与更新时间","https://yktapp.nwpu.edu.cn/",false),
-        byId("card"),byId("classroom"),byId("bus"),byId("deadlines")
+        byId("card"),byId("classroom"),byId("bus")
     };
     static boolean selected(String id) { for (Service s:CAMPUS) if (s.id.equals(id)) return true; return false; }
     static Service selectedService(String id) { for (Service s:CAMPUS) if (s.id.equals(id)) return s; return null; }

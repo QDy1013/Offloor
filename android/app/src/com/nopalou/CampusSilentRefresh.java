@@ -109,7 +109,7 @@ final class CampusSilentRefresh {
         if (current != null && current.host == context) current.end(false, true);
     }
 
-    private static String asset(Context c, String name) throws Exception {
+    static String asset(Context c, String name) throws Exception {
         try (java.io.InputStream in = c.getAssets().open(name); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             byte[] b = new byte[4096];
             int n;

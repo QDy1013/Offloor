@@ -55,8 +55,11 @@ final class CourseUi {
                 if ("more".equals(type)) {
                     paint.setStyle(Paint.Style.FILL); for (int x = 5; x <= 19; x += 7) canvas.drawCircle(x, 12, 1.6f, paint);
                 } else if ("sync".equals(type)) {
-                    canvas.drawArc(4, 4, 20, 20, -55, 295, false, paint);
-                    path.moveTo(17, 3); path.lineTo(18, 9); path.lineTo(12, 8); canvas.drawPath(path, paint);
+                    // Follow the arc's tangent into the arrow tip so the strokes stay connected.
+                    path.addArc(4, 4, 20, 20, 0, 315);
+                    path.lineTo(20, 8.7f); canvas.drawPath(path, paint);
+                    path.reset(); path.moveTo(20, 3.5f); path.lineTo(20, 8.7f); path.lineTo(14.8f, 8.7f);
+                    canvas.drawPath(path, paint);
                 } else if ("down".equals(type)) {
                     path.moveTo(6, 9); path.lineTo(12, 15); path.lineTo(18, 9); canvas.drawPath(path, paint);
                 } else {

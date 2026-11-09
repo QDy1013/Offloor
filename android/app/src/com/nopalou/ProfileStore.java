@@ -31,6 +31,7 @@ public class ProfileStore {
     /** null 当作空档案存，与 Engine.setProfile 口径一致。 */
     public static void save(Context ctx, Engine.Profile p) {
         try {
+            UpgradeDataBackup.beforeWrite(ctx);
             String s = p == null ? new Engine.Profile().encode() : p.encode();
             pref(ctx).edit().putString(KEY, s).apply();
         } catch (Exception ignored) { }

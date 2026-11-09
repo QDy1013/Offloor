@@ -23,6 +23,11 @@ public class CampusActivity extends Activity {
     private CampusData data;
     private String detail;
     private boolean loaded;
+    private boolean busWeekend;
+    private CampusClassroomRefresh classroomRefresh;
+    private boolean roomAttempted,roomLoading;
+    private String roomCampus="长安校区",roomDate="",roomToken="",roomError="";
+    private int roomStart,roomEnd,roomLimit=40;
     private boolean resumed;
     private LinearLayout list;
     private ScrollView scroll;
@@ -33,9 +38,18 @@ public class CampusActivity extends Activity {
         if (!resumed) return;
         int y=scroll==null?0:scroll.getScrollY(); render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); updates.postDelayed(this,60_000);
     } };
-    @Override public void onCreate(Bundle b) { super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module"); render(); }
+    @Override public void onCreate(Bundle b) { super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module"); busWeekend=b==null?CampusBusSchedule.weekend(System.currentTimeMillis()):b.getBoolean("bus_weekend"); render(); }
+    @Override public void onSaveInstanceState(Bundle b) { b.putBoolean("bus_weekend",busWeekend); super.onSaveInstanceState(b); }
     @Override public void onResume() {
-        super.onResume(); resumed=true; CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload(); updates.postDelayed(clock,60_000);
+        super.onResume(); resumed=true;
+        if ("classroom".equals(detail)) {
+            stopClassroomQuery(); roomDate=CampusClassroomQuery.today(System.currentTimeMillis());
+            int[] range=CampusClassroomQuery.defaultRange(System.currentTimeMillis()); roomStart=range[0]; roomEnd=range[1];
+            roomCampus=getSharedPreferences("classroom-live",MODE_PRIVATE).getString("campus","长安校区");
+            if (!"友谊校区".equals(roomCampus)) roomCampus="长安校区";
+            roomAttempted=false; roomToken=""; roomError=""; roomLoading=true;
+        }
+        CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload(); updates.postDelayed(clock,60_000);
     }
     private void reload() {
         if (isDestroyed() || io.isShutdown()) return;
@@ -43,7 +57,9 @@ public class CampusActivity extends Activity {
             CampusData d=null; boolean broken=false;
             try { d=CampusStore.load(getApplicationContext()); } catch (Exception e) { broken=true; }
             CampusData result=d; boolean bad=broken;
-            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); data=result; loaded=true; render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); if (bad) toast("校园存档无法读取"); });
+            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); data=result; loaded=true;
+                if ("classroom".equals(detail) && resumed && !roomAttempted) startClassroomQuery(false);
+                render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); if (bad) toast("校园存档无法读取"); });
         });
     }
     private int dp(float n) { return Ui.dp(this,n); }
@@ -91,7 +107,6 @@ public class CampusActivity extends Activity {
         section("校园服务");
         moduleCard(CampusServices.byId("classroom"));
         moduleCard(CampusServices.byId("bus"));
-        moduleCard(CampusServices.byId("deadlines"));
         TextView foot=text("数据来自校方系统 · 点开查看详情与更新时间",11,Ui.MUTE,false);
         foot.setPadding(dp(4),dp(6),dp(4),dp(10)); list.addView(foot);
     }
@@ -120,12 +135,11 @@ public class CampusActivity extends Activity {
     private void openModule(String id) { startActivity(new Intent(this,CampusActivity.class).putExtra("module",id)); }
     private void moduleCard(CampusServices.Service s) {
         JSONObject module=data==null?null:data.module(s.id);
-        CampusSummary summary=CampusSummary.of(s.id,module,System.currentTimeMillis());
+        CampusSummary summary="classroom".equals(s.id)?new CampusSummary("选择校区和时段，打开即查今天","每次打开重新查询"):CampusSummary.of(s.id,module,System.currentTimeMillis());
         LinearLayout c=card(); c.setPadding(dp(14),dp(16),dp(14),dp(16));
         c.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,20),Ui.press(),20)); c.setFocusable(true); Ui.pressScale(c,.985f);
         LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); c.addView(row);
-        int color=s.id.equals("bus")?Ui.TEAL:s.id.equals("classroom")?Ui.ACCENT:Ui.VIOLET;
-        int fill=s.id.equals("bus")?Ui.TEAL_BG:s.id.equals("classroom")?Ui.ACCENT_BG:Ui.VIOLET_BG;
+        int color=s.id.equals("classroom")?Ui.ACCENT:Ui.TEAL, fill=s.id.equals("classroom")?Ui.ACCENT_BG:Ui.TEAL_BG;
         android.widget.ImageView icon=new android.widget.ImageView(this); icon.setImageDrawable(new CampusServiceIcon(s.id,color));
         icon.setPadding(dp(11),dp(11),dp(11),dp(11)); icon.setBackground(Ui.round(this,fill,14));
         row.addView(icon,new LinearLayout.LayoutParams(dp(44),dp(44)));
@@ -138,6 +152,8 @@ public class CampusActivity extends Activity {
     }
     private void renderDetail(CampusServices.Service s) {
         JSONObject m=data==null?null:data.module(s.id); int count=CampusData.count(m);
+        if ("bus".equals(s.id)) { renderBus(m); return; }
+        if ("classroom".equals(s.id)) { renderClassroom(m); return; }
         LinearLayout intro=card(); intro.addView(text(s.detail,15,Ui.TEXT,true)); CourseUi.gap(intro,10);
         intro.addView(text(m==null?"尚未同步":CampusServices.status(m.optString("state"))+" · "+time(m.optLong("updated")),12,Ui.SUB,false));
         if (m!=null && m.optBoolean("partial")) { CourseUi.gap(intro,8); intro.addView(text("部分信息已读取，剩余内容会自动重试。",12,Ui.SUB,false)); }
@@ -166,6 +182,113 @@ public class CampusActivity extends Activity {
         String src=m.optString("source");
         try { note("来源："+new java.net.URI(src).getHost()+" · "+time(m.optLong("updated"))+"\n仅展示同步时已加载的内容，以校方系统为准。"); } catch (Exception ignored) { }
     }
+    private void stopClassroomQuery() { if (classroomRefresh!=null) { classroomRefresh.stop(); classroomRefresh=null; } }
+    private void startClassroomQuery(boolean repaint) {
+        roomAttempted=true;
+        if (data==null || data.owner.isEmpty()) { roomLoading=false; roomError="请先登录校园账号"; return; }
+        CampusClassroomQuery query;
+        try { roomDate=CampusClassroomQuery.today(System.currentTimeMillis()); query=new CampusClassroomQuery(roomCampus,roomDate,roomStart,roomEnd); }
+        catch (Exception e) { roomLoading=false; toast("结束时间需要晚于开始时间"); return; }
+        stopClassroomQuery(); roomToken=java.util.UUID.randomUUID().toString(); String token=roomToken;
+        roomLoading=true; roomError=""; roomLimit=40;
+        CampusClassroomRefresh reader=new CampusClassroomRefresh(this,token,error -> {
+            if (!token.equals(roomToken)) return;
+            roomLoading=false; roomError=error; classroomRefresh=null; reload();
+        });
+        classroomRefresh=reader; reader.start(data,query);
+        if (repaint) render();
+    }
+    private void roomOptionsChanged() { stopClassroomQuery(); roomAttempted=true; roomLoading=false; roomToken=""; roomError=""; render(); }
+    private void chooseRoomTime(boolean start) {
+        int minute=start?roomStart:roomEnd;
+        new android.app.TimePickerDialog(this,(view,hour,value) -> {
+            if (start) roomStart=hour*60+value; else roomEnd=hour*60+value;
+            roomOptionsChanged();
+        },minute/60,minute%60,true).show();
+    }
+    private void renderClassroom(JSONObject module) {
+        LinearLayout query=card(); query.addView(text("今天 · "+CampusClassroomQuery.today(System.currentTimeMillis()),13,Ui.SUB,true)); CourseUi.gap(query,12);
+        TextView campus=CourseUi.action(this,roomCampus+"  ▾",false,() -> new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择校区").setItems(new String[]{"长安校区","友谊校区"},(d,i) -> {
+            roomCampus=i==0?"长安校区":"友谊校区"; getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply(); roomOptionsChanged();
+        }).show());
+        campus.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); query.addView(campus,CourseUi.row(dp(44))); CourseUi.gap(query,10);
+        LinearLayout times=new LinearLayout(this); query.addView(times);
+        TextView start=CourseUi.action(this,"开始 "+CampusClassroomQuery.time(roomStart),false,() -> chooseRoomTime(true));
+        TextView end=CourseUi.action(this,"结束 "+CampusClassroomQuery.time(roomEnd),false,() -> chooseRoomTime(false));
+        start.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); end.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
+        times.addView(start,new LinearLayout.LayoutParams(0,dp(44),1)); LinearLayout.LayoutParams endParams=new LinearLayout.LayoutParams(0,dp(44),1); endParams.leftMargin=dp(10); times.addView(end,endParams);
+        CourseUi.gap(query,14); query.addView(CourseUi.action(this,roomLoading?"重新查询此时段":"查询此时段",true,() -> startClassroomQuery(true)),CourseUi.row(dp(48)));
+        if (data==null || data.owner.isEmpty()) {
+            note("登录校园账号后可查询当日的空闲教室。"); LinearLayout login=card(); login.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48))); return;
+        }
+        if (roomLoading) {
+            android.widget.ProgressBar bar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal); bar.setIndeterminate(true);
+            bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT)); list.addView(bar,CourseUi.row(dp(4)));
+            note("正在重新查询今天所选时段，可以返回或继续操作。");
+        }
+        if (!roomError.isEmpty()) { note(roomError); return; }
+        if (!CampusClassroomResult.current(module,roomToken,CampusClassroomQuery.today(System.currentTimeMillis()))) {
+            if (!roomLoading) note("选择校区与时段后查询，旧结果不会作为本次结果展示。"); return;
+        }
+        java.util.List<CampusClassroomResult.Room> rooms=CampusClassroomResult.rooms(module);
+        if (rooms.isEmpty()) { if (!roomLoading) note("该时段没有查到可展示的空闲教室。"); return; }
+        section("找到 "+rooms.size()+" 间空闲教室"); note(CampusSummary.field(module,"查询条件"));
+        LinearLayout result=card();
+        for (int i=0;i<Math.min(roomLimit,rooms.size());i++) {
+            CampusClassroomResult.Room room=rooms.get(i); result.addView(text(room.name,15,Ui.TEXT,true));
+            if (!room.detail.isEmpty()) { CourseUi.gap(result,4); result.addView(text(room.detail,11,Ui.SUB,false)); }
+            if (i<Math.min(roomLimit,rooms.size())-1) { CourseUi.gap(result,12); View line=new View(this); line.setBackgroundColor(Ui.LINE); result.addView(line,CourseUi.row(1)); CourseUi.gap(result,12); }
+        }
+        if (roomLimit<rooms.size()) result.addView(CourseUi.action(this,"继续查看教室",false,() -> { int y=scroll.getScrollY(); roomLimit+=40; render(); scroll.post(() -> scroll.scrollTo(0,y)); }),CourseUi.row(dp(48)));
+        if (module.optBoolean("partial")) note("当前为本次已读取的部分结果。");
+    }
+
+    private void renderBus(JSONObject module) {
+        LinearLayout controls=new LinearLayout(this); controls.setPadding(dp(4),dp(4),dp(4),dp(4)); controls.setBackground(Ui.round(this,Ui.FILL,16));
+        LinearLayout.LayoutParams controlsParams=new LinearLayout.LayoutParams(-1,-2); controlsParams.bottomMargin=dp(16); list.addView(controls,controlsParams);
+        String[] modes={"工作日","周末"};
+        for (int i=0;i<2;i++) {
+            final boolean weekend=i==1; boolean selected=weekend==busWeekend;
+            TextView tab=text(modes[i],14,selected?Ui.ACCENT:Ui.SUB,selected); tab.setGravity(Gravity.CENTER); tab.setSelected(selected);
+            tab.setBackground(Ui.ripple(this,selected?Ui.round(this,Ui.CARD,12):null,Ui.press(),12));
+            controls.addView(tab,new LinearLayout.LayoutParams(0,dp(44),1));
+            tab.setOnClickListener(v -> { if (busWeekend!=weekend) { busWeekend=weekend; render(); } });
+        }
+        java.util.List<CampusBusSchedule.Route> routes=CampusBusSchedule.routes(module,busWeekend);
+        long now=System.currentTimeMillis(); boolean today=busWeekend==CampusBusSchedule.weekend(now); int minute=CampusBusSchedule.minute(now);
+        if (routes.isEmpty()) { note("暂未读到这一天的校车班次，可查看校方原始公告。"); }
+        for (CampusBusSchedule.Route route:routes) {
+            LinearLayout c=card(); c.addView(text(route.name,18,Ui.TEXT,true)); CourseUi.gap(c,14);
+            CampusBusSchedule.Departure next=today?route.next(minute):route.departures.get(0);
+            LinearLayout nextRow=new LinearLayout(this); nextRow.setGravity(Gravity.CENTER_VERTICAL); c.addView(nextRow);
+            nextRow.addView(text(next==null?"今天已无后续班次":today?"今天下一班":"首班",12,Ui.SUB,false),new LinearLayout.LayoutParams(0,-2,1));
+            if (next!=null) nextRow.addView(text(next.time,26,Ui.ACCENT,true));
+            java.util.LinkedHashSet<String> places=new java.util.LinkedHashSet<>();
+            for (CampusBusSchedule.Departure departure:route.departures) if (!departure.place.isEmpty()) places.add(departure.place);
+            if (!places.isEmpty()) { CourseUi.gap(c,8); TextView place=text("上车地点："+String.join(" / ",places),12,Ui.SUB,false); place.setLineSpacing(dp(3),1); c.addView(place); }
+            CourseUi.gap(c,16); c.addView(text("全部发车时间",12,Ui.SUB,true)); CourseUi.gap(c,8);
+            for (int first=0;first<route.departures.size();first+=4) {
+                LinearLayout times=new LinearLayout(this); LinearLayout.LayoutParams timesParams=new LinearLayout.LayoutParams(-1,-2); timesParams.topMargin=dp(6); c.addView(times,timesParams);
+                for (int j=first;j<first+4;j++) {
+                    if (j>=route.departures.size()) { times.addView(new View(this),new LinearLayout.LayoutParams(0,dp(38),1)); continue; }
+                    CampusBusSchedule.Departure departure=route.departures.get(j); boolean upcoming=today && departure==next;
+                    TextView chip=text(departure.time,14,upcoming?Ui.ACCENT:today && departure.minute<minute?Ui.MUTE:Ui.TEXT,upcoming);
+                    chip.setGravity(Gravity.CENTER); chip.setBackground(Ui.round(this,upcoming?Ui.ACCENT_BG:Ui.FILL,10));
+                    if (upcoming) chip.setContentDescription(departure.time+"，今天下一班");
+                    LinearLayout.LayoutParams chipParams=new LinearLayout.LayoutParams(0,dp(38),1); if (j>first) chipParams.leftMargin=dp(6); times.addView(chip,chipParams);
+                }
+            }
+        }
+        LinearLayout tips=card(); tips.addView(text("乘车提示",14,Ui.TEXT,true)); CourseUi.gap(tips,8);
+        String reservation=CampusSummary.field(module,"学生乘车预约");
+        if (!reservation.isEmpty()) { TextView text=text(reservation,12,Ui.SUB,false); text.setLineSpacing(dp(3),1); tips.addView(text); CourseUi.gap(tips,8); }
+        String extra=busWeekend?CampusSummary.field(module,"周末学生校车"):"";
+        if (!extra.isEmpty()) { TextView text=text(extra,12,Ui.SUB,false); text.setLineSpacing(dp(3),1); tips.addView(text); CourseUi.gap(tips,8); }
+        tips.addView(text("学期内时刻表，节假日和寒暑假调整以校方通知为准。",12,Ui.SUB,false));
+        String source=module==null?"":module.optString("source");
+        if (CampusServices.readUrl(source)) { CourseUi.gap(tips,12); tips.addView(CourseUi.action(this,"查看校方原始公告",false,() -> startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(source)))),CourseUi.row(dp(44))); }
+    }
+
     private void table(JSONObject t) {
         if (t==null) return;
         LinearLayout c=card(); String title=t.optString("title"); if (!title.isEmpty()) { c.addView(text(title,16,Ui.TEXT,true)); CourseUi.gap(c,12); }
@@ -203,5 +326,5 @@ public class CampusActivity extends Activity {
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
     @Override public void onPause() { resumed=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
-    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { stopClassroomQuery(); CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
 }

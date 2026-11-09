@@ -34,6 +34,8 @@ public class EngineHolder {
     private static boolean diagLoaded = false;
 
     private static Engine engine;
+    /** Preserve an unreadable old snapshot instead of replacing it with an empty engine. */
+    private static volatile boolean stateReadFailed;
 
     /**
      * 记一条诊断日志并落盘。
@@ -161,7 +163,9 @@ public class EngineHolder {
         } catch (FileNotFoundException firstRun) {
             // 首次启动还没有卡片存档。
         } catch (Exception ex) {
-            Log.w(TAG, "读取卡片失败", ex);
+            stateReadFailed=true;
+            Log.w(TAG, "读取卡片失败，原存档已保留且暂停覆盖", ex);
+            diag(app,"出错","待办存档读取失败，原文件已保留，暂停覆盖保存");
         }
         // 拿不准的消息/卡片：开了 AI 识别就落盘排队，交给 AiJob 批量复核；没开就什么都不做。
         final Context appCtx = app;
@@ -243,10 +247,12 @@ public class EngineHolder {
     /** 写入一份快照；比它新的快照已经写过就跳过。 */
     private static int writeBytes(Context app, byte[] bytes, long seq) {
         synchronized (WRITE_LOCK) {
+            if (stateReadFailed) return FAILED;
             if (seq <= writtenSeq) return SKIPPED;
             AtomicFile file = new AtomicFile(new File(app.getFilesDir(), FILE_NAME));
             FileOutputStream out = null;
             try {
+                UpgradeDataBackup.beforeWrite(app);
                 out = file.startWrite();
                 out.write(bytes);
                 file.finishWrite(out);

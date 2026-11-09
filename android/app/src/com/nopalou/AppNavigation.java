@@ -70,16 +70,16 @@ final class AppNavigation {
         shell.setBackgroundColor(Ui.BG);
         shell.setClipToPadding(false);
         shell.setClipChildren(false);
-        shell.setPadding(Ui.dp(from, 16), Ui.dp(from, 8), Ui.dp(from, 16), Ui.dp(from, 10));
+        shell.setPadding(Ui.dp(from,16),Ui.dp(from,6),Ui.dp(from,16),Ui.dp(from,6));
         LinearLayout row = new LinearLayout(from);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Ui.dp(from, 8), Ui.dp(from, 7), Ui.dp(from, 8), Ui.dp(from, 7));
+        row.setPadding(Ui.dp(from,8),Ui.dp(from,5),Ui.dp(from,8),Ui.dp(from,5));
         android.graphics.drawable.GradientDrawable capsule = Ui.round(from, Ui.CARD, 28);
         capsule.setStroke(Ui.dp(from, 1), Ui.withAlpha(Ui.LINE, Ui.dark ? 160 : 100));
         row.setBackground(capsule);
         Ui.lift(row, 4f);
         // Let font scaling increase the bar instead of clipping the longer label.
-        row.setMinimumHeight(Ui.dp(from, 72));
+        row.setMinimumHeight(Ui.dp(from,60));
         shell.addView(row, new FrameLayout.LayoutParams(-1, -2));
         for (int i = 0; i < TITLES.length; i++) {
             final int target = i;
@@ -90,19 +90,19 @@ final class AppNavigation {
             tab.setGravity(Gravity.CENTER);
             tab.setOrientation(LinearLayout.VERTICAL);
             tab.setPadding(0, Ui.dp(from, 2), 0, Ui.dp(from, 2));
-            tab.setMinimumHeight(Ui.dp(from, 58));
+            tab.setMinimumHeight(Ui.dp(from,48));
             tab.setContentDescription(title + (selected ? "，当前页面" : ""));
             tab.setSelected(selected);
             tab.setFocusable(true);
             tab.setBackground(Ui.ripple(from, selected ? Ui.round(from, Ui.ACCENT_BG, 20) : null, Ui.press(), 20));
             Ui.pressScale(tab, .96f);
             FrameLayout iconWell = new FrameLayout(from);
-            tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from, 52), Ui.dp(from, 30)));
+            tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from,52),Ui.dp(from,26)));
 
             ImageView icon = new ImageView(from);
             icon.setImageDrawable(new TabIcon(from, target, selected ? Ui.ACCENT : Ui.SUB));
             icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            iconWell.addView(icon, new FrameLayout.LayoutParams(Ui.dp(from, 22), Ui.dp(from, 22), Gravity.CENTER));
+            iconWell.addView(icon, new FrameLayout.LayoutParams(Ui.dp(from,20),Ui.dp(from,20),Gravity.CENTER));
 
             TextView label = CourseUi.text(from, title, 11, selected ? Ui.ACCENT : Ui.SUB, selected);
             label.setSingleLine(true);
@@ -111,7 +111,7 @@ final class AppNavigation {
             label.setIncludeFontPadding(false);
             label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
-            labelLp.topMargin = Ui.dp(from, 5);
+            labelLp.topMargin=Ui.dp(from,2);
             tab.addView(label, labelLp);
 
             LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, -2, 1);

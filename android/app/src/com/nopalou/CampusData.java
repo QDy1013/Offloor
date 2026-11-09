@@ -99,7 +99,8 @@ final class CampusData {
             JSONObject m = new JSONObject(incoming.getJSONObject(id).toString()); validateModule(m);
             if ("ok".equals(m.getString("state")) || "empty".equals(m.getString("state"))) {
                 JSONObject old=modules.optJSONObject(id);
-                if (m.optBoolean("partial") && old!=null && count(old)>0 && "ok".equals(m.getString("state"))) {
+                if (m.optBoolean("partial") && old!=null && count(old)>0 && "ok".equals(m.getString("state"))
+                        && (!"classroom".equals(id) || m.optString("queryToken").equals(old.optString("queryToken")))) {
                     JSONObject keep=new JSONObject(old.toString()).put("state","ok");
                     CampusReadSession accumulated=new CampusReadSession(); accumulated.add(keep); accumulated.add(m);
                     m=accumulated.result(); m.put("partial",true);

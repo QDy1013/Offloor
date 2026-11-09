@@ -27,8 +27,8 @@ final class TimetableStore {
     static synchronized void save(Context c, Timetable t) throws Exception {
         byte[] bytes = t.encode().getBytes(StandardCharsets.UTF_8);
         if (bytes.length > Timetable.MAX_BYTES) throw new java.io.IOException("课表过大");
-        Timetable previous = null;
-        try { previous = load(c); } catch (Exception ignored) { }
+        Timetable previous=load(c);
+        UpgradeDataBackup.beforeWrite(c);
         AtomicFile f = file(c);
         FileOutputStream out = null;
         try {

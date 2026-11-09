@@ -1617,7 +1617,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(this, 6), dp(this, 18), dp(this, 18), dp(this, 18));
+        card.setPadding(dp(this, 6), dp(this, 12), dp(this, 16), dp(this, 12));
         if (c.done) {
             // 已完成的卡退到背景里：不浮起、不投影，只留一层淡底。
             GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 140 : 150), 20);
@@ -1647,7 +1647,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TextView title = uiText(c.displayTitle(), 16, c.done ? Ui.SUB : Ui.TEXT, true);
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setLineSpacing(dp(this, 3), 1f);
+        title.setLineSpacing(dp(this, 2), 1f);
         title.setLetterSpacing(0.005f);
         if (c.done) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         body.addView(title);
@@ -1676,7 +1676,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 dueRow.addView(upd, uLp);
             }
             LinearLayout.LayoutParams dueLp = lp(-1, -2);
-            dueLp.topMargin = dp(this, 8);
+            dueLp.topMargin = dp(this, 6);
             body.addView(dueRow, dueLp);
         }
 
@@ -1690,7 +1690,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         mtLp.leftMargin = dp(this, 6);
         meta.addView(metaLine, mtLp);
         LinearLayout.LayoutParams metaLp = lp(-1, -2);
-        metaLp.topMargin = dp(this, 12);
+        metaLp.topMargin = dp(this, 8);
         body.addView(meta, metaLp);
 
         List<String> extra = new ArrayList<>();
@@ -1703,17 +1703,17 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             ex.setEllipsize(TextUtils.TruncateAt.END);
             ex.setLineSpacing(dp(this, 2), 1f);
             LinearLayout.LayoutParams exLp = lp(-1, -2);
-            exLp.topMargin = dp(this, 6);
+            exLp.topMargin = dp(this, 4);
             body.addView(ex, exLp);
         }
         if (!c.done && !TextUtils.isEmpty(c.reason) && c.deadlineHint() == null) {
             TextView reason = uiText(c.reason, 12, Ui.AMBER_TX, false);
             reason.setMaxLines(2);
             reason.setEllipsize(TextUtils.TruncateAt.END);
-            reason.setPadding(dp(this, 10), dp(this, 7), dp(this, 10), dp(this, 7));
+            reason.setPadding(dp(this, 10), dp(this, 5), dp(this, 10), dp(this, 5));
             reason.setBackground(Ui.round(this, Ui.AMBER_BG, 10));
             LinearLayout.LayoutParams rLp = lp(-2, -2);
-            rLp.topMargin = dp(this, 8);
+            rLp.topMargin = dp(this, 6);
             body.addView(reason, rLp);
         }
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
@@ -1729,7 +1729,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             return true;
         });
         LinearLayout.LayoutParams cardLp = lp(-1, -2);
-        cardLp.bottomMargin = dp(this, 12);
+        cardLp.bottomMargin = dp(this, 8);
         card.setLayoutParams(cardLp);
         return card;
     }

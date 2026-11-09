@@ -36,6 +36,7 @@ final class CampusBatch {
     private final java.util.concurrent.ExecutorService io=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final String owner,run,scripts,autoScript,academicScripts;
     private final Listener listener;
+    private final boolean focused;
     private final List<CampusServices.Service> waiting=new ArrayList<>();
     private final Set<String> doneIds=new HashSet<>(), hosts=new HashSet<>();
     private final Set<String> successfulIds=new HashSet<>();
@@ -49,7 +50,14 @@ final class CampusBatch {
     private final long wallStarted=System.currentTimeMillis();
 
     CampusBatch(Context activity,FrameLayout stage,CampusData data,List<CampusServices.Service> services,String run,String campus,String sso,String auto,Listener listener) {
-        this.activity=activity; this.stage=stage; this.saved=data; this.owner=data.owner; this.run=run; this.scripts=campus+"\n"+sso+"\n"+auto; this.autoScript=auto; this.listener=listener;
+        this(activity,stage,data,services,run,campus,sso,auto,listener,null);
+    }
+    CampusBatch(Context activity,FrameLayout stage,CampusData data,List<CampusServices.Service> services,String run,String campus,String sso,String auto,Listener listener,CampusClassroomQuery query) {
+        this.focused=query!=null;
+        if (focused && (services.size()!=1 || !"classroom".equals(services.get(0).id))) throw new IllegalArgumentException("Only classroom queries may run separately");
+        String setup="";
+        if (focused) { try { setup="\nNwpuAuto.setClassroomQuery("+query.encode()+");"; } catch (Exception e) { throw new IllegalArgumentException(e); } }
+        this.activity=activity; this.stage=stage; this.saved=data; this.owner=data.owner; this.run=run; this.scripts=campus+"\n"+sso+"\n"+auto+setup; this.autoScript=auto; this.listener=listener;
         String academic="";
         try {
             java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
@@ -59,22 +67,27 @@ final class CampusBatch {
         academicScripts=academic;
         String entry=activity.getSharedPreferences("campus-auto",0).getString("academic_entry",NwpuImportActivity.COURSE_URL);
         CampusServices.Service history=new CampusServices.Service("_academic","课表、成绩与考试","",CampusServices.readUrl(entry)?entry:NwpuImportActivity.COURSE_URL,true);
-        for (CampusServices.Service service:services) if (CampusServices.selected(service.id)) {
+        for (CampusServices.Service service:services) if (CampusServices.selected(service.id) && (focused || !"classroom".equals(service.id))) {
             JSONObject current=saved.module(service.id);
             boolean portalBalance=(service.id.equals("network") || service.id.equals("card")) && current!=null && "ok".equals(current.optString("state")) && current.optLong("updated")>=wallStarted-30_000;
             if (service.id.equals("bus") || portalBalance) { doneIds.add(service.id); successfulIds.add(service.id); } else waiting.add(service);
         }
-        if (activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty()) waiting.add(1,new CampusServices.Service("housing","电费","本人宿舍匹配",CampusServices.byId("housing").entry,false)); else doneIds.add("housing");
-        waiting.add(history);
+        if (!focused) {
+            if (activity.getSharedPreferences("campus-binding",0).getString("room","").isEmpty()) waiting.add(Math.min(1,waiting.size()),new CampusServices.Service("housing","电费","本人宿舍匹配",CampusServices.byId("housing").entry,false)); else doneIds.add("housing");
+            waiting.add(history);
+        }
         total=waiting.size(); initialDone=doneIds.size();
     }
-    void start() { for (int i=0;i<3;i++) lanes.add(new Lane()); pump(); }
+    void start() { for (int i=0;i<(focused?1:3);i++) lanes.add(new Lane()); pump(); }
     void stop() {
         if (stopped) return; stopped=true; handler.removeCallbacksAndMessages(null);
         for (Lane lane:lanes) { lane.generation++; lane.web.stopLoading(); stage.removeView(lane.web); lane.web.destroy(); }
         io.shutdown();
     }
-    private boolean alive() { return !stopped && (!(activity instanceof Activity) || (!((Activity)activity).isFinishing() && !((Activity)activity).isDestroyed())) && CampusAutoRefresh.owns(activity,run,owner); }
+    private boolean owns() {
+        return focused?run.equals(activity.getSharedPreferences("classroom-live",0).getString("query_token","")):CampusAutoRefresh.owns(activity,run,owner);
+    }
+    private boolean alive() { return !stopped && (!(activity instanceof Activity) || (!((Activity)activity).isFinishing() && !((Activity)activity).isDestroyed())) && owns(); }
     private void pump() {
         if (!alive() || interactive!=null) return;
         for (Lane lane:lanes) if (lane.service==null) {
@@ -95,9 +108,10 @@ final class CampusBatch {
     private void store(Lane lane,JSONObject module,boolean ok) {
         if (!alive() || lane.writing || lane.service==null) return;
         lane.writing=true; int generation=lane.generation; String id=lane.service.id;
+        if (focused) { try { module.put("queryToken",run); } catch (Exception e) { listener.complete(0,1); return; } }
         io.execute(() -> {
             CampusData next=null;
-            try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) next=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
+            try { if (!stopped && owns()) next=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
             CampusData result=next;
             handler.post(() -> {
                 if (!alive() || generation!=lane.generation) return;
@@ -168,7 +182,7 @@ final class CampusBatch {
         void inspect() {
             if (!alive() || service==null || writing || probing || querying) return;
             if (interactive!=null && interactive!=this) { schedule(200); return; }
-            if (System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
+            if (!focused && System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
             long now=SystemClock.elapsedRealtime();
             if ((!service.id.equals("_academic") && now-started>90_000) || now-started>20*60_000 || collection.limited()) { finish(true); return; }
             String url=web.getUrl(); if (!CampusServices.allowed(url)) { timeout(); return; }
@@ -276,10 +290,12 @@ final class CampusBatch {
             if (!collection.hasResult() || SystemClock.elapsedRealtime()-lastPreview<1000) return;
             try {
                 JSONObject module=collection.result(); if (CampusData.count(module)==0) return;
-                lastPreview=SystemClock.elapsedRealtime(); module.put("partial",true); String id=service.id; int active=generation;
+                lastPreview=SystemClock.elapsedRealtime(); module.put("partial",true);
+                if (focused) module.put("queryToken",run);
+                String id=service.id; int active=generation;
                 io.execute(() -> {
                     CampusData updated=null;
-                    try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) updated=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
+                    try { if (!stopped && owns()) updated=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
                     CampusData result=updated; handler.post(() -> { if (alive() && active==generation && result!=null) saved=result; });
                 });
             } catch (Exception ignored) { }
@@ -311,7 +327,7 @@ final class CampusBatch {
         }
         void pollAcademic(int active,String token,long limit,int previous) {
             if (!alive() || active!=generation || service==null) return;
-            if (System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
+            if (!focused && System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
             if (SystemClock.elapsedRealtime()>limit) { saveAcademic(true); return; }
             web.evaluateJavascript("(function(){var a=window.__louAcademicResult||{};return JSON.stringify({timetable:"+(timetableDone?"null":"window.__louTimetableResult||null")+",academic:a.revision==="+academicRevision+"?{token:a.token,status:a.status,revision:a.revision}:a,profile:"+(profileSaved?"null":"window.__louProfileResult||{}")+"});})()",raw -> {
                 if (!alive() || active!=generation || service==null) return;
@@ -324,7 +340,7 @@ final class CampusBatch {
                         timetableDone=true; String encoded=table.optJSONObject("data").toString();
                         io.execute(() -> { try {
                             synchronized (CampusStore.class) {
-                                if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) {
+                                if (!stopped && owns()) {
                                     CampusData current=CampusStore.load(activity);
                                     if (current!=null && owner.equals(current.owner)) {
                                         Timetable parsed=new Timetable(encoded);
@@ -339,7 +355,7 @@ final class CampusBatch {
                 if (!timetableDone && SystemClock.elapsedRealtime()>timetableDeadline) { timetableDone=true; timetableFailed=true; }
                 if (!profileSaved && p!=null && token.equals(p.optString("token")) && "ok".equals(p.optString("status")) && p.optJSONObject("data")!=null) {
                     profileSaved=true; String profile=p.optJSONObject("data").toString();
-                    io.execute(() -> { try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) { CampusData data=CampusStore.update(activity.getApplicationContext(),profile,owner); handler.post(() -> { if (alive() && active==generation) saved=data; }); } } catch (Exception ignored) { } });
+                    io.execute(() -> { try { if (!stopped && owns()) { CampusData data=CampusStore.update(activity.getApplicationContext(),profile,owner); handler.post(() -> { if (alive() && active==generation) saved=data; }); } } catch (Exception ignored) { } });
                 }
                 int finished=previous; long nextLimit=limit;
                 if (a!=null && token.equals(a.optString("token"))) {
@@ -364,7 +380,7 @@ final class CampusBatch {
             io.execute(() -> {
                 boolean ok=false, partial=incomplete || timetableFailed;
                 try {
-                    if (value!=null && !stopped && CampusAutoRefresh.owns(activity,run,owner)) {
+                    if (value!=null && !stopped && owns()) {
                         Academic data=CampusStore.updateAcademic(activity.getApplicationContext(),value,owner,run); ok=true;
                         for (String part:Academic.PARTS) partial|=data.incomplete(part);
                     }

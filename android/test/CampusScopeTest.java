@@ -9,8 +9,8 @@ public class CampusScopeTest {
     static void check(String name,boolean value) { if (!value) throw new AssertionError(name); n++; System.out.println("PASS "+name); }
     static JSONObject module(String label,String value) throws Exception { return new JSONObject().put("state","ok").put("source","https://xgpt.nwpu.edu.cn/").put("fields",new JSONArray().put(new JSONObject().put("label",label).put("value",value))).put("tables",new JSONArray()).put("links",new JSONArray()); }
     public static void main(String[] args) throws Exception {
-        String[] expected={"network","electric","card","classroom","bus","deadlines"};
-        check("campus shows exactly the six approved features",CampusServices.CAMPUS.length==6);
+        String[] expected={"network","electric","card","classroom","bus"};
+        check("campus shows the retained account and bus features",CampusServices.CAMPUS.length==expected.length);
         for (int i=0;i<expected.length;i++) check("selected order "+expected[i],CampusServices.CAMPUS[i].id.equals(expected[i]));
         check("borrowing, profile and catalog entries are not campus features",!CampusServices.selected("library") && !CampusServices.selected("profile") && !CampusServices.selected("portal_other"));
         JSONObject modules=new JSONObject().put("profile",module("姓名","合成同学")).put("library",module("书名","合成书目")).put("network",module("账户余额","12.5 元"));
@@ -26,7 +26,10 @@ public class CampusScopeTest {
         check("missing balance is never rendered as zero",!CampusSummary.of("network",null,0).value.contains("0"));
         CampusData cleanup=CampusScope.compact(CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","123").put("modules",new JSONObject().put("electric",module("当前剩余电量","42 度").put("fields",new JSONArray().put(new JSONObject().put("label","当前剩余电量").put("value","42 度")).put(new JSONObject().put("label","宿舍").put("value","合成宿舍")))).put("classroom",module("查询日期","2099-01-01"))).toString(),100,null));
         check("electricity display excludes housing details",cleanup.module("electric").getJSONArray("fields").length()==1);
-        check("old classroom form fields cannot survive as successful results",cleanup.module("classroom").getJSONArray("fields").length()==0 && cleanup.module("classroom").optString("state").equals("unavailable"));
+        check("classroom remains an on-demand campus feature",cleanup.module("classroom")!=null);
+        check("hiding old features does not mutate the full original snapshot",old.module("library")!=null && old.catalog.length()==1);
+        CampusData removed=CampusScope.compact(CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","123").put("modules",new JSONObject().put("deadlines",module("截止时间","2099-01-01"))).put("routes",new JSONObject().put("deadlines",CampusServices.HOME)).toString(),100,null));
+        check("campus deadlines and routes are hidden from the selected view",removed.module("deadlines")==null && !removed.routes.has("deadlines"));
         CampusData bus=new CampusData(Files.readString(Paths.get(args[0])));
         check("student timetable excludes the teacher-only service",bus.module("bus").getJSONArray("tables").getJSONObject(0).getJSONArray("rows").length()==50);
         long sunday=CampusSummary.date("2026-11-08 07:30");

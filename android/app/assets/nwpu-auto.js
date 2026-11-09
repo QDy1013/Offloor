@@ -19,6 +19,14 @@
         deadlines:['我的评教','学生评教','评教任务','学生过程性评教','学生即时性评教','学生总结性评教','我的选课','选课安排','选课时间','选课结果','时间安排']
     };
     function focus() { state.focus=true; root.__louCampusFocus=true; }
+    function setClassroomQuery(request) {
+        const today=new Date(Date.now()+8*60*60*1000).toISOString().slice(0,10);
+        const validTime=value=>typeof value==='string' && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
+        const valid=request && ['长安校区','友谊校区'].includes(request.campus) && request.date===today && validTime(request.start) && validTime(request.end) && request.start<request.end;
+        state.classroomRequest=valid?{campus:request.campus,date:request.date,start:request.start,end:request.end}:null;
+        state.classroomConfigInvalid=!valid;
+        return !!valid;
+    }
     function classroom() {
         if (root.location.hostname!=='jwxt.nwpu.edu.cn' || !/^\/student\/for-std\/room-free(?:\/|$)/.test(root.location.pathname)) return null;
         let vm;
@@ -28,13 +36,14 @@
         if (!vm) return null;
         if (!state.classroom) {
             const sites=vm.campusList.filter(o=>o && o.value!==undefined && String(o.value) && text(o.text));
-            const site=sites.find(o=>String(o.value)===String(vm.freeListParam.campusId)) || sites.find(o=>/长安/.test(o.text)) || sites[0];
+            const requested=state.classroomRequest;
+            const site=requested?sites.find(o=>text(o.text)===requested.campus):(sites.find(o=>String(o.value)===String(vm.freeListParam.campusId)) || sites.find(o=>/长安/.test(o.text)) || sites[0]);
+            if (state.classroomConfigInvalid || (requested && !site)) return {condition:'',ready:false,failed:true,rows:0};
             if (!site) return null;
-            const now=new Date(Date.now()+8*60*60*1000), min=now.getUTCHours()*60+now.getUTCMinutes();
-            if (min>=1438) { now.setUTCDate(now.getUTCDate()+1); now.setUTCHours(0,0,0,0); }
-            const start=now.getUTCHours()*60+now.getUTCMinutes(), end=Math.min(1439,start+60), date=now.toISOString().slice(0,10);
+            const now=new Date(Date.now()+8*60*60*1000), min=Math.min(1438,now.getUTCHours()*60+now.getUTCMinutes());
             const time=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
-            const query=state.classroom={vm,campus:String(site.value),date,start:time(start),end:time(end),condition:text(site.text)+' · '+date+' '+time(start)+'—'+time(end),failed:false};
+            const date=requested?requested.date:now.toISOString().slice(0,10), start=requested?requested.start:time(min), end=requested?requested.end:time(Math.min(1439,min+60));
+            const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false};
             vm.byWeek=false; vm.byTime=true; vm.freeListParam.campusId=String(site.value);
             const run=()=>{try { const p=vm.freeListParam.dateTimeSegmentCmd; p.startDateTime=date;p.endDateTime=date;p.startTime=query.start;p.endTime=query.end;vm.queryFreeList(); } catch (_) {query.failed=true;} };
             if (typeof vm.$nextTick==='function') vm.$nextTick(run); else Promise.resolve().then(run);
@@ -204,6 +213,7 @@
         const loading = Array.from(root.document.querySelectorAll('.el-loading-mask,.ant-spin-spinning,[aria-busy="true"]')).some(visible);
         const room=kind==='classroom' && state.focus?classroom():null;
         const seen = new Set(visited || []), snapshot = root.NwpuCampus.capture(kind, scope()), m = snapshot.modules[kind];
+        if (room && room.failed) { m.state='unavailable'; m.fields=[]; m.tables=[]; m.links=[]; }
         if (room && room.ready && !room.failed) {
             if (room.rows===0) m.state='empty';
             if (m.state==='ok' || m.state==='empty') m.fields=[{label:'查询条件',value:room.condition}];
@@ -218,7 +228,7 @@
         const query = Array.from(scope().querySelectorAll('button,input[type="button"],input[type="submit"],[role="button"]')).find(e => visible(e) && /^(查询|搜索|查找)$/.test(label(e)) && !disabled(e));
         const queryKey = query && viewKey() + '|query:' + label(query) + ':' + filterKey(filters(scope())) + customKey(customFilters(scope()));
         return {pending: state.pending, settling: !!(room && !room.ready && !room.failed) || loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160, pageKey: pageKey(), snapshot,
-            preparing: room?!room.ready:!!query && !seen.has(queryKey),
+            preparing: room?(!room.ready && !room.failed):!!query && !seen.has(queryKey),
             actions: actions.map(a => ({key: a.key, type: a.type, label: a.label, url: a.url || '', context: a.context || ''}))};
     }
     function act(kind, key) {
@@ -238,6 +248,6 @@
         if (root.NwpuSso && root.NwpuSso.activateElement) return root.NwpuSso.activateElement(action.element);
         action.element.click(); return true;
     }
-    const api = {install, focus, inspect, act, pageKey};
+    const api = {install, focus, inspect, act, pageKey, setClassroomQuery};
     if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NwpuAuto = api;
 })(typeof window === 'undefined' ? globalThis : window);

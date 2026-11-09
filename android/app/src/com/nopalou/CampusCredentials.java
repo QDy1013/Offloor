@@ -28,6 +28,7 @@ final class CampusCredentials {
     }
     static synchronized void save(Context c,String account,String password,String owner) throws Exception {
         if (account.isEmpty() || password.isEmpty() || owner.isEmpty()) throw new IllegalArgumentException();
+        UpgradeDataBackup.beforeWrite(c);
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE,key());
         byte[] plain=new JSONObject().put("account",account).put("password",password).put("owner",owner).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] encrypted;
