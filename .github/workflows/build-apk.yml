@@ -1,0 +1,91 @@
+# 自动打包：main 有新代码时，在 GitHub 上用 android/build.py 打出 Offloor 安装包，
+# 发布到仓库右侧的 Releases，手机上点开下载即可安装。
+#
+# 需要一个仓库密钥（Settings → Secrets and variables → Actions）：
+#   OFFLOOR_KEYSTORE  以前在电脑上打包用的 debug.keystore，转成 base64 文本后粘贴进去。
+# 签名必须和手机上已装的 Offloor 一致，否则不能覆盖安装；下面会核对证书指纹，不一致就不发布。
+name: 打包安装包
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+env:
+  # 正式渠道 com.nopalou 现在用的签名证书（SHA-256），取自 updates 分支的 latest.json。
+  EXPECTED_CERT_SHA256: 0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 准备 Android SDK（Platform 34 + Build Tools 34.0.0）
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: 还原签名文件
+        env:
+          OFFLOOR_KEYSTORE: ${{ secrets.OFFLOOR_KEYSTORE }}
+        run: |
+          if [ -z "$OFFLOOR_KEYSTORE" ]; then
+            echo "::error::还没有设置仓库密钥 OFFLOOR_KEYSTORE。请把以前打包用的 debug.keystore 转成 base64 后，加到 Settings → Secrets and variables → Actions。"
+            exit 1
+          fi
+          echo "$OFFLOOR_KEYSTORE" | tr -d '\r\n ' | base64 --decode > "$RUNNER_TEMP/offloor.keystore"
+
+      - name: 打包
+        run: python3 android/build.py --sdk "$ANDROID_HOME" --keystore "$RUNNER_TEMP/offloor.keystore" --out "$RUNNER_TEMP/out"
+
+      - name: 核对签名
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          ACTUAL=$("$APKSIGNER" verify --print-certs "$RUNNER_TEMP/out/nopalou.apk" \
+            | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d ' :' | tr 'A-F' 'a-f')
+          echo "安装包证书：$ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::签名和手机上已装的 Offloor 不一致（应为 $EXPECTED_CERT_SHA256）。这样的包不能覆盖安装，已停止发布。请换成正式渠道用的那个 keystore。"
+            exit 1
+          fi
+
+      - name: 发布到 Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' android/app/AndroidManifest.xml | head -1)
+          TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
+          cp "$RUNNER_TEMP/out/nopalou.apk" "$RUNNER_TEMP/offloor-${VERSION}.apk"
+          SHA=$(sha256sum "$RUNNER_TEMP/offloor-${VERSION}.apk" | cut -d' ' -f1)
+          SUBJECT=$(git log -1 --format=%s)
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          **安装：** 在手机上点下面的 \`offloor-${VERSION}.apk\` 下载，打开后选「安装」。已经装过 Offloor 的会直接覆盖更新，待办和课表都保留。
+
+          最新改动：${SUBJECT}
+
+          SHA-256：\`${SHA}\`
+          EOF
+          gh release create "$TAG" "$RUNNER_TEMP/offloor-${VERSION}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Offloor ${VERSION}（第 ${GITHUB_RUN_NUMBER} 次自动打包）" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --latest
