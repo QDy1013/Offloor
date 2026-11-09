@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与应用浅色主题一致：纸面底色、墨色文字 -->
+    <color name="widget_surface">#F5F4F0</color>
+    <color name="widget_text">#1C1C1E</color>
+    <color name="widget_sub">#64646B</color>
+    <color name="widget_mute">#8E8E93</color>
+    <color name="widget_accent">#C2410C</color>
+</resources>

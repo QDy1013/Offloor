@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nopalou"
-    android:versionCode="19"
-    android:versionName="0.19">
+    android:versionCode="28"
+    android:versionName="0.28">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -48,6 +49,33 @@
         <activity android:name=".TimetableActivity" android:exported="false" android:label="我的课表" />
         <activity android:name=".NwpuImportActivity" android:exported="false" android:label="课表导入" />
         <activity android:name=".AcademicActivity" android:exported="false" android:label="考试与成绩" />
+        <activity android:name=".CampusActivity" android:exported="false" android:label="我的校园" />
+        <activity android:name=".CampusWebActivity" android:exported="false" android:label="校园服务同步" />
+        <activity android:name=".UpdateActivity" android:exported="false" android:label="应用更新" />
+        <activity android:name=".AiActivity" android:exported="false" android:label="AI 识别"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+
+        <!-- 相册/其他应用“分享 → 楼外”：截图识别、文字识别 -->
+        <activity
+            android:name=".ShotActivity"
+            android:exported="true"
+            android:label="楼外识别待办">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".NotifListener"
@@ -64,9 +92,27 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <service
+            android:name=".AiJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <receiver
             android:name=".ReminderReceiver"
             android:exported="false" />
+
+        <!-- 桌面小组件：今日课程与待办 -->
+        <receiver
+            android:name=".TodayWidget"
+            android:exported="false"
+            android:label="@string/widget_today_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget" />
+        </receiver>
 
         <receiver
             android:name=".BootReceiver"

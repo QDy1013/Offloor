@@ -75,16 +75,29 @@ final class Academic {
         JSONObject updated = previous == null ? new JSONObject() : new JSONObject(previous.json.optJSONObject("updated") == null ? "{}" : previous.json.optJSONObject("updated").toString());
         for (String part : PARTS) {
             if (bad.contains(part)) {
+                if (part.equals("grades") && next.optJSONArray("gradeSemestersRead")!=null && next.getJSONArray("gradeSemestersRead").length()>0 && next.optJSONArray("grades")!=null) {
+                    JSONArray read=next.getJSONArray("gradeSemestersRead"), rows=next.getJSONArray("grades");
+                    if (read.length()>200) throw new JSONException("成绩学期过多");
+                    java.util.Set<String> ids=new java.util.HashSet<>();
+                    for (int i=0;i<read.length();i++) { String id=read.getString(i); if (!id.matches("\\d{1,40}")) throw new JSONException("成绩学期无效"); ids.add(id); }
+                    for (int i=0;i<rows.length();i++) if (!ids.contains(rows.getJSONObject(i).optString("semesterId"))) throw new JSONException("成绩来源学期不一致");
+                    JSONArray combined=new JSONArray(rows.toString()), old=previous==null?null:previous.json.optJSONArray("grades");
+                    for (int i=0;old!=null && i<old.length();i++) if (!ids.contains(old.getJSONObject(i).optString("semesterId"))) combined.put(old.getJSONObject(i));
+                    next.put("grades",combined); updated.put("grades",now); continue;
+                }
                 Object old = previous == null ? null : previous.json.opt(part);
                 next.put(part, old == null ? JSONObject.NULL : old);
             } else updated.put(part, now);
         }
         next.remove("failed");
+        next.put("incomplete",new JSONArray(bad));
+        next.remove("gradeSemestersRead"); next.remove("gradeSemestersFailed"); next.remove("gradeProgress");
         next.put("updated", updated);
         return new Academic(next.toString());
     }
 
     long updated(String part) { JSONObject u = json.optJSONObject("updated"); return u == null ? 0 : u.optLong(part, 0); }
+    boolean incomplete(String part) { JSONArray p=json.optJSONArray("incomplete"); for (int i=0;p!=null && i<p.length();i++) if (part.equals(p.optString(i))) return true; return false; }
 
     /** Grades grouped by semester, newest semester first (school lists newest first). */
     Map<String, List<Grade>> bySemester() {

@@ -178,6 +178,7 @@ public class Engine {
         public String jielongKey;      // 接龙标题（去掉时间括注），同群同标题只保留一张卡
         public String platformKey;     // 学习平台通知：课程 + 事项名，同平台同键只保留一张卡
         public boolean needsConfirm, updated;
+        public boolean aiChecked;      // 上一级（大模型）已复核过
         public double confidence;
         public String reason = "";
         public List<String> context = new ArrayList<>();
@@ -211,6 +212,9 @@ public class Engine {
                 case "com.android.shell":
                 case "android": return "系统通知";
                 case "demo": return "演示样例";
+                case "screenshot": return "截图识别";
+                case "share": return "分享";
+                case "jwxt": return "教务系统";
                 default: return "来源待确认";
             }
         }
@@ -1027,10 +1031,12 @@ public class Engine {
         if (isDuplicate(cards, m, flatText) || isDuplicate(removedCards, m, flatText)) return;
 
         Map<String, Double> f = featurize(m);
-        int idx = argmax(scores(f));
+        double[] sc = scores(f);
+        int idx = argmax(sc);
         String label = LABELS[idx];
         String rule = ruleLabel(f, t, m.sender);
         if (rule != null) label = rule;
+        double prob = rule != null ? 1.0 : topProb(sc);
         // 提问不是待办（"周五之前交实验报告吗"）：统计模型误判成待办时在这里拦下
         if ("action".equals(label) && isQuestion(t)) label = "discussion";
         // 重点关注的群：带动作和时间的“讨论/闲聊”也当待办（提问除外），宁可多出一张让用户确认。
@@ -1185,9 +1191,12 @@ public class Engine {
                 cards.add(c);
                 remember(m);
                 notifyChanged();
+                if (c.needsConfirm) escalateCard(c, m, "exam_time");
                 return;
             }
             // 提问 / 第一人称 / 不可信 / 时间含糊（"另行通知"）：考试类消息不出卡
+            // 可信来源但时间没解析出来的考试通知，交给上一级再看一次。
+            if (trusted && !ask && !firstPerson) escalateMessage(m, "exam", prob, "exam_unparsed");
             remember(m);
             return;
         }
@@ -1198,6 +1207,7 @@ public class Engine {
                 group.removeIf(p -> m.ts - p.m.ts > BURST_WINDOW_MS);
                 group.add(new Pending(m));
             }
+            if (rule == null && shouldReview(f, prob, t)) escalateMessage(m, label, prob, "low_conf");
             remember(m);
             return;
         }
@@ -1205,6 +1215,7 @@ public class Engine {
         nLevel3++;
         Deadline d = parseDeadline(t, m.ts);
         if ("notice".equals(label)) {
+            if (rule == null && shouldReview(f, prob, t)) escalateMessage(m, label, prob, "low_conf");
             remember(m);
             return;                      // ②类只出信息卡，不占待办位
         }
@@ -1239,6 +1250,8 @@ public class Engine {
         cards.add(c);
         remember(m);
         notifyChanged();
+        // 规则抽取没把握（缺事项、缺时间、时间含糊）或分类本身拿不准：交给上一级补全/复核。
+        if (c.needsConfirm || prob < REVIEW_PROB) escalateCard(c, m, c.needsConfirm ? "extract" : "low_conf");
     }
 
     /**
@@ -1644,6 +1657,354 @@ public class Engine {
 
     public void markStateSaved(long revision) { savedRevision = revision; }
 
+    // ---------- 二级 / 三级复核 ----------
+    // 第一级（规则 + 逻辑回归 + 规则抽取）在本机即时出结果；拿不准的消息和卡片通过 escalator
+    // 交给上一级（大模型）复判分类、补全字段。上一级的结论用 applyAi 写回，规则仍是兜底：
+    // 没配置上一级、没网、调用失败时，卡片保持第一级的结果，不会丢。
+
+    /** 分类最高概率低于它就算“拿不准”。 */
+    static final double REVIEW_PROB = 0.6;
+    /** 上一级认为“不是待办”时，至少这么有把握才会移走第一级出的卡。 */
+    static final double AI_DROP_CONF = 0.8;
+    /** 上一级从漏判消息里新建待办的最低把握。 */
+    static final double AI_ADD_CONF = 0.7;
+
+    /** 送去复核的一条：要么是一张已出的卡（补全/复核），要么是一条没出卡的消息（复判）。 */
+    public static class Escalation {
+        public String cardId;            // 非空：复核这张卡
+        public Msg msg;                  // 原消息
+        public String label;             // 第一级的分类
+        public double prob;              // 第一级的最高概率
+        public String reason;            // extract / low_conf / exam_time / exam_unparsed / screenshot
+        public List<String> context = new ArrayList<>();
+    }
+
+    public interface Escalator { void escalate(Escalation e); }
+
+    /** 由宿主（安卓端）装上；为 null 时不复核，行为与原来完全一致。 */
+    public Escalator escalator;
+
+    /** 上一级的结论，字段与提示词约定的输出结构一一对应。 */
+    public static class AiVerdict {
+        public String cardId;            // 复核卡片时回填
+        public Msg msg;                  // 复判消息时回填
+        public boolean todo;             // 是不是需要我去做的事
+        public String kind = "todo";     // todo / exam
+        public String title;
+        public long deadline;            // 0 = 没有明确时间
+        public boolean timeSure;
+        public String place, channel, bring;
+        public double confidence;
+        public String note;              // 一句话理由，显示在卡片上
+    }
+
+    static double topProb(double[] sc) {
+        double max = sc[argmax(sc)], sum = 0;
+        for (double v : sc) sum += Math.exp(v - max);
+        return 1.0 / sum;
+    }
+
+    /** 没出卡的消息里，哪些值得让上一级再看一眼：带动作又带时间，或模型拿不准且有一点线索。 */
+    boolean shouldReview(Map<String, Double> f, double prob, String t) {
+        if (isQuestion(t)) return false;
+        boolean act = f.get("M:has_action") > 0, time = f.get("M:has_time") > 0;
+        return (act && time) || (prob < REVIEW_PROB && (act || time));
+    }
+
+    void escalateCard(Card c, Msg m, String why) {
+        if (escalator == null || c == null) return;
+        Escalation e = new Escalation();
+        e.cardId = c.id;
+        e.msg = m;
+        e.label = c.kind;
+        e.prob = c.confidence;
+        e.reason = why;
+        if (c.context != null) e.context.addAll(c.context);
+        try { escalator.escalate(e); } catch (RuntimeException ignored) { }
+    }
+
+    void escalateMessage(Msg m, String label, double prob, String why) {
+        if (escalator == null) return;
+        Escalation e = new Escalation();
+        e.msg = m;
+        e.label = label;
+        e.prob = prob;
+        e.reason = why;
+        e.context.addAll(recent.getOrDefault(m.groupId, new ArrayList<>()));
+        try { escalator.escalate(e); } catch (RuntimeException ignored) { }
+    }
+
+    Card cardById(String id) {
+        if (id == null) return null;
+        for (Card c : cards) if (id.equals(c.id)) return c;
+        return null;
+    }
+
+    /** 上一级给出的时间要落在合理范围内：不早于消息前一天，不晚于一年后。 */
+    static boolean plausibleDeadline(long deadline, long sentAt) {
+        if (deadline <= 0) return false;
+        long base = sentAt > 0 ? sentAt : System.currentTimeMillis();
+        return deadline >= base - 86400_000L && deadline <= base + 366L * 86400_000L;
+    }
+
+    static String clip(String s, int max) {
+        if (blank(s)) return null;
+        String v = s.trim().replaceAll("\\s+", " ");
+        return v.length() > max ? v.substring(0, max) + "…" : v;
+    }
+
+    /**
+     * 写回上一级的结论。用户亲手改过的标题/时间、已完成的卡一律不动。
+     * @return true 表示卡片有变化
+     */
+    public boolean applyAi(AiVerdict v, long now) {
+        if (v == null) return false;
+        if (v.cardId != null) {
+            Card c = cardById(v.cardId);
+            if (c == null || c.done) return false;           // 已被移除 / 已完成：不打扰
+            c.aiChecked = true;
+            if (!v.todo) {
+                if (v.confidence >= AI_DROP_CONF && c.titleOverride == null && !c.deadlineUserSet
+                        && !"jielong".equals(c.kind)) {
+                    c.reason = "AI 复核认为这不是需要你做的事" + (blank(v.note) ? "" : "：" + clip(v.note, 40))
+                            + "。如有误可在“已移除的卡片”恢复";
+                    return dismissCard(c, now);
+                }
+                notifyChanged();
+                return true;
+            }
+            boolean changed = false;
+            String title = clip(v.title, 24);
+            boolean weakTitle = c.title == null || c.title.startsWith("待确认") || c.needsConfirm
+                    || c.confidence < 0.85;
+            if (title != null && c.titleOverride == null && weakTitle && !"jielong".equals(c.kind)
+                    && !title.equals(c.title)) {
+                c.title = title;
+                changed = true;
+            }
+            if (!c.deadlineUserSet && plausibleDeadline(v.deadline, c.sourceTs)
+                    && (c.deadline == 0 || c.needsConfirm) && v.deadline != c.deadline) {
+                c.deadline = v.deadline;
+                c.deadlineText = humanDeadline(v.deadline);
+                changed = true;
+            }
+            if (blank(c.place) && !blank(v.place)) { c.place = clip(v.place, 30); changed = true; }
+            if (blank(c.channel) && !blank(v.channel) && !"jielong".equals(c.kind)) { c.channel = clip(v.channel, 20); changed = true; }
+            if (blank(c.bring) && !blank(v.bring) && "exam".equals(c.kind)) { c.bring = clip(v.bring, 30); changed = true; }
+            boolean sure = c.deadlineUserSet || (c.deadline > 0 && v.timeSure && !blank(c.title)
+                    && !c.title.startsWith("待确认"));
+            if (c.needsConfirm && sure) {
+                c.needsConfirm = false;
+                changed = true;
+            }
+            String note = c.needsConfirm ? "AI 已补全，但原文仍有不确定的地方，建议核对" : "AI 已补全标题和时间";
+            if (changed || !note.equals(c.reason)) {
+                c.reason = changed ? note : c.reason;
+                c.confidence = Math.max(c.confidence, Math.min(0.95, v.confidence));
+            }
+            notifyChanged();
+            return changed;
+        }
+        Msg m = v.msg;
+        if (m == null || !v.todo || v.confidence < AI_ADD_CONF) return false;
+        if (MODE_IGNORE.equals(groupMode(m.groupId))) return false;
+        String text = m.text == null ? "" : m.text;
+        String flat = stripSpaces(text);
+        if (isDuplicate(cards, m, flat) || isDuplicate(removedCards, m, flat)) return false;
+        String title = clip(v.title, 24);
+        if (title == null) title = fallbackTitle(text);
+        Card c = new Card();
+        c.id = newCardId();
+        c.kind = "exam".equals(v.kind) ? "exam" : "todo";
+        c.title = title;
+        c.deadline = plausibleDeadline(v.deadline, m.ts) ? v.deadline : 0;
+        c.deadlineText = humanDeadline(c.deadline);
+        c.needsConfirm = c.deadline == 0 || !v.timeSure;
+        c.channel = "exam".equals(c.kind) ? null : clip(v.channel, 20);
+        c.place = clip(v.place, 30);
+        c.bring = "exam".equals(c.kind) ? clip(v.bring, 30) : null;
+        c.sourcePackage = m.pkg;
+        c.groupId = m.groupId;
+        c.groupName = m.groupName;
+        c.sender = m.sender;
+        c.sourceId = m.id;
+        c.sourceText = text;
+        c.sourceTs = m.ts;
+        c.confidence = Math.min(0.9, v.confidence);
+        c.aiChecked = true;
+        c.reason = "AI 复核从群消息里找出的事项" + (c.needsConfirm ? "，时间请核对" : "");
+        c.context = new ArrayList<>(recent.getOrDefault(m.groupId, new ArrayList<>()));
+        cards.add(c);
+        notifyChanged();
+        return true;
+    }
+
+    // ---------- 教务系统的考试安排 ----------
+    public static final String PKG_SCHOOL = "jwxt";
+
+    /** 教务系统里的一场考试；start 为 0 表示只知道日期或时间未排。 */
+    public static class SchoolExam {
+        public String course, place;
+        public long start;          // 毫秒；0 = 时间未知
+        public boolean dateOnly;    // 只知道日期，时刻待定
+        public boolean finished;
+    }
+
+    /**
+     * 把教务系统的考试安排同步成考试卡：新考试出卡，改了时间/地点的更新原卡并标“有更新”。
+     * 已结束的不出卡；用户移除过的不再顶回来；用户改过的时间不覆盖；
+     * 群消息里已经有同一门课、时间相近（12 小时内）的考试卡时不重复出卡，只补地点。
+     * @return 新增或更新的卡片数
+     */
+    public int syncSchoolExams(List<SchoolExam> exams, long now) {
+        int changed = 0;
+        for (SchoolExam x : exams) {
+            if (x == null || blank(x.course) || x.finished) continue;
+            if (x.start > 0 && x.start < now - 3 * 3600_000L) continue;      // 已经考完
+            String key = "school:" + ChangeDiff.norm(x.course);
+            boolean removed = false;
+            for (Card r : removedCards) if (PKG_SCHOOL.equals(r.sourcePackage) && key.equals(r.platformKey)) removed = true;
+            if (removed) continue;
+            Card same = null;
+            for (Card c : cards) if (PKG_SCHOOL.equals(c.sourcePackage) && key.equals(c.platformKey)) { same = c; break; }
+            String title = x.course.trim().endsWith("考试") ? x.course.trim() : x.course.trim() + " 考试";
+            String place = clip(x.place, 30);
+            if (same != null) {
+                boolean upd = false;
+                if (!same.deadlineUserSet && x.start > 0 && x.start != same.deadline) {
+                    same.deadline = x.start;
+                    same.deadlineText = humanDeadline(x.start);
+                    same.needsConfirm = x.dateOnly;
+                    upd = true;
+                }
+                if (place != null && !place.equals(same.place)) { same.place = place; upd = true; }
+                if (upd) {
+                    same.updated = true;
+                    same.reason = "教务系统的考试安排有变化";
+                    changed++;
+                    notifyChanged();
+                }
+                continue;
+            }
+            Card fromChat = null;
+            String course = ChangeDiff.norm(x.course);
+            for (Card c : cards) {
+                if (!"exam".equals(c.kind) || c.done || PKG_SCHOOL.equals(c.sourcePackage)) continue;
+                String t = ChangeDiff.norm(c.displayTitle()) + " " + ChangeDiff.norm(c.sourceText);
+                boolean near = x.start == 0 || c.deadline == 0 || Math.abs(c.deadline - x.start) <= 12 * 3600_000L;
+                if (t.contains(course) && near) { fromChat = c; break; }
+            }
+            if (fromChat != null) {
+                if (blank(fromChat.place) && place != null) { fromChat.place = place; changed++; notifyChanged(); }
+                continue;
+            }
+            Card c = new Card();
+            c.id = newCardId();
+            c.kind = "exam";
+            c.title = clip(title, 24);
+            c.platformKey = key;
+            c.deadline = x.start > 0 ? x.start : 0;
+            c.deadlineText = humanDeadline(c.deadline);
+            c.needsConfirm = c.deadline == 0 || x.dateOnly;
+            c.place = place;
+            c.sourcePackage = PKG_SCHOOL;
+            c.groupId = PKG_SCHOOL + "|教务系统";
+            c.groupName = "教务系统";
+            c.sender = "教务系统";
+            c.sourceId = key;
+            c.sourceText = x.course.trim() + (place == null ? "" : " · " + place);
+            c.sourceTs = now;
+            c.confidence = 0.95;
+            c.reason = c.deadline == 0 ? "教务系统还没排出考试时间" : x.dateOnly ? "教务系统只给了日期，具体时刻待确认" : "来自教务系统的考试安排";
+            c.context = new ArrayList<>();
+            cards.add(c);
+            changed++;
+            notifyChanged();
+        }
+        return changed;
+    }
+
+    // ---------- 图片 / 语音 / 文件消息 ----------
+    /** 同一个群同一个人连发的图片/语音，在这个窗口内合并成一张提示卡。 */
+    static final long MEDIA_MERGE_MS = 10 * 60_000L;
+
+    static String mediaWord(String placeholder) {
+        if (placeholder == null) return null;
+        switch (placeholder) {
+            case "[图片]": return "图片";
+            case "[语音]": return "语音";
+            case "[视频]": return "视频";
+            case "[文件]": return "文件";
+            default: return null;
+        }
+    }
+
+    /**
+     * 通知里只有“[图片]”“[语音]”这类占位符，正文读不到。
+     * 重点群、老师/班干部或 @全体 发的才出一张“去看一下”的提示卡（同人 10 分钟内合并），
+     * 其余只记进上下文，让后面的文字消息能带上“前面发过图片”。
+     * @return true 表示出了或更新了提示卡
+     */
+    public boolean noteMedia(Msg m, String placeholder) {
+        String word = mediaWord(placeholder);
+        if (m == null || word == null) return false;
+        GroupInfo gi = touchGroup(m.groupId, m.groupName, m.pkg, m.ts);
+        if (gi != null && MODE_IGNORE.equals(gi.mode)) return false;
+        nIn++;
+        remember(new Msg(m.id, m.groupId, m.groupName, m.sender, placeholder, m.pkg, m.ts));
+        String sender = m.sender == null ? "" : m.sender;
+        boolean focus = MODE_FOCUS.equals(groupMode(m.groupId));
+        boolean trusted = focus || containsAny(sender, TEACHER_HINTS)
+                || (m.text != null && m.text.contains("[有全体消息]"));
+        if (!trusted) return false;
+        for (Card c : cards) {
+            if ("media".equals(c.kind) && !c.done && Objects.equals(c.groupId, m.groupId)
+                    && Objects.equals(c.sender, m.sender) && Math.abs(m.ts - c.sourceTs) <= MEDIA_MERGE_MS) {
+                if (!c.sourceText.contains(placeholder)) c.sourceText = c.sourceText + " " + placeholder;
+                c.title = mediaTitle(sender, c.sourceText);
+                c.sourceTs = m.ts;
+                c.sourceId = m.id;
+                notifyChanged();
+                return true;
+            }
+        }
+        for (Card r : removedCards) {
+            if (Objects.equals(r.sourceId, m.id)) return false;
+        }
+        Card c = new Card();
+        c.id = newCardId();
+        c.kind = "media";
+        c.sourceText = placeholder;
+        c.title = mediaTitle(sender, placeholder);
+        c.deadline = 0;
+        c.deadlineText = humanDeadline(0);
+        c.needsConfirm = false;
+        c.sourcePackage = m.pkg;
+        c.groupId = m.groupId;
+        c.groupName = m.groupName;
+        c.sender = m.sender;
+        c.sourceId = m.id;
+        c.sourceTs = m.ts;
+        c.confidence = 0.5;
+        c.reason = "语音".equals(word) || "视频".equals(word)
+                ? "楼外读不到" + word + "内容，可能是口头通知，请到原群查看"
+                : "楼外读不到" + word + "内容；如果是通知截图，截屏后分享给楼外即可自动识别";
+        c.context = new ArrayList<>(recent.getOrDefault(m.groupId, new ArrayList<>()));
+        cards.add(c);
+        notifyChanged();
+        return true;
+    }
+
+    static String mediaTitle(String sender, String placeholders) {
+        List<String> kinds = new ArrayList<>();
+        for (String p : new String[]{"[图片]", "[语音]", "[视频]", "[文件]"}) {
+            if (placeholders != null && placeholders.contains(p)) kinds.add(mediaWord(p));
+        }
+        String who = blank(sender) || "群友".equals(sender) || "群消息".equals(sender) ? "群里" : sender.trim();
+        String what = kinds.isEmpty() ? "消息" : String.join("和", kinds);
+        return clip("看一下" + who + "发的" + what, 24);
+    }
+
     // ---------- 落盘 ----------
     // 纯文本行格式，字段逐行 "key<TAB>值"，值里的反斜杠/换行/回车/制表符转义，
     // null 写成 \0；卡片以 CARD 开始、END 结束，上下文用 CTX 行重复。全部 UTF-8。
@@ -1691,6 +2052,7 @@ public class Engine {
             w.write("updated\t" + (c.updated ? "1" : "0") + "\n");
             w.write("done\t" + (c.done ? "1" : "0") + "\n");
             if (c.removedAt > 0) w.write("removedAt\t" + c.removedAt + "\n");
+            if (c.aiChecked) w.write("ai\t1\n");
             w.write("confidence\t" + Double.toString(c.confidence) + "\n");
             w.write("reason\t" + esc(c.reason) + "\n");
             if (c.context == null) {
@@ -1766,6 +2128,7 @@ public class Engine {
             else if ("updated".equals(key)) cur.updated = "1".equals(val.trim());
             else if ("done".equals(key)) cur.done = "1".equals(val.trim());
             else if ("removedAt".equals(key)) cur.removedAt = Math.max(0, toLong(val, 0));
+            else if ("ai".equals(key)) cur.aiChecked = "1".equals(val.trim());
             else if ("confidence".equals(key)) cur.confidence = toDouble(val, 0);
             else if ("reason".equals(key)) cur.reason = unesc(val);
             else if ("CTXN".equals(key)) {

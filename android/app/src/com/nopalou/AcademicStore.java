@@ -31,6 +31,7 @@ final class AcademicStore {
         AtomicFile f = file(c); FileOutputStream out = null;
         try { out = f.startWrite(); out.write(bytes); f.finishWrite(out); }
         catch (Exception e) { if (out != null) f.failWrite(out); throw e; }
+        CampusChanges.academic(c, previous, merged);
         return merged;
     }
     static synchronized void clear(Context c) { file(c).delete(); }

@@ -51,6 +51,7 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onResume() {
         super.onResume();
+        CampusAutoRefresh.maybeRefresh(this);
         io.execute(() -> {
             try {
                 Timetable loaded = TimetableStore.load(getApplicationContext());
@@ -65,11 +66,12 @@ public class TimetableActivity extends Activity {
     }
     @Override public void onSaveInstanceState(Bundle b) { b.putInt("week", week); b.putInt("scrollY", timetableScroll == null ? savedScrollY : timetableScroll.getScrollY()); super.onSaveInstanceState(b); }
     @Override public void onPause() {
+        CampusAutoRefresh.pause(this);
         if (timetableScroll != null) savedScrollY = timetableScroll.getScrollY();
         AppNavigation.rememberTimetable(week, savedScrollY);
         super.onPause();
     }
-    @Override public void onDestroy() { uiTick.removeCallbacksAndMessages(null); if (velocity != null) velocity.recycle(); io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); uiTick.removeCallbacksAndMessages(null); if (velocity != null) velocity.recycle(); io.shutdown(); super.onDestroy(); }
     /** 返回待办时同样淡出，和底部导航的切换手感一致。 */
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
     final android.os.Handler uiTick = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -235,7 +237,7 @@ public class TimetableActivity extends Activity {
                     TextView place = text(overlap ? "点击查看" : (first.room.isEmpty() ? "地点待定" : first.room), 9, Ui.withAlpha(ink(color), 200), false);
                     place.setMaxLines(2); place.setEllipsize(TextUtils.TruncateAt.END); place.setPadding(0, dp(3), 0, 0); card.addView(place);
                 }
-                card.setContentDescription(overlap ? block.lessons.size() + "门课程时段重叠，点击查看" : first.name + "，" + table.time(first) + "，" + first.room);
+                card.setContentDescription(overlap ? block.lessons.size() + "门课程时段重叠，点击查看" : first.name + "，" + table.time(first, week) + "，" + first.room);
                 card.setFocusable(true); card.setOnClickListener(v -> details(block));
                 int left = dp(GUTTER) + Math.round((block.weekday - 1) * col), right = dp(GUTTER) + Math.round(block.weekday * col);
                 FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(Math.max(1, right - left - dp(4)), dp(top(block.end) + 53 - top(block.start)) - dp(4));
@@ -326,7 +328,7 @@ public class TimetableActivity extends Activity {
     void details(TimetableLayout.Block block) {
         if (block.lessons.size() == 1) { detail(block.lessons.get(0)); return; }
         String[] names = new String[block.lessons.size()];
-        for (int i = 0; i < names.length; i++) names[i] = block.lessons.get(i).name + " · " + table.time(block.lessons.get(i));
+        for (int i = 0; i < names.length; i++) names[i] = block.lessons.get(i).name + " · " + table.time(block.lessons.get(i), week);
         alert().setTitle("同一时段的课程").setItems(names, (d, i) -> detail(block.lessons.get(i))).setNegativeButton("关闭", null).show();
     }
     /** 课程详情：和待办详情同一种底部面板。顶部是课程色的时间块，下面逐行列地点、教师、周次。 */
@@ -343,7 +345,7 @@ public class TimetableActivity extends Activity {
         when.setPadding(dp(16), dp(14), dp(16), dp(14));
         when.setBackground(Ui.round(this, fill(color), 16));
         when.addView(text("上课时间", 12, Ui.withAlpha(ink(color), 200), true));
-        TextView whenValue = text(table.dayLabel(week, l.weekday) + "  " + table.time(l), 17, ink(color), true);
+        TextView whenValue = text(table.dayLabel(week, l.weekday) + "  " + table.time(l, week), 17, ink(color), true);
         whenValue.setPadding(0, dp(6), 0, 0); whenValue.setLineSpacing(dp(3), 1f);
         when.addView(whenValue);
         LinearLayout.LayoutParams whenLp = new LinearLayout.LayoutParams(-1, -2); whenLp.topMargin = dp(16);
@@ -443,7 +445,7 @@ public class TimetableActivity extends Activity {
     void settings() {
         if (table == null) { importTable(false); return; }
         alert().setTitle("课表设置")
-                .setItems(new String[]{"重新同步当前账号", "使用其他账号导入", "校准开学日期", "未排课课程", "删除本机课表（含考试成绩）"}, (d, which) -> {
+                .setItems(new String[]{"重新同步当前账号", "使用其他账号导入", "校准开学日期", "未排课课程", "删除本机课表、成绩与校园数据"}, (d, which) -> {
                     if (which == 0) importTable(true);
                     if (which == 1) importTable(false);
                     if (which == 2) chooseMonday();
@@ -454,7 +456,7 @@ public class TimetableActivity extends Activity {
                     }
                     if (which == 4) alert().setTitle("删除本机课表？").setMessage("删除后可重新导入。")
                             .setNegativeButton("取消", null).setPositiveButton("删除", (x, y) -> io.execute(() -> {
-                                TimetableStore.clear(getApplicationContext()); AcademicStore.clear(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
+                                CampusStore.clearAll(getApplicationContext()); runOnUiThread(() -> { table = null; week = 0; render(); });
                             })).show();
                 }).setNegativeButton("关闭", null).show();
     }

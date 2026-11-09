@@ -34,6 +34,10 @@ public class AcademicActivity extends Activity {
     private boolean termsInitialised;
     private ScrollView scroll;
     private int keepScroll = -1;
+    private boolean resumed;
+    private final android.os.Handler updates=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable refresh=this::reload;
+    private final Runnable changed=() -> { if (resumed) { updates.removeCallbacks(refresh); updates.postDelayed(refresh,250); } };
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b); Ui.apply(this);
@@ -47,18 +51,23 @@ public class AcademicActivity extends Activity {
     }
     @Override public void onResume() {
         super.onResume();
+        resumed=true; CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload();
+    }
+    private void reload() {
+        if (isDestroyed() || io.isShutdown()) return;
         io.execute(() -> {
             Academic a = null; boolean broken = false;
             try { a = AcademicStore.load(getApplicationContext()); } catch (Exception e) { broken = true; }
             Academic result = a; boolean bad = broken;
-            runOnUiThread(() -> { data = result; loaded = true; render(); if (bad) toast("考试成绩存档无法读取，请重新同步"); });
+            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; if (scroll!=null) keepScroll=scroll.getScrollY(); data = result; loaded = true; render(); if (bad) toast("考试成绩存档无法读取"); });
         });
     }
     @Override public void onSaveInstanceState(Bundle b) {
         b.putBoolean("grades", showGrades); b.putBoolean("finishedOpen", finishedOpen);
         b.putStringArrayList("openTerms", new ArrayList<>(openTerms)); super.onSaveInstanceState(b);
     }
-    @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
+    @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
+    @Override public void onPause() { resumed=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
     /** 返回待办时同样淡出，和底部导航的切换手感一致。 */
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
 
@@ -77,14 +86,13 @@ public class AcademicActivity extends Activity {
         setContentView(root); Ui.systemBars(this, root);
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
 
-        LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout head = new LinearLayout(this); head.setBaselineAligned(false); head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(14), dp(8), 0); root.addView(head);
         LinearLayout titles = CourseUi.column(this); head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
         TextView title = text("考试与成绩", 26, Ui.TEXT, true); title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         titles.addView(title);
         String sub = subtitle();
         if (sub != null) { TextView s = text(sub, 12, Ui.MUTE, false); s.setPadding(0, dp(4), 0, 0); titles.addView(s); }
-        head.addView(CourseUi.icon(this, "sync", "从教务系统重新同步", this::sync));
 
         if (!loaded) { root.addView(new View(this), new LinearLayout.LayoutParams(-1, 0, 1)); addNavigation(root); return; }
         if (data == null) { empty(root); addNavigation(root); return; }
@@ -297,7 +305,8 @@ public class AcademicActivity extends Activity {
     private void grades(LinearLayout list) {
         Map<String, List<Academic.Grade>> terms = data.hasGrades ? data.bySemester() : new java.util.LinkedHashMap<>();
         gpaHero(list, terms);
-        if (!data.hasGrades) { CourseUi.gap(list, 12); infoCard(list, "这次没有读到成绩", "点右上角重新同步试试"); return; }
+        if (!data.hasGrades) { CourseUi.gap(list, 12); infoCard(list, "成绩暂未读到", "应用会自动重试，无需手动同步"); return; }
+        if (data.incomplete("grades")) note(list,"部分学期暂未读到，已保留其他学期成绩，稍后会自动重试。");
         if (terms.isEmpty()) { CourseUi.gap(list, 12); infoCard(list, "教务系统暂未公布成绩", "出分后同步一下就能看到"); return; }
         if (!termsInitialised) { openTerms.add(terms.keySet().iterator().next()); termsInitialised = true; }
         section(list, "各学期成绩", terms.size() + " 个学期", 24);

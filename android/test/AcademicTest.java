@@ -38,6 +38,10 @@ public class AcademicTest {
         Academic first = Academic.merge(null, "{" + S + ",\"exams\":null,\"grades\":[],\"gpa\":null,\"failed\":[\"exams\"]}", 5);
         check("first import with failed part stays absent", !first.hasExams && first.hasGrades);
         check("round trip", new Academic(fresh.encode()).grades.size() == 2);
+        Academic mixed=Academic.merge(a,"{"+S+",\"grades\":["+GRADE.replace("321","123").replace("2025秋","2025春")+"],\"gradeSemestersRead\":[\"123\"],\"failed\":[\"grades\",\"exams\",\"gpa\"]}",2000);
+        check("failed semester preserves other newly read semester grades",mixed.grades.size()==3 && mixed.incomplete("grades"));
+        Academic emptyTerm=Academic.merge(mixed,"{"+S+",\"grades\":[],\"gradeSemestersRead\":[\"321\"],\"failed\":[\"grades\",\"exams\",\"gpa\"]}",3000);
+        check("confirmed empty semester clears only that semester",emptyTerm.grades.size()==1 && emptyTerm.grades.get(0).semesterId.equals("123"));
         if (args.length > 0) {
             String node = new String(Files.readAllBytes(Paths.get(args[0])), StandardCharsets.UTF_8);
             Academic n = Academic.merge(null, node, 1);

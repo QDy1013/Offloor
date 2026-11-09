@@ -162,9 +162,18 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
     }
 
+    /** 常驻的待办页：校园后台更新的浏览器挂在它下面，切换底部标签时不会被打断。 */
+    private static java.lang.ref.WeakReference<MainActivity> liveRef;
+
+    static MainActivity live() {
+        MainActivity m = liveRef == null ? null : liveRef.get();
+        return m == null || m.isFinishing() || m.isDestroyed() ? null : m;
+    }
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        liveRef = new java.lang.ref.WeakReference<>(this);
         Ui.apply(this);
         firstRender = b == null;
         if (b != null) {
@@ -193,6 +202,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     @Override
     protected void onResume() {
         super.onResume();
+        CampusAutoRefresh.maybeRefresh(this);
+        TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
         // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。
@@ -239,6 +250,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     @Override
     protected void onPause() {
+        CampusAutoRefresh.pause(this);
         resumed = false;
         uiHandler.removeCallbacks(queuedRender);
         uiHandler.removeCallbacks(searchRefresh);
@@ -268,6 +280,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     @Override
     protected void onDestroy() {
+        CampusSilentRefresh.hostDestroyed(this);
         uiHandler.removeCallbacksAndMessages(null);
         if (engine != null && engine.listener == this) engine.listener = null;
         super.onDestroy();
@@ -1133,6 +1146,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuRow(body, holder, "通知读取权限", "系统设置里的通知使用权", Ui.TEXT,
                 () -> startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
         menuRow(body, holder, "诊断日志", "最近 30 条读取记录", Ui.TEXT, this::showDiagLog);
+        menuSection(body, "识别");
+        menuRow(body, holder, "AI 识别", AiConfig.summary(this), Ui.TEXT,
+                () -> startActivity(new Intent(this, AiActivity.class)));
+        menuRow(body, holder, "截图识别", "群里只发了图片？选截图，逐条转写成待办", Ui.TEXT,
+                () -> startActivity(new Intent(this, ShotActivity.class).putExtra(ShotActivity.EXTRA_PICK, true)));
         menuSection(body, "事项");
         menuRow(body, holder, "到期提醒", ReminderReceiver.isEnabled(this) ? "已开启 · 到期前两小时提醒" : "已关闭",
                 Ui.TEXT, this::showDeadlineReminderSettings);
@@ -1142,9 +1160,21 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 () -> startActivity(new Intent(this, ProfileActivity.class)));
         menuRow(body, holder, "我的课表", "本科课表一键导入，离线查看每周课程", Ui.TEXT,
                 () -> AppNavigation.openTimetable(this));
+        menuRow(body, holder, "成绩与课表提醒", "出成绩、考试改期、课表变化、电量不足时通知", Ui.TEXT,
+                this::showCampusAlerts);
+        menuRow(body, holder, "桌面小组件", "把今天的课和最近的待办放到桌面", Ui.TEXT, () -> {
+            if (!TodayWidget.requestPin(this)) {
+                alert().setTitle("手动添加小组件")
+                        .setMessage("这台手机的桌面不支持应用直接添加。请长按桌面空白处 → 小组件（或“安卓组件”），找到“楼外 / Offloor · 今日课程与待办”，拖到桌面。")
+                        .setPositiveButton("知道了", null).show();
+            }
+        });
         menuSection(body, "演示");
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
+        menuSection(body, "应用");
+        menuRow(body, holder, "下载最新版", "当前版本 "+UpdateActivity.version(this)+" · 点击开始下载", Ui.TEXT,
+                () -> startActivity(new Intent(this, UpdateActivity.class)));
         menuSection(body, null);
         menuRow(body, holder, "清空本机数据", "清空全部待办、已移除卡片和近期消息", Ui.RED, () ->
                 alert()
@@ -1157,6 +1187,35 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                         .setNegativeButton("取消", null)
                         .show());
         holder[0] = showSheet(body, null);
+    }
+
+    /** 「成绩与课表提醒」：同步后比较新旧数据，有变化才通知；第一次导入不提醒。 */
+    void showCampusAlerts() {
+        android.content.SharedPreferences p = CampusChanges.prefs(this);
+        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric"};
+        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）", "宿舍电量不足"};
+        boolean[] checked = new boolean[keys.length];
+        for (int i = 0; i < keys.length; i++) checked[i] = p.getBoolean(keys[i], true);
+        android.widget.EditText threshold = new android.widget.EditText(this);
+        threshold.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        threshold.setHint("电量提醒阈值（度）");
+        threshold.setText(CampusChanges.trim((double) p.getFloat("electric_threshold", CampusChanges.DEFAULT_ELECTRIC)));
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(dp(this, 22), 0, dp(this, 22), 0);
+        box.addView(threshold, lp(-1, -2));
+        alert()
+                .setTitle("成绩与课表提醒")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setView(box)
+                .setPositiveButton("保存", (d, w) -> {
+                    android.content.SharedPreferences.Editor e = p.edit();
+                    for (int i = 0; i < keys.length; i++) e.putBoolean(keys[i], checked[i]);
+                    Double v = ChangeDiff.firstNumber(threshold.getText().toString());
+                    if (v != null && v >= 0 && v < 10000) e.putFloat("electric_threshold", v.floatValue()).putBoolean("electric_low", false);
+                    e.apply();
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     TextView sheetTitle(String text) {
@@ -1685,10 +1744,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout meta = new LinearLayout(this);
         meta.setGravity(Gravity.CENTER_VERTICAL);
         meta.addView(sourceMark(c, 15));
-        StringBuilder metaText = new StringBuilder(sourceName(c));
-        if (!TextUtils.isEmpty(c.groupName)) metaText.append(" · ").append(c.groupName);
-        if (!TextUtils.isEmpty(c.sender)) metaText.append(" · ").append(c.sender);
-        TextView metaLine = uiText(metaText.toString(), 12, Ui.MUTE, false);
+        TextView metaLine = uiText(joinDistinct(sourceName(c), c.groupName, c.sender), 12, Ui.MUTE, false);
         metaLine.setSingleLine(true);
         metaLine.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams mtLp = new LinearLayout.LayoutParams(0, -2, 1);
@@ -1745,11 +1801,14 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if ("jielong".equals(kind)) return Ui.tag(this, "接龙", Ui.TEAL, Ui.TEAL_BG);
         if (Engine.PlatformNotice.KIND_SIGNIN.equals(kind)) return Ui.tag(this, "签到", Ui.ORANGE, Ui.ORANGE_BG);
         if (Engine.PlatformNotice.KIND_GRADE.equals(kind)) return Ui.tag(this, "成绩", Ui.GREEN, Ui.GREEN_BG);
+        if ("media".equals(kind)) return Ui.tag(this, "图片/语音", Ui.ORANGE, Ui.ORANGE_BG);
         return null;
     }
 
     /** 卡片第二行的时间文字：与详情面板同一套说法。 */
     private String dueLabel(Engine.Card c, long now) {
+        if ("media".equals(c.kind)) return "内容读不到 · " + (c.sourceText != null && c.sourceText.contains("[图片]")
+                ? "截图分享给楼外可识别" : "请到原群查看");
         return c.deadlineHint() != null ? c.deadlineHint() + " · 时刻待确认"
                 : c.deadline == 0 ? "时间待确认 · 点开补充"
                 : Engine.humanDeadline(c.deadline) + " · " + TodayView.countdown(c.deadline, now);
@@ -1940,6 +1999,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
      * 来源应用名：只信引擎/main 侧给出的真实名称，空值统一显示「来源待确认」，
      * 不按包名猜应用名，避免把系统通知误标成某个具体平台。
      */
+    /** “来源 · 群 · 发送者”：空的和与前面重复的跳过（教务系统卡三处都是“教务系统”）。 */
+    static String joinDistinct(String... parts) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String p : parts) {
+            if (p == null || p.trim().isEmpty()) continue;
+            if (!out.contains(p.trim())) out.add(p.trim());
+        }
+        return TextUtils.join(" · ", out);
+    }
+
     String sourceName(Engine.Card c) {
         String name = c.sourceAppName();
         return TextUtils.isEmpty(name) || name.trim().isEmpty() ? "来源待确认" : name.trim();
@@ -2019,7 +2088,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(sourceMark(c, 18));
-        TextView from = uiText(sourceName(c) + (TextUtils.isEmpty(c.groupName) ? "" : " · " + c.groupName), 13, Ui.SUB, true);
+        TextView from = uiText(joinDistinct(sourceName(c), c.groupName), 13, Ui.SUB, true);
         from.setSingleLine(true);
         from.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams fromLp = new LinearLayout.LayoutParams(0, -2, 1);
@@ -2751,7 +2820,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             i.putExtra(CalendarContract.Events.TITLE, "【Offloor】" + c.displayTitle());
             // 描述不写群消息原文，避免系统日历云同步把原文外泄；只写来源与考试要点。
             StringBuilder desc = new StringBuilder();
-            desc.append("来源：").append(sourceName(c)).append(" · ").append(c.groupName).append(" · ").append(c.sender);
+            desc.append("来源：").append(joinDistinct(sourceName(c), c.groupName, c.sender));
             if ("exam".equals(c.kind)) {
                 if (!TextUtils.isEmpty(c.place)) desc.append("\n地点：").append(c.place);
                 if (!TextUtils.isEmpty(c.bring)) desc.append("\n带：").append(c.bring);
