@@ -19,9 +19,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * 待办 / 课表 / 考试成绩三个主页面之间的底部导航。
- * 样式：悬浮在页面底色上的一枚白色胶囊，每个标签是横排的「图标 + 文字」，
- * 选中项整体衬一枚浅墨水蓝胶囊、图标和文字变强调色；
+ * 待办 / 课表 / 考试成绩 / 校园四个主页面之间的底部导航。
+ * 悬浮圆角底座，图标与文字上下排列；选中图标衬浅靛蓝胶囊，
+ * 四项等宽，长标签与大字体也有独立空间；
  * 切换用 150ms 淡入淡出，不再整页横滑，像同一个 App 里换页而不是开新窗口。
  */
 final class AppNavigation {
@@ -69,38 +69,53 @@ final class AppNavigation {
         FrameLayout shell = new FrameLayout(from);
         shell.setBackgroundColor(Ui.BG);
         shell.setClipToPadding(false);
-        shell.setPadding(Ui.dp(from, 16), Ui.dp(from, 6), Ui.dp(from, 16), Ui.dp(from, 12));
+        shell.setClipChildren(false);
+        shell.setPadding(Ui.dp(from, 16), Ui.dp(from, 8), Ui.dp(from, 16), Ui.dp(from, 10));
         LinearLayout row = new LinearLayout(from);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Ui.dp(from, 6), Ui.dp(from, 6), Ui.dp(from, 6), Ui.dp(from, 6));
-        android.graphics.drawable.GradientDrawable capsule = Ui.round(from, Ui.CARD, 30);
-        if (Ui.dark) capsule.setStroke(1, Ui.LINE);
+        row.setPadding(Ui.dp(from, 8), Ui.dp(from, 7), Ui.dp(from, 8), Ui.dp(from, 7));
+        android.graphics.drawable.GradientDrawable capsule = Ui.round(from, Ui.CARD, 28);
+        capsule.setStroke(Ui.dp(from, 1), Ui.withAlpha(Ui.LINE, Ui.dark ? 160 : 100));
         row.setBackground(capsule);
-        Ui.lift(row, 6f);
-        shell.addView(row, new FrameLayout.LayoutParams(-1, Ui.dp(from, 60)));
+        Ui.lift(row, 4f);
+        // Let font scaling increase the bar instead of clipping the longer label.
+        row.setMinimumHeight(Ui.dp(from, 72));
+        shell.addView(row, new FrameLayout.LayoutParams(-1, -2));
         for (int i = 0; i < TITLES.length; i++) {
             final int target = i;
             final boolean selected = current == target;
             String title = TITLES[i];
-            // 每个标签都是「图标 + 文字」横排；选中的那个衬一枚浅墨水蓝胶囊。
+            // 图标与标题纵向分层，让四项保持相同节奏。
             LinearLayout tab = new LinearLayout(from);
             tab.setGravity(Gravity.CENTER);
+            tab.setOrientation(LinearLayout.VERTICAL);
+            tab.setPadding(0, Ui.dp(from, 2), 0, Ui.dp(from, 2));
+            tab.setMinimumHeight(Ui.dp(from, 58));
             tab.setContentDescription(title + (selected ? "，当前页面" : ""));
             tab.setSelected(selected);
             tab.setFocusable(true);
-            tab.setBackground(Ui.ripple(from, selected ? Ui.round(from, Ui.ACCENT_BG, 24) : null, Ui.press(), 24));
+            tab.setBackground(Ui.ripple(from, null, Ui.press(), 20));
+            Ui.pressScale(tab, .96f);
+            FrameLayout iconWell = new FrameLayout(from);
+            if (selected) iconWell.setBackground(Ui.round(from, Ui.ACCENT_BG, 16));
+            tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from, 52), Ui.dp(from, 30)));
 
             ImageView icon = new ImageView(from);
             icon.setImageDrawable(new TabIcon(from, target, selected ? Ui.ACCENT : Ui.SUB));
-            tab.addView(icon, new LinearLayout.LayoutParams(Ui.dp(from, 20), Ui.dp(from, 20)));
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            iconWell.addView(icon, new FrameLayout.LayoutParams(Ui.dp(from, 22), Ui.dp(from, 22), Gravity.CENTER));
 
-            TextView label = CourseUi.text(from, title, 13, selected ? Ui.ACCENT : Ui.SUB, selected);
+            TextView label = CourseUi.text(from, title, 11, selected ? Ui.ACCENT : Ui.SUB, selected);
             label.setSingleLine(true);
-            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-2, -2);
-            labelLp.leftMargin = Ui.dp(from, 6);
+            label.setGravity(Gravity.CENTER);
+            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            label.setIncludeFontPadding(false);
+            label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
+            labelLp.topMargin = Ui.dp(from, 5);
             tab.addView(label, labelLp);
 
-            LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, -1, 1);
+            LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, -2, 1);
             if (i > 0) tabLp.leftMargin = Ui.dp(from, 4);
             row.addView(tab, tabLp);
             tab.setOnClickListener(v -> {
