@@ -11,13 +11,13 @@
       "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
     },
     "com.nopalou.preview": {
-      "versionCode": 30,
-      "versionName": "0.30",
-      "size": 358090,
-      "sha256": "d0ae9957a6928e98b500df2f8a57f0830fd6c97d7bddf9a77897c17437da240c",
+      "versionCode": 31,
+      "versionName": "0.31",
+      "size": 366282,
+      "sha256": "8d356d8e4c7a964833418decd9605ef4824c56138e8f777dba4cbdaba261b464",
       "certificateSha256": "9ef39d2d4a1292f444291d94d32a57978ff95f95382a772c830f4a04e516ce0b",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/d0ae9957a6928e98b500df2f8a57f0830fd6c97d7bddf9a77897c17437da240c/offloor-preview.apk",
-      "notes": "v0.30 可靠性测试版：存档恢复、变更核对与历史、过期 AI 保护、调用上限、密钥加密和账号边界。已完成电脑回归，真机后台与真实服务仍待验证。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/8d356d8e4c7a964833418decd9605ef4824c56138e8f777dba4cbdaba261b464/offloor-preview.apk",
+      "notes": "v0.31 预览版：新增独立情境演示、三种核对分支、来源与人工操作记录、AI 待核对保护及图片缓存缺失提示。电脑回归通过，构造演示不代表真实用户效果，真机仍待验。"
     },
     "com.nopalou.timetabletest": {
       "versionCode": 26,
