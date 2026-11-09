@@ -54,6 +54,7 @@ public class NwpuImportActivity extends Activity {
     private String pendingAccount = "", pendingPassword = "", readToken;
     private boolean busy, submitted, reading, saving, reuseSession, courseOpened;
     private boolean automaticFallback;
+    private String saveAccount = "", savePassword = "";
     private long deadline, courseDeadline, readDeadline;
     private int generation;
     private long loginReadyDeadline;
@@ -133,11 +134,19 @@ public class NwpuImportActivity extends Activity {
         CourseUi.gap(fields, 28);
         submit = CourseUi.action(this, "一键导入", true, this::startWithCredentials); fields.addView(submit, CourseUi.row(dp(52)));
         CourseUi.gap(fields, 16);
-        TextView note = text("账号密码仅用于学校认证，不在本机保存。\n如学校要求验证码，完成后会自动继续导入。", 11, Ui.SUB, false);
+        TextView note = text("西工大账号密码加密保存在本机，用于自动登录和后台更新。\n如学校要求验证码，需本人完成；其他学校暂不保存密码。", 11, Ui.SUB, false);
         note.setLineSpacing(dp(4), 1f); fields.addView(note);
         CourseUi.gap(fields, 15);
         feedback = CourseUi.action(this, "反馈问题", false, this::shareFeedback); feedback.setVisibility(View.GONE); intro.addView(feedback, CourseUi.row(dp(46)));
         updateSchool();
+        if ("nwpu".equals(school.id)) {
+            CampusCredentials.Login login=CampusCredentials.load(this);
+            if (login!=null) { account.setText(login.account); password.setText(login.password); }
+        }
+        TextView forget=CourseUi.action(this,"删除已保存的西工大密码",false,() -> {
+            CampusSilentRefresh.cancelAll(); CampusCredentials.clear(this); account.setText(""); password.setText("");
+            Toast.makeText(this,"已删除保存的账号密码并停止后台更新",Toast.LENGTH_SHORT).show();
+        }); fields.addView(forget,CourseUi.row(dp(46)));
         password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
         password.setOnEditorActionListener((v, action, event) -> { if (action == android.view.inputmethod.EditorInfo.IME_ACTION_GO) { startWithCredentials(); return true; } return false; });
         form = scroll; content.addView(form, new FrameLayout.LayoutParams(-1, -1));
@@ -209,6 +218,9 @@ public class NwpuImportActivity extends Activity {
         if (password.length() == 0) { password.setError("请输入密码"); return; }
         automaticFallback=false;
         pendingAccount = account.getText().toString().trim(); pendingPassword = password.getText().toString();
+        saveAccount="nwpu".equals(school.id)?pendingAccount:""; savePassword="nwpu".equals(school.id)?pendingPassword:"";
+        // Stop any old account's reader before changing the shared school session.
+        CampusSilentRefresh.cancelAll(); CampusCredentials.clear(this);
         ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(), 0);
         reset(false); int active = generation;
         // A freshly entered account must never accidentally import a different existing session.
@@ -218,7 +230,13 @@ public class NwpuImportActivity extends Activity {
             web.clearCache(true); web.loadUrl(school.entry); schedule(500);
         });
     }
-    private void startWithSession() { reset(true); web.loadUrl(school.entry); schedule(500); }
+    private void startWithSession() {
+        if ("nwpu".equals(school.id)) {
+            CampusCredentials.Login login=CampusCredentials.load(this);
+            if (login!=null) { pendingAccount=login.account; pendingPassword=login.password; }
+        }
+        reset(true); web.loadUrl(school.entry); schedule(500);
+    }
     private void reset(boolean reuse) {
         generation++; busy = true; submitted = false; reading = false; courseOpened = false; reuseSession = reuse;
         deadline = android.os.SystemClock.elapsedRealtime() + 60_000; courseDeadline = 0; loginReadyDeadline = 0;
@@ -455,6 +473,16 @@ public class NwpuImportActivity extends Activity {
         });
     }
     private void completeLogin(boolean hasTable) {
+        if ("nwpu".equals(school.id) && !savePassword.isEmpty()) {
+            try {
+                CampusData data=CampusStore.load(this);
+                if (data==null || data.owner.isEmpty()) throw new java.io.IOException();
+                CampusCredentials.save(this,saveAccount,savePassword,data.owner);
+            } catch (Exception e) { Toast.makeText(this,"登录成功，但账号密码未能保存，请重新登录后重试",Toast.LENGTH_LONG).show(); }
+        }
+        saveAccount=""; savePassword="";
+        CampusSilentRefresh.clearAttention(this);
+        CampusRefreshJob.schedule(this);
         boolean incomplete=!hasTable;
         if ("nwpu".equals(school.id)) {
             try { JSONObject a=pendingAcademic==null?null:new JSONObject(pendingAcademic); incomplete|=a!=null && a.optJSONArray("failed")!=null && a.getJSONArray("failed").length()>0; } catch (Exception e) { incomplete=true; }
@@ -482,6 +510,7 @@ public class NwpuImportActivity extends Activity {
             setResult(RESULT_OK,new Intent().putExtra("academic_incomplete",true)); finish(); return;
         }
         generation++; busy = false; reading = false; submitted = false; pendingAccount = ""; pendingPassword = "";
+        saveAccount=""; savePassword="";
         handler.removeCallbacksAndMessages(null); web.stopLoading(); password.setText("");
         web.setVisibility(View.INVISIBLE); waiting.setVisibility(View.GONE); form.setVisibility(View.VISIBLE); submit.setEnabled(true);
         status.setGravity(Gravity.START|Gravity.CENTER_VERTICAL); hint.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
@@ -490,7 +519,7 @@ public class NwpuImportActivity extends Activity {
     }
     @Override public void onBackPressed() { if (!saving) super.onBackPressed(); }
     @Override public void onDestroy() {
-        generation++; busy = false; pendingAccount = ""; pendingPassword = ""; handler.removeCallbacksAndMessages(null);
+        generation++; busy = false; pendingAccount = ""; pendingPassword = ""; saveAccount=""; savePassword=""; handler.removeCallbacksAndMessages(null);
         if (password != null) password.setText("");
         if (web != null) { web.stopLoading(); content.removeView(web); web.destroy(); web = null; }
         io.shutdown(); super.onDestroy();

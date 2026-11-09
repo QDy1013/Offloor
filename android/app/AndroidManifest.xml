@@ -92,6 +92,9 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <service android:name=".CampusRefreshJob" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <service
             android:name=".AiJob"
             android:exported="false"

@@ -69,6 +69,6 @@ final class CampusStore {
         if (current==null || !owner.equals(current.owner) || !CampusAutoRefresh.owns(c,run,owner)) throw new java.io.IOException("账号或读取任务已变化");
         Academic result=AcademicStore.update(c,fresh); changed(); return result;
     }
-    static synchronized void clearAll(Context c) { AcademicStore.clear(c); TimetableStore.clear(c); clear(c); }
+    static synchronized void clearAll(Context c) { CampusCredentials.clear(c); AcademicStore.clear(c); TimetableStore.clear(c); clear(c); }
     static synchronized void clear(Context c) { file(c).delete(); c.getSharedPreferences("campus-binding", Context.MODE_PRIVATE).edit().clear().apply(); changed(); }
 }

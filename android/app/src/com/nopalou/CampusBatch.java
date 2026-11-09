@@ -1,6 +1,7 @@
 package com.nopalou;
 
 import android.app.Activity;
+import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,7 +30,7 @@ final class CampusBatch {
         void loginRequired();
         void complete(int success,int failed);
     }
-    private final Activity activity;
+    private final Context activity;
     private final FrameLayout stage;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService io=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -47,7 +48,7 @@ final class CampusBatch {
     private long lastBeat;
     private final long wallStarted=System.currentTimeMillis();
 
-    CampusBatch(Activity activity,FrameLayout stage,CampusData data,List<CampusServices.Service> services,String run,String campus,String sso,String auto,Listener listener) {
+    CampusBatch(Context activity,FrameLayout stage,CampusData data,List<CampusServices.Service> services,String run,String campus,String sso,String auto,Listener listener) {
         this.activity=activity; this.stage=stage; this.saved=data; this.owner=data.owner; this.run=run; this.scripts=campus+"\n"+sso+"\n"+auto; this.autoScript=auto; this.listener=listener;
         String academic="";
         try {
@@ -73,7 +74,7 @@ final class CampusBatch {
         for (Lane lane:lanes) { lane.generation++; lane.web.stopLoading(); stage.removeView(lane.web); lane.web.destroy(); }
         io.shutdown();
     }
-    private boolean alive() { return !stopped && !activity.isFinishing() && !activity.isDestroyed() && CampusAutoRefresh.owns(activity,run,owner); }
+    private boolean alive() { return !stopped && (!(activity instanceof Activity) || (!((Activity)activity).isFinishing() && !((Activity)activity).isDestroyed())) && CampusAutoRefresh.owns(activity,run,owner); }
     private void pump() {
         if (!alive() || interactive!=null) return;
         for (Lane lane:lanes) if (lane.service==null) {
@@ -100,7 +101,7 @@ final class CampusBatch {
             CampusData next=null;
             try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) next=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
             CampusData result=next;
-            activity.runOnUiThread(() -> {
+            handler.post(() -> {
                 if (!alive() || generation!=lane.generation) return;
                 completeLane(lane,result,ok && result!=null,ok && module.optBoolean("partial"));
             });
@@ -127,7 +128,8 @@ final class CampusBatch {
         String host="",lastPhase="";
         int generation;
         long started,deadline,loaded,lastPreview;
-        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry;
+        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry,timetableDone;
+        long timetableDeadline;
         int academicRevision;
         int mainHttpStatus;
         String httpUrl="";
@@ -138,7 +140,7 @@ final class CampusBatch {
         void createWeb() {
             web=new WebView(activity);
             stage.addView(web,0,new FrameLayout.LayoutParams(-1,-1));
-            WebSettings settings=web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
+            WebSettings settings=web.getSettings(); settings.setJavaScriptEnabled(true); settings.setOffscreenPreRaster(true); settings.setDomStorageEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
             settings.setUseWideViewPort(true); settings.setLoadWithOverviewMode(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
             web.setWebViewClient(new WebViewClient() {
@@ -280,7 +282,7 @@ final class CampusBatch {
                 io.execute(() -> {
                     CampusData updated=null;
                     try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) updated=CampusStore.update(activity.getApplicationContext(),new JSONObject().put("version",1).put("school","西北工业大学").put("modules",new JSONObject().put(id,module)).toString(),owner); } catch (Exception ignored) { }
-                    CampusData result=updated; activity.runOnUiThread(() -> { if (alive() && active==generation && result!=null) saved=result; });
+                    CampusData result=updated; handler.post(() -> { if (alive() && active==generation && result!=null) saved=result; });
                 });
             } catch (Exception ignored) { }
         }
@@ -298,7 +300,8 @@ final class CampusBatch {
         void beginAcademic() {
             if (academicScripts.isEmpty()) { fail("unsupported"); return; }
             int active=generation; String token=java.util.UUID.randomUUID().toString(); querying=true;
-            String code=(academicInjected?"":academicScripts)+"\nJSON.stringify((function(){try{var sid=String(NwpuImport.context(window,document).student);NwpuAcademic.start("+JSONObject.quote(token)+",sid);return {ready:true,identity:sid};}catch(e){return {ready:false};}})())";
+            timetableDone=false; timetableDeadline=SystemClock.elapsedRealtime()+22_000;
+            String code=(academicInjected?"":academicScripts)+"\nJSON.stringify((function(){try{var sid=String(NwpuImport.context(window,document).student);NwpuImport.start("+JSONObject.quote(token)+");NwpuAcademic.start("+JSONObject.quote(token)+",sid);return {ready:true,identity:sid};}catch(e){return {ready:false};}})())";
             academicInjected=true;
             web.evaluateJavascript(code,raw -> {
                 if (!alive() || active!=generation || service==null) return;
@@ -312,13 +315,29 @@ final class CampusBatch {
             if (!alive() || active!=generation || service==null) return;
             if (System.currentTimeMillis()-lastBeat>60_000) { lastBeat=System.currentTimeMillis(); CampusAutoRefresh.heartbeat(activity,run,owner); }
             if (SystemClock.elapsedRealtime()>limit) { saveAcademic(true); return; }
-            web.evaluateJavascript("(function(){var a=window.__louAcademicResult||{};return JSON.stringify({academic:a.revision==="+academicRevision+"?{token:a.token,status:a.status,revision:a.revision}:a,profile:"+(profileSaved?"null":"window.__louProfileResult||{}")+"});})()",raw -> {
+            web.evaluateJavascript("(function(){var a=window.__louAcademicResult||{};return JSON.stringify({timetable:"+(timetableDone?"null":"window.__louTimetableResult||null")+",academic:a.revision==="+academicRevision+"?{token:a.token,status:a.status,revision:a.revision}:a,profile:"+(profileSaved?"null":"window.__louProfileResult||{}")+"});})()",raw -> {
                 if (!alive() || active!=generation || service==null) return;
                 JSONObject both; try { both=decode(raw); } catch (Exception e) { both=new JSONObject(); }
                 JSONObject a=both.optJSONObject("academic"), p=both.optJSONObject("profile");
+                JSONObject table=both.optJSONObject("timetable");
+                if (!timetableDone && table!=null && token.equals(table.optString("token"))) {
+                    String state=table.optString("status");
+                    if ("ok".equals(state) && table.optJSONObject("data")!=null) {
+                        timetableDone=true; String encoded=table.optJSONObject("data").toString();
+                        io.execute(() -> { try {
+                            synchronized (CampusStore.class) {
+                                if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) {
+                                    CampusData current=CampusStore.load(activity);
+                                    if (current!=null && owner.equals(current.owner)) TimetableStore.save(activity,new Timetable(encoded));
+                                }
+                            }
+                        } catch (Exception ignored) { } });
+                    } else if ("error".equals(state)) timetableDone=true;
+                }
+                if (SystemClock.elapsedRealtime()>timetableDeadline) timetableDone=true;
                 if (!profileSaved && p!=null && token.equals(p.optString("token")) && "ok".equals(p.optString("status")) && p.optJSONObject("data")!=null) {
                     profileSaved=true; String profile=p.optJSONObject("data").toString();
-                    io.execute(() -> { try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) { CampusData data=CampusStore.update(activity.getApplicationContext(),profile,owner); activity.runOnUiThread(() -> { if (alive() && active==generation) saved=data; }); } } catch (Exception ignored) { } });
+                    io.execute(() -> { try { if (!stopped && CampusAutoRefresh.owns(activity,run,owner)) { CampusData data=CampusStore.update(activity.getApplicationContext(),profile,owner); handler.post(() -> { if (alive() && active==generation) saved=data; }); } } catch (Exception ignored) { } });
                 }
                 int finished=previous; long nextLimit=limit;
                 if (a!=null && token.equals(a.optString("token"))) {
@@ -328,7 +347,7 @@ final class CampusBatch {
                         if (progress!=null) { finished=progress.optInt("finished"); if (finished>previous) nextLimit=Math.max(limit,SystemClock.elapsedRealtime()+90_000); }
                         if (SystemClock.elapsedRealtime()-academicPreview>1000) { academicPreview=SystemClock.elapsedRealtime(); saveAcademicPreview(academicPending); }
                     }
-                    if ("ok".equals(a.optString("status")) || "error".equals(a.optString("status"))) { saveAcademic(!"ok".equals(a.optString("status"))); return; }
+                    if (timetableDone && ("ok".equals(a.optString("status")) || "error".equals(a.optString("status")))) { saveAcademic(!"ok".equals(a.optString("status"))); return; }
                 }
                 final int count=finished; final long next=nextLimit;
                 handler.postDelayed(() -> pollAcademic(active,token,next,count),80);
@@ -349,7 +368,7 @@ final class CampusBatch {
                     }
                 } catch (Exception ignored) { }
                 final boolean result=ok, rest=partial;
-                activity.runOnUiThread(() -> { if (alive() && active==generation) completeLane(this,null,result,rest); });
+                handler.post(() -> { if (alive() && active==generation) completeLane(this,null,result,rest); });
             });
         }
         /**

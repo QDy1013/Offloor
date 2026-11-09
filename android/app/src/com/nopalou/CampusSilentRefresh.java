@@ -32,15 +32,18 @@ import java.util.Set;
  * 页面照常使用，已读到的每一项保存后立刻显示。
  *
  * 流程与可见的自动读取一致：复用翱翔门户会话 → 读门户首页（网费、一卡通余额和服务入口）
- * → 三路并行读取各项（CampusBatch）。遇到登录过期或校方安全验证，后台无法替你完成，
- * 就安静停下并记下 attention，校园页显示“需要重新登录”，不再自动重试，直到你处理。
+ * → 三路并行读取各项（CampusBatch）。会话过期时使用本机加密凭据续登；
+ * 登录失败或遇到安全验证时暂停并记下 attention，等待用户处理。
  */
 final class CampusSilentRefresh {
     static final String PREFS = "campus-auto";
     static final String ATTENTION = "attention";       // "" / "login" / "challenge"
     private static CampusSilentRefresh current;
 
-    private final Activity host;
+    private final Context host;
+    private final Runnable completion;
+    private boolean loginAttempted, sessionRecoveryAttempted;
+    private String loginJs;
     private final Context app;
     private final String run;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -75,9 +78,26 @@ final class CampusSilentRefresh {
     }
 
     private CampusSilentRefresh(Activity host, String run) {
+        this(host, run, null);
+    }
+
+    private CampusSilentRefresh(Context host, String run, Runnable completion) {
         this.host = host;
         this.app = host.getApplicationContext();
         this.run = run;
+        this.completion = completion;
+    }
+
+    static boolean startBackground(Context context, String run, Runnable completion) {
+        if (current != null) return false;
+        current = new CampusSilentRefresh(context, run, completion);
+        current.begin();
+        return true;
+    }
+
+    static void cancelAll() { if (current != null) current.end(false, true); }
+    static void stopBackground(Context context) {
+        if (current != null && current.host == context) current.end(false, true);
     }
 
     private static String asset(Context c, String name) throws Exception {
@@ -91,6 +111,7 @@ final class CampusSilentRefresh {
 
     private void begin() {
         try {
+            loginJs = asset(app, "nwpu-login.js");
             campusJs = asset(app, "nwpu-campus.js");
             ssoJs = asset(app, "nwpu-sso.js");
             autoJs = asset(app, "nwpu-auto.js");
@@ -99,17 +120,22 @@ final class CampusSilentRefresh {
             return;
         }
         // 放在 DecorView 最底层：内容区（不透明背景）盖在上面；setContentView 也不会把它移走。
-        ViewGroup decor = (ViewGroup) host.getWindow().getDecorView();
+        ViewGroup decor = host instanceof Activity ? (ViewGroup) ((Activity)host).getWindow().getDecorView() : null;
         stage = new FrameLayout(host) {
             @Override public boolean dispatchTouchEvent(MotionEvent e) { return false; }
         };
         stage.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         stage.setFocusable(false);
-        decor.addView(stage, 0, new FrameLayout.LayoutParams(-1, -1));
+        if (decor != null) decor.addView(stage, 0, new FrameLayout.LayoutParams(-1, -1));
         web = new WebView(host);
         stage.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        if (decor == null) {
+            int size=View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY);
+            stage.measure(size,size); stage.layout(0,0,1080,1080);
+        }
         WebSettings ws = web.getSettings();
         ws.setJavaScriptEnabled(true);
+        ws.setOffscreenPreRaster(true);
         ws.setDomStorageEnabled(true);
         ws.setAllowFileAccess(false);
         ws.setAllowContentAccess(false);
@@ -161,14 +187,17 @@ final class CampusSilentRefresh {
         if (!stopped) handler.postDelayed(tick, delay);
     }
 
-    private boolean hostAlive() { return !host.isFinishing() && !host.isDestroyed(); }
+    private boolean hostAlive() { return !(host instanceof Activity) || (!((Activity)host).isFinishing() && !((Activity)host).isDestroyed()); }
 
     private void inspect() {
         if (stopped || !booting) return;
         if (!hostAlive() || !CampusAutoRefresh.owns(app, run, owner)) { end(false, false); return; }
         long now = SystemClock.elapsedRealtime();
         if (System.currentTimeMillis() - lastBeat > 60_000) { lastBeat = System.currentTimeMillis(); CampusAutoRefresh.heartbeat(app, run, owner); }
-        if (now - bootStarted > 60_000) { finishBootstrap(new JSONObject(), null, generation); return; }
+        if (now - bootStarted > 60_000) {
+            if (loginAttempted) needsUser("login"); else end(false, true);
+            return;
+        }
         if (probing) return;
         String url = web.getUrl();
         if (url == null || !CampusServices.allowed(url)) { schedule(1200); return; }
@@ -187,7 +216,7 @@ final class CampusSilentRefresh {
             long t = SystemClock.elapsedRealtime();
             switch (auth.observe(phase, t)) {
                 case CHALLENGE: needsUser("challenge"); return;
-                case CENTRAL_EXPIRED: needsUser("login"); return;
+                case CENTRAL_EXPIRED: renewLogin(active); return;
                 case WAIT:
                     if (t > authDeadline) finishBootstrap(new JSONObject(), null, active); else schedule(600);
                     return;
@@ -264,13 +293,50 @@ final class CampusSilentRefresh {
                 app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("done", done).putInt("total", total).apply();
             }
             public void challenge(WebView view, boolean visible) { if (visible) needsUser("challenge"); }
-            public void loginRequired() { needsUser("login"); }
+            public void loginRequired() {
+                if (sessionRecoveryAttempted || loginAttempted) { needsUser("login"); return; }
+                sessionRecoveryAttempted=true;
+                if (batch != null) { batch.stop(); batch = null; }
+                bootstrap();
+            }
             public void complete(int ok, int failed) { end(true, failed > 0); }
         });
         batch.start();
     }
 
-    /** 后台做不了的（重新登录、安全验证）：停下，记下来，校园页提示用户处理。 */
+    private void renewLogin(int active) {
+        CampusCredentials.Login login = CampusCredentials.load(app);
+        if (login == null || !owner.equals(login.owner)) { needsUser("login"); return; }
+        String url=web.getUrl();
+        android.net.Uri uri=url==null?android.net.Uri.EMPTY:android.net.Uri.parse(url);
+        if (!NwpuImportActivity.navigationAllowed(uri) || !"uis.nwpu.edu.cn".equals(uri.getHost()) || !"/cas/login".equals(uri.getPath())) { needsUser("login"); return; }
+        probing=true;
+        web.evaluateJavascript(loginJs+"\nJSON.stringify(NwpuLogin.inspect())", value -> {
+            if (stopped || active!=generation) return;
+            probing=false;
+            if (!url.equals(web.getUrl())) { schedule(500); return; }
+            try {
+                Object raw=new JSONTokener(value).nextValue();
+                JSONObject result=raw instanceof String?new JSONObject((String)raw):new JSONObject();
+                String phase=result.optString("phase");
+                if ("challenge".equals(phase)) { needsUser("challenge"); return; }
+                if ("error".equals(phase)) { needsUser("login"); return; }
+                if ("ready".equals(phase)) {
+                    if (loginAttempted) { needsUser("login"); return; }
+                    loginAttempted=true;
+                    web.evaluateJavascript("JSON.stringify(NwpuLogin.submit("+JSONObject.quote(login.account)+","+JSONObject.quote(login.password)+"))", ignored -> {
+                        if (!stopped && active==generation) schedule(600);
+                    });
+                    return;
+                }
+                // A submitted form may wait for school authentication; never resubmit it.
+                if (SystemClock.elapsedRealtime()>authDeadline) { needsUser("login"); return; }
+            } catch (Exception e) { needsUser("login"); return; }
+            schedule(600);
+        });
+    }
+
+    /** 登录失败或安全验证：停下并提示用户，避免反复尝试凭据。 */
     private void needsUser(String kind) {
         app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(ATTENTION, kind).apply();
         EngineHolder.diag(app, "跳过", "校园后台更新：" + ("login".equals(kind) ? "登录已过期" : "需要安全验证"));
@@ -288,6 +354,7 @@ final class CampusSilentRefresh {
         if (!owner.isEmpty()) CampusAutoRefresh.finish(app, run, owner, completed, incomplete);
         CampusStore.signalChanged();
         if (current == this) current = null;
+        if (completion != null) completion.run();
     }
 
     /** host 要销毁了：本轮作废，稍后自动重试。 */
