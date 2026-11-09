@@ -39,7 +39,7 @@ public class NwpuImportActivity extends Activity {
     private FrameLayout content;
     private View form, waiting;
     private EditText account, password;
-    private TextView status, hint, submit, schoolChoice, accountCaption, passwordCaption, feedback;
+    private TextView status, hint, submit, schoolChoice, accountCaption, passwordCaption, feedback, forgetSaved, loginNote;
     private String importScript, loginScript, trialScript, academicScript, campusScript;
     // One read = timetable + (exams, grades, GPA). The extra part never replaces a good timetable and,
     // Allow all historical semesters to finish; slow or failed terms must not discard successful ones.
@@ -65,8 +65,6 @@ public class NwpuImportActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.apply(this);
-        // Login fields and school verification pages must not enter screenshots or recent-task previews.
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         school = TimetableSchool.byId(getIntent().getStringExtra("school_id") == null ? getPreferences(MODE_PRIVATE).getString("school", "nwpu") : getIntent().getStringExtra("school_id"));
         automaticFallback=getIntent().getBooleanExtra("automatic_refresh",false);
@@ -94,6 +92,7 @@ public class NwpuImportActivity extends Activity {
     private TextView text(String s, float size, int color, boolean bold) { return CourseUi.text(this, s, size, color, bold); }
     private void buildUi() {
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG);
+        root.setFocusableInTouchMode(true);
         LinearLayout bar = new LinearLayout(this); bar.setBaselineAligned(false); bar.setGravity(Gravity.CENTER_VERTICAL); bar.setPadding(dp(8), dp(6), dp(16), dp(6));
         root.addView(bar);
         TextView back = text("‹", 29, Ui.TEXT, false); back.setGravity(Gravity.CENTER);
@@ -104,24 +103,30 @@ public class NwpuImportActivity extends Activity {
         TextView secure = Ui.tag(this, testBuild ? "测试版" : "校方认证", Ui.ACCENT, Ui.ACCENT_BG); bar.addView(secure);
         TextView update=text("更新",12,Ui.SUB,true); update.setGravity(Gravity.CENTER); update.setContentDescription("下载最新版");
         update.setOnClickListener(v -> startActivity(new Intent(this,UpdateActivity.class))); bar.addView(update,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        LinearLayout intro = CourseUi.column(this); intro.setPadding(dp(24), dp(14), dp(24), dp(20)); root.addView(intro);
-        status = text("登录一次，课表就位", 25, Ui.TEXT, true); intro.addView(status);
-        hint = text("自动获取本学期课程，保存后随时查看", 12, Ui.SUB, false); hint.setPadding(0, dp(10), 0, 0); intro.addView(hint);
+        LinearLayout intro = CourseUi.column(this); intro.setPadding(dp(24), dp(14), dp(24), dp(22)); root.addView(intro);
+        status = text("连接你的校园", 24, Ui.TEXT, true); intro.addView(status);
+        hint = text("自动获取本学期课程，保存后随时查看", 12, Ui.SUB, false); hint.setPadding(0, dp(8), 0, 0); hint.setLineSpacing(dp(3),1f); intro.addView(hint);
         content = new FrameLayout(this); root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         web = new WebView(this); web.setVisibility(View.INVISIBLE); content.addView(web, new FrameLayout.LayoutParams(-1, -1));
         configureWeb();
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
-        LinearLayout fields = CourseUi.column(this); fields.setPadding(dp(24), dp(4), dp(24), dp(24)); scroll.addView(fields);
+        scroll.setClipToPadding(false);
+        LinearLayout fields = CourseUi.column(this); fields.setPadding(dp(20), dp(2), dp(20), dp(28)); scroll.addView(fields);
+        LinearLayout formCard=CourseUi.column(this); formCard.setPadding(dp(20),dp(20),dp(20),dp(24));
+        Ui.cardSurface(formCard,24); fields.addView(formCard,new LinearLayout.LayoutParams(-1,-2));
+        formCard.addView(text("学校",12,Ui.SUB,true)); CourseUi.gap(formCard,9);
         LinearLayout schoolRow = new LinearLayout(this); schoolRow.setGravity(Gravity.CENTER_VERTICAL);
-        schoolRow.setPadding(dp(18), dp(18), dp(18), dp(18)); schoolRow.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 16), Ui.press(), 16)); fields.addView(schoolRow);
+        schoolRow.setPadding(dp(16), dp(16), dp(16), dp(16)); schoolRow.setBackground(Ui.ripple(this, Ui.round(this, Ui.FILL, 14), Ui.press(), 14)); formCard.addView(schoolRow);
         schoolChoice = text("", 16, Ui.TEXT, true); schoolRow.addView(schoolChoice, new LinearLayout.LayoutParams(0, -2, 1));
         android.widget.ImageView choose = new android.widget.ImageView(this); choose.setImageDrawable(CourseUi.glyph(this, "down")); schoolRow.addView(choose, new LinearLayout.LayoutParams(dp(20), dp(20)));
         schoolRow.setContentDescription("选择学校"); schoolRow.setOnClickListener(v -> chooseSchool()); schoolRow.setFocusable(true);
-        CourseUi.gap(fields, 25); accountCaption = text("账号", 12, Ui.SUB, true); fields.addView(accountCaption); CourseUi.gap(fields, 9);
-        account = input("请输入账号", false); fields.addView(account, CourseUi.row(dp(54)));
-        CourseUi.gap(fields, 20); passwordCaption = text("密码", 12, Ui.SUB, true); fields.addView(passwordCaption); CourseUi.gap(fields, 9);
+        CourseUi.gap(formCard,22); accountCaption=text("账号",12,Ui.SUB,true); formCard.addView(accountCaption); CourseUi.gap(formCard,9);
+        account=input("请输入账号",false); formCard.addView(account,CourseUi.row(dp(54)));
+        account.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);
+        account.setOnEditorActionListener((v,action,event) -> { if (action==android.view.inputmethod.EditorInfo.IME_ACTION_NEXT) { password.requestFocus(); return true; } return false; });
+        CourseUi.gap(formCard,20); passwordCaption=text("密码",12,Ui.SUB,true); formCard.addView(passwordCaption); CourseUi.gap(formCard,9);
         LinearLayout passwordRow = new LinearLayout(this); passwordRow.setGravity(Gravity.CENTER_VERTICAL);
-        passwordRow.setBackground(Ui.round(this, Ui.CARD, 14)); fields.addView(passwordRow, CourseUi.row(dp(54)));
+        passwordRow.setBackground(Ui.round(this,Ui.FILL,14)); formCard.addView(passwordRow,CourseUi.row(dp(54)));
         password = input("请输入密码", true); password.setBackgroundColor(Color.TRANSPARENT);
         passwordRow.addView(password, new LinearLayout.LayoutParams(0, -1, 1));
         TextView eye = text("显示", 12, Ui.SUB, true); eye.setGravity(Gravity.CENTER); eye.setContentDescription("显示或隐藏密码");
@@ -131,11 +136,11 @@ public class NwpuImportActivity extends Activity {
             password.setTransformationMethod(hidden ? null : android.text.method.PasswordTransformationMethod.getInstance());
             password.setSelection(password.length()); eye.setText(hidden ? "隐藏" : "显示");
         });
-        CourseUi.gap(fields, 28);
+        CourseUi.gap(fields,20);
         submit = CourseUi.action(this, "一键导入", true, this::startWithCredentials); fields.addView(submit, CourseUi.row(dp(52)));
         CourseUi.gap(fields, 16);
-        TextView note = text("西工大账号密码加密保存在本机，用于自动登录和后台更新。\n如学校要求验证码，需本人完成；其他学校暂不保存密码。", 11, Ui.SUB, false);
-        note.setLineSpacing(dp(4), 1f); fields.addView(note);
+        loginNote=text("",12,Ui.SUB,false); loginNote.setLineSpacing(dp(4),1f);
+        loginNote.setPadding(dp(4),0,dp(4),0); fields.addView(loginNote);
         CourseUi.gap(fields, 15);
         feedback = CourseUi.action(this, "反馈问题", false, this::shareFeedback); feedback.setVisibility(View.GONE); intro.addView(feedback, CourseUi.row(dp(46)));
         updateSchool();
@@ -143,10 +148,16 @@ public class NwpuImportActivity extends Activity {
             CampusCredentials.Login login=CampusCredentials.load(this);
             if (login!=null) { account.setText(login.account); password.setText(login.password); }
         }
-        TextView forget=CourseUi.action(this,"删除已保存的西工大密码",false,() -> {
+        forgetSaved=text("删除已保存的账号密码",12,Ui.SUB,false);
+        forgetSaved.setGravity(Gravity.CENTER); forgetSaved.setPadding(dp(12),dp(12),dp(12),dp(12));
+        forgetSaved.setBackground(Ui.ripple(this,null,Ui.press(),12));
+        forgetSaved.setOnClickListener(v -> {
             CampusSilentRefresh.cancelAll(); CampusCredentials.clear(this); account.setText(""); password.setText("");
+            forgetSaved.setVisibility(View.GONE);
             Toast.makeText(this,"已删除保存的账号密码并停止后台更新",Toast.LENGTH_SHORT).show();
-        }); fields.addView(forget,CourseUi.row(dp(46)));
+        });
+        fields.addView(forgetSaved,CourseUi.row(dp(48)));
+        forgetSaved.setVisibility("nwpu".equals(school.id) && CampusCredentials.load(this)!=null?View.VISIBLE:View.GONE);
         password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
         password.setOnEditorActionListener((v, action, event) -> { if (action == android.view.inputmethod.EditorInfo.IME_ACTION_GO) { startWithCredentials(); return true; } return false; });
         form = scroll; content.addView(form, new FrameLayout.LayoutParams(-1, -1));
@@ -154,7 +165,7 @@ public class NwpuImportActivity extends Activity {
         ProgressBar spinner = new ProgressBar(this); progress.addView(spinner, new LinearLayout.LayoutParams(dp(36), dp(36)));
         CourseUi.gap(progress, 22); TextView progressNote=text("登录 · 自动读取 · 保存到本机",13,Ui.SUB,false); progressNote.setGravity(Gravity.CENTER); progress.addView(progressNote,new LinearLayout.LayoutParams(-1,-2));
         waiting = progress; content.addView(waiting, new FrameLayout.LayoutParams(-1, -1)); waiting.setVisibility(View.GONE);
-        setContentView(root); Ui.systemBars(this, root);
+        setContentView(root); Ui.systemBars(this, root); root.requestFocus();
     }
     private void chooseSchool() {
         if (busy || saving) return;
@@ -167,16 +178,18 @@ public class NwpuImportActivity extends Activity {
     }
     private void updateSchool() {
         schoolChoice.setText(school.name); accountCaption.setText(school.accountLabel); passwordCaption.setText(school.passwordLabel);
-        status.setText(school.trial?"登录一次，课表就位":"登录一次，校园信息自动读取");
-        hint.setText(school.trial ? "这所学校正在测试，遇到问题可直接反馈" : "课表、成绩及各项校园信息自动读取，无需手动同步");
-        submit.setText(school.trial?"一键导入":"登录并自动读取");
+        status.setText(school.trial?"连接你的课表":"连接你的校园");
+        hint.setText(school.trial?"登录学校系统，导入本学期课程":"登录一次，自动同步课表、成绩与校园信息");
+        loginNote.setText(school.trial?"此学校正在测试中。如需安全验证，按校方页面提示完成。":"账号密码加密保存在本机，后续自动登录。\n校方要求安全验证时，按页面提示完成。");
+        if (forgetSaved!=null) forgetSaved.setVisibility("nwpu".equals(school.id) && CampusCredentials.load(this)!=null?View.VISIBLE:View.GONE);
+        submit.setText(school.trial?"登录并导入课表":"登录并同步");
     }
     private boolean schoolNavigationAllowed(Uri u) {
         return "https".equals(u.getScheme()) && (u.getPort() == -1 || u.getPort() == 443) && u.getUserInfo() == null && TimetableSchool.hostAllowed(u.getHost(), school.domains);
     }
     private EditText input(String placeholder, boolean secret) {
         EditText e = new EditText(this); e.setHint(placeholder); e.setTextSize(15); e.setTextColor(Ui.TEXT); e.setHintTextColor(Ui.MUTE);
-        e.setSingleLine(true); e.setSaveEnabled(false); e.setPadding(dp(16), 0, dp(12), 0); e.setBackground(Ui.round(this, Ui.CARD, 14));
+        e.setSingleLine(true); e.setSaveEnabled(false); e.setPadding(dp(16), 0, dp(12), 0); e.setBackground(Ui.round(this, Ui.FILL, 14));
         e.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD));
         e.setTypeface(android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL)); e.getPaint().setTextSkewX(0); e.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         return e;
