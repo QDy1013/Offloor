@@ -80,7 +80,7 @@ public class AcademicActivity extends Activity {
         LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(20), dp(14), dp(8), 0); root.addView(head);
         LinearLayout titles = CourseUi.column(this); head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView title = text("考试与成绩", 26, Ui.TEXT, true); title.setTypeface(Ui.serif());
+        TextView title = text("考试与成绩", 26, Ui.TEXT, true); title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         titles.addView(title);
         String sub = subtitle();
         if (sub != null) { TextView s = text(sub, 12, Ui.MUTE, false); s.setPadding(0, dp(4), 0, 0); titles.addView(s); }
@@ -134,11 +134,11 @@ public class AcademicActivity extends Activity {
     private void empty(LinearLayout root) {
         LinearLayout box = CourseUi.column(this); box.setGravity(Gravity.CENTER); box.setPadding(dp(32), 0, dp(32), dp(40));
         root.addView(box, new LinearLayout.LayoutParams(-1, 0, 1));
-        FrameLayout mark = new FrameLayout(this); mark.setBackground(Ui.blob(Ui.ACCENT_BG, 5));
+        FrameLayout mark = new FrameLayout(this); mark.setBackground(Ui.disc(this, Ui.ACCENT_BG));
         ImageView glyph = new ImageView(this); glyph.setImageDrawable(new AppNavigation.TabIcon(this, AppNavigation.ACADEMIC, Ui.ACCENT));
         mark.addView(glyph, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
         box.addView(mark, new LinearLayout.LayoutParams(dp(84), dp(84)));
-        CourseUi.gap(box, 22); TextView headline = text("考试和成绩，一处看全", 24, Ui.TEXT, false); headline.setTypeface(Ui.serif()); box.addView(headline);
+        CourseUi.gap(box, 22); box.addView(text("考试和成绩，一处看全", 21, Ui.TEXT, true));
         CourseUi.gap(box, 12);
         TextView d = text("登录教务系统一次，自动读取考试安排、\n各学期成绩和总绩点", 13, Ui.SUB, false);
         d.setGravity(Gravity.CENTER); d.setLineSpacing(dp(4), 1f); box.addView(d);
@@ -202,23 +202,23 @@ public class AcademicActivity extends Activity {
         CourseUi.gap(c, 10);
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.BOTTOM); c.addView(row);
         LinearLayout left = CourseUi.column(this); row.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView name = text(e.course, 24, on, false); name.setTypeface(Ui.serif()); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END); left.addView(name);
+        TextView name = text(e.course, 22, on, true); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END); left.addView(name);
         int d = e.daysFrom(today);
         if (d != Integer.MIN_VALUE) {
             LinearLayout count = new LinearLayout(this); count.setGravity(Gravity.BOTTOM); count.setPadding(dp(14), 0, 0, 0);
-            TextView big = text(countdown(d), d <= 2 ? 32 : 46, Ui.ACCENT, true); big.setTypeface(Ui.serifBold());
+            TextView big = text(countdown(d), d <= 2 ? 30 : 40, on, true); big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
             big.setIncludeFontPadding(false); count.addView(big);
             if (d > 2) { TextView unit = text("天后", 13, soft, true); unit.setPadding(dp(4), 0, 0, dp(4)); count.addView(unit); }
             row.addView(count);
         }
         CourseUi.gap(c, 16);
-        View line = new View(this); line.setBackgroundColor(Ui.withAlpha(Ui.HERO_SUB, 60)); c.addView(line, new LinearLayout.LayoutParams(-1, 1));
+        View line = new View(this); line.setBackgroundColor(Ui.withAlpha(android.graphics.Color.WHITE, 22)); c.addView(line, new LinearLayout.LayoutParams(-1, 1));
         CourseUi.gap(c, 14);
         c.addView(infoLine(e.date.isEmpty() ? (e.time.isEmpty() ? "时间待定" : e.time) : dateLong(e.date, today) + "   " + e.start + "–" + e.end, 15, on, true));
         if (!e.location.isEmpty()) { CourseUi.gap(c, 6); c.addView(infoLine(place(e.location), 13, soft, false)); }
         // “未结束 / 未开始”在待考卡上是废话；只显示真正有信息量的状态（如缓考、待安排）。
         if (!e.status.isEmpty() && !e.status.matches("未(结束|开始)")) {
-            CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, Ui.ACCENT, Ui.ACCENT_BG), new LinearLayout.LayoutParams(-2, -2));
+            CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, on, Ui.withAlpha(android.graphics.Color.WHITE, 30)), new LinearLayout.LayoutParams(-2, -2));
         }
     }
     private TextView infoLine(String s, float size, int color, boolean bold) {
@@ -234,7 +234,7 @@ public class AcademicActivity extends Activity {
         if (cal != null) {
             date.addView(text((cal.get(java.util.Calendar.MONTH) + 1) + "月", 11, Ui.SUB, true), wrap());
             TextView day = text(String.valueOf(cal.get(java.util.Calendar.DAY_OF_MONTH)), 24, Ui.TEXT, true);
-            day.setTypeface(Ui.serif()); day.setIncludeFontPadding(false); date.addView(day, wrap());
+            day.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); day.setIncludeFontPadding(false); date.addView(day, wrap());
             date.addView(text(weekday(e.date), 11, Ui.MUTE, false), wrap());
         } else date.addView(text("待定", 12, Ui.MUTE, true), wrap());
 
@@ -311,7 +311,7 @@ public class AcademicActivity extends Activity {
         LinearLayout left = CourseUi.column(this); top.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
         left.addView(text("总绩点", 12, Ui.SUB, true));
         TextView big = text(data.gpa == null ? "—" : String.format(Locale.ROOT, "%.2f", data.gpa), 44, Ui.TEXT, true);
-        big.setTypeface(Ui.serif()); big.setIncludeFontPadding(false); big.setPadding(0, dp(6), 0, 0);
+        big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); big.setIncludeFontPadding(false); big.setPadding(0, dp(6), 0, 0);
         left.addView(big);
         double credits = Academic.credits(data.grades); int courses = data.grades.size();
         LinearLayout stats = new LinearLayout(this); top.addView(stats);
@@ -341,7 +341,7 @@ public class AcademicActivity extends Activity {
     }
     private View stat(String value, String label) {
         LinearLayout s = CourseUi.column(this); s.setGravity(Gravity.END);
-        TextView v = text(value, 18, Ui.TEXT, true); v.setTypeface(Ui.serif()); s.addView(v);
+        TextView v = text(value, 18, Ui.TEXT, true); v.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); s.addView(v);
         s.addView(text(label, 11, Ui.MUTE, false)); return s;
     }
     /** "2025-2026秋" → "25秋"；"2025-2026春" → "26春"（春夏学期在后一年）。 */
@@ -362,7 +362,7 @@ public class AcademicActivity extends Activity {
         TextView meta = text(grades.size() + " 门 · " + trim(Academic.credits(grades)) + " 学分", 12, Ui.MUTE, false); meta.setPadding(0, dp(3), 0, 0); t.addView(meta);
         if (w != null) {
             LinearLayout gp = CourseUi.column(this); gp.setGravity(Gravity.END); gp.setPadding(0, 0, dp(10), 0);
-            TextView v = text(String.format(Locale.ROOT, "%.2f", w), 17, Ui.ACCENT, true); v.setTypeface(Ui.serif()); gp.addView(v);
+            TextView v = text(String.format(Locale.ROOT, "%.2f", w), 17, Ui.ACCENT, true); v.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); gp.addView(v);
             gp.addView(text("学期绩点", 10, Ui.MUTE, false)); head.addView(gp);
         }
         head.addView(chevron(open), new LinearLayout.LayoutParams(dp(18), dp(18)));
@@ -387,7 +387,7 @@ public class AcademicActivity extends Activity {
         if (!meta.isEmpty()) { TextView m = text(TextUtils.join(" · ", meta), 12, Ui.SUB, false); m.setPadding(0, dp(3), 0, 0); left.addView(m); }
         int[] band = band(g.score);
         TextView score = text(g.score.isEmpty() ? "—" : g.score, g.score.length() > 3 ? 13 : 16, band[0], true);
-        score.setGravity(Gravity.CENTER); score.setTypeface(Ui.serif());
+        score.setGravity(Gravity.CENTER); score.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         score.setBackground(Ui.round(this, band[1], 11)); score.setPadding(dp(8), 0, dp(8), 0); score.setMinWidth(dp(54));
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, dp(36)); sp.leftMargin = dp(12); row.addView(score, sp);
         row.setBackground(Ui.ripple(this, null, Ui.press(), 0));
@@ -437,7 +437,7 @@ public class AcademicActivity extends Activity {
     }
     private View tile(String label, String value, int fg, int bg) {
         LinearLayout t = CourseUi.column(this); t.setGravity(Gravity.CENTER); t.setBackground(Ui.round(this, bg, 16));
-        TextView v = text(value, value.length() > 3 ? 16 : 24, fg, true); v.setTypeface(Ui.serif()); t.addView(v, wrap());
+        TextView v = text(value, value.length() > 3 ? 16 : 24, fg, true); v.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); t.addView(v, wrap());
         TextView l = text(label, 11, fg == Ui.TEXT ? Ui.SUB : Ui.withAlpha(fg, 200), true); l.setPadding(0, dp(3), 0, 0); t.addView(l, wrap());
         return t;
     }

@@ -27,7 +27,7 @@ final class CourseUi {
         t.setGravity(Gravity.CENTER);
         t.setMinHeight(Ui.dp(c, 48));
         t.setPadding(Ui.dp(c, 14), Ui.dp(c, 10), Ui.dp(c, 14), Ui.dp(c, 10));
-        t.setBackground(Ui.ripple(c, Ui.round(c, primary ? Ui.ACCENT : Ui.CARD, 99), Ui.press(), 99));
+        t.setBackground(Ui.ripple(c, Ui.round(c, primary ? Ui.ACCENT : Ui.CARD, 16), Ui.press(), 16));
         if (primary) Ui.lift(t, 3f);
         t.setOnClickListener(v -> click.run()); t.setFocusable(true);
         return t;
