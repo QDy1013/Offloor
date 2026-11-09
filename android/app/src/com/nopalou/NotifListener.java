@@ -206,7 +206,7 @@ public class NotifListener extends NotificationListenerService {
         for (int i = 0; i < imageUris.size(); i++) {
             long at = imageTimes.get(i) > 0 ? imageTimes.get(i) : sbn.getPostTime();
             // 会话通知每次都带上前面的旧消息：同一张图只识别一次
-            if (!markSeen(this, NotifFilter.messageId("i", sbn.getPackageName(), gid, imageSenders.get(i), imageUris.get(i).toString(), at))) continue;
+            if (wasSeen(this, NotifFilter.messageId("i", sbn.getPackageName(), gid, imageSenders.get(i), imageUris.get(i).toString(), at))) continue;
             AiImages.fromNotification(this, imageUris.get(i), gid, group, imageSenders.get(i),
                     sbn.getPackageName(), at);
         }

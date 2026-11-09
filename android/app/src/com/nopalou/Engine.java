@@ -314,6 +314,10 @@ public class Engine {
         while (notificationIds.size() > 8000) notificationIds.remove(notificationIds.iterator().next());
         return true; // 随下一次有效事项存档提交；纯闲聊无需单独整份写盘。
     }
+    boolean acknowledgeImage(String id) {
+        if(!markNotification(id))return false;
+        notifyChanged(); return true; // 图片队列已提交，明确持久化完成账本。
+    }
     boolean processNotification(Msg message, boolean platform) {
         if (notificationSeen(message.id)) return false;
         if (platform) processPlatform(message); else process(message);

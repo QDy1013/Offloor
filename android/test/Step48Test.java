@@ -39,6 +39,11 @@ public final class Step48Test {
         String qq=NotifFilter.messageId("n","com.tencent.mobileqq","同名群","王老师","交报告",123);
         check("同名群同时间同正文跨应用不冲突",!wechat.equals(qq));
         check("相同通知编号稳定",wechat.equals(NotifFilter.messageId("n","com.tencent.mm","同名群","王老师","交报告",123)));
+        long beforeAck=latest.stateRevision();
+        check("图片成功入队后确认需要持久化",latest.acknowledgeImage("image-committed")&&latest.stateRevision()>beforeAck);
+        FaultEngine imageRestored=fresh();imageRestored.loadState(new ByteArrayInputStream(save(latest)));
+        check("图片入队账本可随存档恢复",imageRestored.notificationSeen("image-committed"));
+        check("重复图片确认不会反复触发保存",!latest.acknowledgeImage("image-committed"));
         System.out.println("PASS " + checks);
     }
 }

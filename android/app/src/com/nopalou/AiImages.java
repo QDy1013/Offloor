@@ -30,6 +30,7 @@ final class AiImages {
     static final String PKG_SCREENSHOT = "screenshot";
     static final String PKG_SHARE = "share";
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
+    private static final java.util.Set<String> CAPTURING = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     private AiImages() { }
     static void cleanupCache(Context c) {
@@ -81,8 +82,10 @@ final class AiImages {
         final Context app = ctx.getApplicationContext();
         Engine engine = EngineHolder.get(app); // 通知回调在主线程，记录接收时的数据批次。
         if (engine == null) return;
+        final String imageId=NotifFilter.messageId("i",pkg,gid,sender,uri.toString(),ts);
+        if(engine.notificationSeen(imageId) || !CAPTURING.add(imageId))return;
         final Engine.Escalation request = engine.beginImageRequest(new Engine.Msg("image", gid, group, sender, "", pkg, ts));
-        if (!EngineHolder.saveIfChanged(app)) return;
+        if (!EngineHolder.saveIfChanged(app)) { CAPTURING.remove(imageId);return; }
         IO.execute(() -> {
             try {
                 byte[] jpeg = loadJpeg(app, uri);
@@ -95,14 +98,19 @@ final class AiImages {
                 File f = new File(dir, java.util.UUID.randomUUID() + ".jpg");
                 try (FileOutputStream out = new FileOutputStream(f)) { out.write(jpeg); }
                 AiQueue.add(app, new JSONObject()
-                        .put("type", "img").put("key", "img:" + f.getName()).put("path", f.getAbsolutePath())
+                        .put("type", "img").put("key", "img:" + imageId).put("path", f.getAbsolutePath())
                         .put("epoch", request.epoch).put("scopeVersion", request.scopeVersion).put("profileKey", request.profileKey)
                         .put("groupId", gid).put("groupName", group).put("sender", sender)
                         .put("pkg", pkg).put("ts", ts));
+                onMain(() -> {
+                    Engine current=EngineHolder.get(app);
+                    if(current!=null && request.epoch.equals(current.aiEpoch()) && current.acknowledgeImage(imageId)) EngineHolder.save(app);
+                    return null;
+                });
                 AiJob.schedule(app);
             } catch (Exception e) {
                 EngineHolder.diag(app, "跳过", "通知图片读取失败：" + e.getClass().getSimpleName());
-            }
+            } finally { CAPTURING.remove(imageId); }
         });
     }
 
