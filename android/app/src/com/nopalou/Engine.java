@@ -2047,7 +2047,7 @@ public class Engine {
             if (v.cardState != null && !v.cardState.equals(aiCardState(c))) return false;
             c.aiChecked = true;
             if (!v.todo) {
-                if (v.confidence >= AI_DROP_CONF && c.titleOverride == null && !c.deadlineUserSet
+                if (v.confidence >= AI_DROP_CONF && !c.changes.hasPending() && c.titleOverride == null && !c.deadlineUserSet
                         && !"jielong".equals(c.kind)) {
                     c.reason = "AI 复核认为这不是需要你做的事" + (blank(v.note) ? "" : "：" + clip(v.note, 40))
                             + "。如有误可在“已移除的卡片”恢复";

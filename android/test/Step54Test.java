@@ -37,6 +37,9 @@ public final class Step54Test {
         ambiguous.process(new Engine.Msg("ph","g","课程群","王老师","后天18点前交物理实验报告到学习通","eval",now+1000));
         ambiguous.process(new Engine.Msg("rev","g","课程群","王老师","实验报告延期到大后天21点","eval",now+2000));
         Engine.Card chosen=ambiguous.all().get(0),other=ambiguous.all().get(1);
+        v=new Engine.AiVerdict();v.cardId=other.id;v.cardState=Engine.aiCardState(other);v.todo=false;v.confidence=.99;
+        ambiguous.applyAi(v,now+2400);
+        check("AI 不移除待本人关联的事项",ambiguous.all().contains(other)&&other.changes.hasPending());
         ambiguous.editCard(chosen,chosen.displayTitle(),chosen.deadline,now+2500);
         v=new Engine.AiVerdict();v.cardId=chosen.id;v.cardState=Engine.aiCardState(chosen);v.todo=true;v.confidence=.99;v.title=chosen.title;v.deadline=chosen.deadline;v.timeSure=true;
         ambiguous.applyAi(v,now+2600);
