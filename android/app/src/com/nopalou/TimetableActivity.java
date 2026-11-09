@@ -22,11 +22,12 @@ import java.util.List;
 
 /** A compact seven-day timetable. Course details and management stay behind taps. */
 public class TimetableActivity extends Activity {
-    // 课程色：浅色是淡底深字，深色是暗底亮字；同一门课在两种模式下是同一个色相。
-    private static final int[] FILLS = {0xFFECE8FA, 0xFFE0EFEB, 0xFFF8EADD, 0xFFE3EBF9, 0xFFF5E4EB, 0xFFEBEDDC};
-    private static final int[] INKS = {0xFF5D498F, 0xFF306E61, 0xFF935B34, 0xFF3D6095, 0xFF984F70, 0xFF64703A};
-    private static final int[] FILLS_DARK = {0xFF2A2440, 0xFF183029, 0xFF35281B, 0xFF1C2638, 0xFF35202B, 0xFF282B1A};
-    private static final int[] INKS_DARK = {0xFFC3B4F5, 0xFF8FD6C3, 0xFFF0B98E, 0xFF9DBBF0, 0xFFF0A3C4, 0xFFC7D28E};
+    // 课程色：一组矿物颜料——陶土、苔绿、赭石、藕灰、豆沙、橄榄。浅色是淡底深字，深色是暗底亮字，
+    // 同一门课在两种模式下是同一个色相；整体压低饱和度，和纸面放在一起不刺眼。
+    private static final int[] FILLS = {0xFFF4E1D5, 0xFFE3E9DA, 0xFFF3E6CC, 0xFFE8E2EA, 0xFFF0DFDF, 0xFFE9E7D3};
+    private static final int[] INKS = {0xFF9A4A2C, 0xFF4F6B45, 0xFF8A6418, 0xFF5E5470, 0xFF8E4B55, 0xFF666236};
+    private static final int[] FILLS_DARK = {0xFF3B2820, 0xFF26301F, 0xFF372D18, 0xFF2C2731, 0xFF362225, 0xFF2D2C1B};
+    private static final int[] INKS_DARK = {0xFFF0A786, 0xFFA9C79A, 0xFFE6C077, 0xFFC6B9D6, 0xFFE8A7B1, 0xFFCFCB92};
     static int fill(int i) { return (Ui.dark ? FILLS_DARK : FILLS)[i]; }
     static int ink(int i) { return (Ui.dark ? INKS_DARK : INKS)[i]; }
     static int colorIndex(String name) { return (name.hashCode() & Integer.MAX_VALUE) % FILLS.length; }
@@ -99,7 +100,7 @@ public class TimetableActivity extends Activity {
         root.addView(toolbar, CourseUi.row(dp(52)));
         // 和待办、考试成绩一样是底部导航里的一页：大标题、不放返回箭头（系统返回键照常回到待办）。
         TextView title = text("我的课表", 26, Ui.TEXT, true);
-        title.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+        title.setTypeface(Ui.serif());
         title.setPadding(dp(8), 0, 0, 0);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         if (getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest"))
@@ -334,7 +335,7 @@ public class TimetableActivity extends Activity {
         int color = colorIndex(l.name);
         LinearLayout body = CourseUi.column(this);
         TextView name = text(l.name, 22, Ui.TEXT, false);
-        name.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+        name.setTypeface(Ui.serif());
         name.setLineSpacing(dp(4), 1f); name.setTextIsSelectable(true);
         name.setPadding(dp(2), dp(14), 0, 0);
         body.addView(name);
@@ -372,12 +373,12 @@ public class TimetableActivity extends Activity {
         LinearLayout center = CourseUi.column(this); center.setGravity(Gravity.CENTER); center.setPadding(dp(20), 0, dp(20), 0);
         root.addView(center, new LinearLayout.LayoutParams(-1, 0, 1));
         FrameLayout mark = new FrameLayout(this);
-        mark.setBackground(Ui.disc(this, Ui.ACCENT_BG));
+        mark.setBackground(Ui.blob(Ui.ACCENT_BG, 5));
         ImageView glyph = new ImageView(this);
         glyph.setImageDrawable(new AppNavigation.TabIcon(this, true, Ui.ACCENT));
         mark.addView(glyph, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
         center.addView(mark, new LinearLayout.LayoutParams(dp(84), dp(84)));
-        CourseUi.gap(center, 22); center.addView(text("把这一学期，装进口袋", 21, Ui.TEXT, true));
+        CourseUi.gap(center, 22); TextView headline = text("把这一学期，装进口袋", 24, Ui.TEXT, false); headline.setTypeface(Ui.serif()); center.addView(headline);
         CourseUi.gap(center, 12); TextView tip = text("选择学校，输入账号密码，导入本学期课表", 13, Ui.SUB, false);
         tip.setGravity(Gravity.CENTER); center.addView(tip); CourseUi.gap(center, 28);
         center.addView(CourseUi.action(this, "一键导入课表", true, () -> importTable(false)), CourseUi.row(dp(50)));

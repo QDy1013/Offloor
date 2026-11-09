@@ -102,6 +102,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     /** 今日概览卡和其中的七天截止分布条。 */
     private LinearLayout hero;
     private LinearLayout weekStrip;
+    /** 概览卡上的小风景，以及它画的是哪个钟点；跨时段时换一幅。 */
+    private View sceneView;
+    private int sceneHour = -1;
     private LinearLayout emptyBox;
     private View emptyIcon;
     private TextView emptyTitle;
@@ -386,7 +389,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
      */
     void buildUi() {
         FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(Ui.BG);
+        frame.setBackground(Ui.paper(this));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setFocusableInTouchMode(true);
@@ -401,15 +404,18 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         page.setPadding(dp(this, 18), dp(this, 4), dp(this, 18), dp(this, 80));
         listScroll.addView(page, new ViewGroup.LayoutParams(-1, -2));
 
-        // 顶栏：品牌字标 · 读取状态 · 更多
+        // 顶栏：衬线字标（前面一枚陶土色小圆团）· 读取状态 · 更多
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView brand = uiText("", 22, Ui.TEXT, false);
-        SpannableString word = new SpannableString("Offloor.");
-        word.setSpan(new ForegroundColorSpan(Ui.ACCENT), word.length() - 1, word.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        brand.setText(word);
-        brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        brand.setLetterSpacing(-0.02f);
+        View seal = new View(this);
+        seal.setBackground(Ui.blob(Ui.ACCENT, 3));
+        LinearLayout.LayoutParams sealLp = lp(dp(this, 14), dp(this, 14));
+        sealLp.rightMargin = dp(this, 9);
+        sealLp.leftMargin = dp(this, 2);
+        top.addView(seal, sealLp);
+        TextView brand = uiText("Offloor", 24, Ui.TEXT, false);
+        brand.setTypeface(Ui.serif());
+        brand.setLetterSpacing(-0.01f);
         top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         notifStatus = uiText("", 12, Ui.SUB, true);
         notifStatus.setGravity(Gravity.CENTER);
@@ -421,44 +427,66 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         int morePad = dp(this, 9);
         more.setPadding(morePad, morePad, morePad, morePad);
         more.setContentDescription("更多");
-        more.setBackground(Ui.ripple(this, Ui.disc(this, Ui.CARD), Ui.press(), 20));
+        GradientDrawable moreBg = Ui.round(this, Ui.CARD, 20);
+        moreBg.setStroke(Math.max(1, dp(this, 0.8f)), Ui.LINE);
+        more.setBackground(Ui.ripple(this, moreBg, Ui.press(), 20));
         more.setOnClickListener(v -> showMoreMenu());
         LinearLayout.LayoutParams moreLp = lp(dp(this, 38), dp(this, 38));
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
         page.addView(top, lp(-1, dp(this, 60)));
 
-        // 今日概览：深墨渐变卡。日期 → 一句话结论 → 补充数量 → 未来七天的截止分布。
+        // 今日概览：一张明信片。上半是随时辰变化的小风景，日期压在画上；
+        // 下半是衬线体的一句话结论、补充数量，和未来七天的截止分布。
         hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(this, 22), dp(this, 20), dp(this, 22), dp(this, 18));
-        hero.setBackground(Ui.heroSurface(this, 26));
-        Ui.lift(hero, 8f);
-        sub = uiText(subLine(), 13, Ui.HERO_SUB, true);
+        hero.setBackground(Ui.heroSurface(this, 24));
+        final float heroRadius = dp(this, 24);
+        hero.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), heroRadius);
+            }
+        });
+        hero.setClipToOutline(true);
+        Ui.lift(hero, 1.5f);
+        FrameLayout painting = new FrameLayout(this);
+        sceneView = new View(this);
+        sceneHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        sceneView.setBackground(Ui.scenery(this, sceneHour));
+        painting.addView(sceneView, new FrameLayout.LayoutParams(-1, -1));
+        sub = uiText(subLine(), 12, Ui.TEXT, true);
         sub.setSingleLine(true);
-        sub.setLetterSpacing(0.02f);
-        hero.addView(sub);
-        headline = uiText("", 26, Ui.ON_HERO, false);
-        headline.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        headline.setLineSpacing(dp(this, 2), 1f);
-        headline.setLetterSpacing(-0.01f);
-        LinearLayout.LayoutParams hlLp = lp(-1, -2);
-        hlLp.topMargin = dp(this, 12);
-        hero.addView(headline, hlLp);
+        sub.setLetterSpacing(0.04f);
+        sub.setPadding(dp(this, 11), dp(this, 6), dp(this, 11), dp(this, 6));
+        sub.setBackground(Ui.round(this, Ui.withAlpha(Ui.CARD, 215), 99));
+        FrameLayout.LayoutParams subLp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        subLp.setMargins(dp(this, 16), dp(this, 16), 0, 0);
+        painting.addView(sub, subLp);
+        hero.addView(painting, lp(-1, dp(this, 118)));
+
+        LinearLayout heroBody = new LinearLayout(this);
+        heroBody.setOrientation(LinearLayout.VERTICAL);
+        heroBody.setPadding(dp(this, 22), dp(this, 18), dp(this, 22), dp(this, 18));
+        hero.addView(heroBody, lp(-1, -2));
+        headline = uiText("", 27, Ui.ON_HERO, false);
+        headline.setTypeface(Ui.serif());
+        headline.setLineSpacing(dp(this, 3), 1f);
+        heroBody.addView(headline, lp(-1, -2));
         stats = uiText("", 13, Ui.HERO_SUB, false);
         stats.setLineSpacing(dp(this, 3), 1f);
         LinearLayout.LayoutParams stLp = lp(-1, -2);
         stLp.topMargin = dp(this, 8);
-        hero.addView(stats, stLp);
+        heroBody.addView(stats, stLp);
         View heroRule = new View(this);
-        heroRule.setBackgroundColor(Ui.withAlpha(Color.WHITE, 22));
-        LinearLayout.LayoutParams ruleLp = lp(-1, 1);
-        ruleLp.topMargin = dp(this, 18);
-        hero.addView(heroRule, ruleLp);
+        heroRule.setBackground(dashedRule());
+        heroRule.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        LinearLayout.LayoutParams ruleLp = lp(-1, dp(this, 2));
+        ruleLp.topMargin = dp(this, 16);
+        heroBody.addView(heroRule, ruleLp);
         weekStrip = new LinearLayout(this);
         LinearLayout.LayoutParams wsLp = lp(-1, -2);
-        wsLp.topMargin = dp(this, 14);
-        hero.addView(weekStrip, wsLp);
+        wsLp.topMargin = dp(this, 12);
+        heroBody.addView(weekStrip, wsLp);
         LinearLayout.LayoutParams heroLp = lp(-1, -2);
         heroLp.topMargin = dp(this, 6);
         page.addView(hero, heroLp);
@@ -531,7 +559,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         emptyBox.setPadding(dp(this, 24), dp(this, 56), dp(this, 24), dp(this, 40));
         emptyIcon = new View(this);
         emptyBox.addView(emptyIcon, lp(dp(this, 52), dp(this, 52)));
-        emptyTitle = uiText("", 17, Ui.TEXT, true);
+        emptyTitle = uiText("", 21, Ui.TEXT, false);
+        emptyTitle.setTypeface(Ui.serif());
         emptyTitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams etLp = lp(-2, -2);
         etLp.topMargin = dp(this, 18);
@@ -548,7 +577,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         // 底部主按钮：只在没开读取时出现
         liveTools = new LinearLayout(this);
         liveTools.setPadding(dp(this, 20), dp(this, 10), dp(this, 20), dp(this, 4));
-        liveTools.setBackgroundColor(Ui.BG);
         autoReadButton = stylePrimary(button("开启自动读取", v -> {
             if (WatchdogJob.accessEnabled(this)) showHealthCheck();
             else showSetupGuide();
@@ -593,7 +621,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private void buildCompactBar(FrameLayout frame) {
         compactBar = new LinearLayout(this);
         compactBar.setOrientation(LinearLayout.VERTICAL);
-        compactBar.setBackgroundColor(Ui.BG);
+        compactBar.setBackground(Ui.paper(this));
         // 浅色用柔和投影分层；深色下投影看不见，改用一条细线。
         if (!Ui.dark) compactBar.setElevation(dp(this, 3));
         LinearLayout row = new LinearLayout(this);
@@ -650,8 +678,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         wrap.setOrientation(LinearLayout.VERTICAL);
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        GradientDrawable searchBg = Ui.round(this, Ui.dark ? Ui.FILL : Ui.CARD, 16);
-        if (!Ui.dark) searchBg.setStroke(1, Ui.withAlpha(Ui.LINE, 200));
+        GradientDrawable searchBg = Ui.round(this, Ui.CARD, 16);
+        searchBg.setStroke(Math.max(1, dp(this, 0.8f)), Ui.LINE);
         searchRow.setBackground(searchBg);
         searchField = new EditText(this);
         searchField.setSingleLine(true);
@@ -747,8 +775,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         chip.setText(s);
         chip.setTextColor(selected ? Ui.CARD : Ui.SUB);
         // 选中：墨色实心胶囊；未选中：没有描边，只在纸面上留一块很浅的底。
-        GradientDrawable bg = selected ? Ui.round(this, Ui.TEXT, 18)
-                : Ui.round(this, Ui.dark ? Ui.FILL : Ui.withAlpha(Ui.TEXT, 10), 18);
+        GradientDrawable bg = selected ? Ui.round(this, Ui.TEXT, 18) : Ui.round(this, Ui.CARD, 18);
+        if (!selected) bg.setStroke(Math.max(1, dp(this, 0.8f)), Ui.LINE);
         chip.setBackground(Ui.ripple(this, bg, Ui.press(), 18));
         chip.setSelected(selected);
         if (selected && !wasSelected && chip.isAttachedToWindow()) {
@@ -795,10 +823,26 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         styleChip(stateFilter, stateLabel + " ▾", null, scoped);
     }
 
-    /** 概览卡上的提亮色：红 / 橙 / 墨水蓝在深墨底上的对应色。 */
-    private static final int HERO_RED = Color.parseColor("#FF8A8C");
-    private static final int HERO_ORANGE = Color.parseColor("#FFB46B");
-    private static final int HERO_ACCENT = Color.parseColor("#AEB6FF");
+    /** 概览卡里的虚线分隔：像明信片上的裁切线。 */
+    private Drawable dashedRule() {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.LINE);
+        d.setStroke(Math.max(1, dp(this, 1)), Ui.withAlpha(Ui.HERO_SUB, 110), dp(this, 4), dp(this, 4));
+        return d;
+    }
+
+    /** 时段变了（清晨 → 午后 → 傍晚 → 夜里）才重画风景。 */
+    private void refreshScene() {
+        if (sceneView == null) return;
+        int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        if (sceneBand(hour) == sceneBand(sceneHour)) return;
+        sceneHour = hour;
+        sceneView.setBackground(Ui.scenery(this, hour));
+    }
+
+    private static int sceneBand(int hour) {
+        return hour < 0 ? -1 : (hour < 5 || hour >= 19) ? 0 : hour < 11 ? 1 : hour < 16 ? 2 : 3;
+    }
 
     /**
      * 未来七天的截止分布：每天一列「星期 / 日期 / 圆点」，圆点数 = 当天截止的未完成事项（最多三颗），
@@ -844,18 +888,19 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             col.setOrientation(LinearLayout.VERTICAL);
             col.setGravity(Gravity.CENTER_HORIZONTAL);
             TextView wd = uiText(today ? "今" : names[day.get(Calendar.DAY_OF_WEEK) - 1], 11,
-                    today ? Ui.ON_HERO : Ui.HERO_SUB, today);
+                    today ? Ui.ACCENT : Ui.HERO_SUB, today);
             col.addView(wd);
-            TextView num = uiText(String.valueOf(day.get(Calendar.DAY_OF_MONTH)), 15,
-                    today ? Ui.HERO_TOP : Ui.ON_HERO, true);
+            TextView num = uiText(String.valueOf(day.get(Calendar.DAY_OF_MONTH)), 16,
+                    today ? Ui.ON_ACCENT : Ui.ON_HERO, false);
+            num.setTypeface(today ? Ui.serifBold() : Ui.serif());
             num.setGravity(Gravity.CENTER);
-            if (today) num.setBackground(Ui.disc(this, Ui.ON_HERO));
+            if (today) num.setBackground(Ui.blob(Ui.ACCENT, 11));
             LinearLayout.LayoutParams numLp = lp(dp(this, 30), dp(this, 30));
             numLp.topMargin = dp(this, 6);
             col.addView(num, numLp);
             LinearLayout dots = new LinearLayout(this);
             dots.setGravity(Gravity.CENTER);
-            int dotColor = level[i] >= 2 ? HERO_RED : level[i] == 1 ? HERO_ORANGE : HERO_ACCENT;
+            int dotColor = level[i] >= 2 ? Ui.RED : level[i] == 1 ? Ui.ORANGE : Ui.ACCENT;
             for (int k = 0; k < Math.min(3, count[i]); k++) {
                 View dot = Ui.dot(this, dotColor, 4.5f);
                 LinearLayout.LayoutParams dLp = lp(dp(this, 4.5f), dp(this, 4.5f));
@@ -922,13 +967,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if (num != null) {
             int i = head.indexOf(num);
             s.setSpan(new ForegroundColorSpan(numColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            // 深墨卡上同一种含义换成提亮的那一档，保证对比度。
-            int heroColor = numColor == Ui.RED ? HERO_RED : numColor == Ui.ORANGE ? HERO_ORANGE : HERO_ACCENT;
-            onHero.setSpan(new ForegroundColorSpan(heroColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            onHero.setSpan(new ForegroundColorSpan(numColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            // 数字用衬线粗体、放大一档，是整张卡的视觉落点。
+            onHero.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            onHero.setSpan(new RelativeSizeSpan(1.35f), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         headline.setText(onHero);
         if (compactTitle != null) compactTitle.setText(s);
         updateWeekStrip(shown, now);
+        refreshScene();
 
         List<String> parts = new ArrayList<>();
         if (tomorrow > 0 && !"tomorrow".equals(lead)) parts.add("明天 " + tomorrow + " 件");
@@ -1075,8 +1122,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     /** 主按钮：靛蓝实心 + 白字。一个界面只放一个。 */
     Button stylePrimary(Button b) {
-        b.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT, 16), Ui.withAlpha(Ui.ON_ACCENT, 60), 16));
-        Ui.lift(b, 3f);
+        b.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT, 99), Ui.withAlpha(Ui.ON_ACCENT, 60), 99));
+        Ui.lift(b, 2f);
         b.setTextColor(Ui.ON_ACCENT);
         Ui.pressScale(b, 0.97f);
         b.setTextSize(15);
@@ -1160,8 +1207,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     TextView sheetTitle(String text) {
-        TextView t = uiText(text, 20, Ui.TEXT, false);
-        t.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        TextView t = uiText(text, 24, Ui.TEXT, false);
+        t.setTypeface(Ui.serif());
         t.setPadding(dp(this, 4), dp(this, 10), 0, dp(this, 6));
         return t;
     }
@@ -1539,8 +1586,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private Drawable emptySearchIcon() {
-        GradientDrawable bg = Ui.disc(this, Ui.FILL);
-        Drawable glyph = Ui.searchGlyph(this, Ui.SUB, 24);
+        Drawable bg = Ui.blob(Ui.ACCENT_BG, 9);
+        Drawable glyph = Ui.searchGlyph(this, Ui.ACCENT, 24);
         android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{bg, glyph});
         int inset = dp(this, 14);
         layer.setLayerInset(1, inset, inset, inset, inset);
@@ -1588,9 +1635,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             dotLp.rightMargin = dp(this, 8);
             row.addView(dot, dotLp);
         }
-        TextView label = uiText(name, 15, color, true);
+        TextView label = uiText(name, 18, color, false);
+        label.setTypeface(Ui.serif());
         row.addView(label);
-        TextView num = uiText(String.valueOf(count), 13, Ui.MUTE, true);
+        TextView num = uiText(String.valueOf(count), 13, "今天".equals(name) ? Ui.ACCENT : Ui.MUTE, false);
+        num.setTypeface(Ui.serif());
         LinearLayout.LayoutParams numLp = lp(-2, -2);
         numLp.leftMargin = dp(this, 7);
         row.addView(num, numLp);
@@ -1622,10 +1671,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         card.setPadding(dp(this, 6), dp(this, 18), dp(this, 18), dp(this, 18));
         if (c.done) {
             // 已完成的卡退到背景里：不浮起、不投影，只留一层淡底。
-            GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 140 : 150), 20);
-            card.setBackground(Ui.ripple(this, face, Ui.press(), 20));
+            GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 120 : 140), 18);
+            card.setBackground(Ui.ripple(this, face, Ui.press(), 18));
         } else {
-            Ui.cardSurface(card, 20);
+            Ui.cardSurface(card, 18);
         }
         Ui.pressScale(card, 0.985f);
 
@@ -2042,7 +2091,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             content.addView(kindTag, kLp);
         }
         TextView title = uiText(c.displayTitle(), 22, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTypeface(Ui.serif());
         title.setLineSpacing(dp(this, 4), 1f);
         title.setTextIsSelectable(true);
         LinearLayout.LayoutParams titleLp = lp(-1, -2);
@@ -2416,7 +2465,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if (groupBody == null) return;
         groupBody.removeAllViews();
         TextView title = uiText("按群管理", 21, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTypeface(Ui.serif());
         LinearLayout.LayoutParams tLp = lp(-1, -2);
         tLp.topMargin = dp(this, 16);
         groupBody.addView(title, tLp);
@@ -2560,7 +2609,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         int done = (access ? 1 : 0) + (battery ? 1 : 0) + (autostart ? 1 : 0);
 
         TextView title = uiText("让自动整理一直在线", 21, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTypeface(Ui.serif());
         LinearLayout.LayoutParams tLp = lp(-1, -2);
         tLp.topMargin = dp(this, 16);
         setupBody.addView(title, tLp);

@@ -53,7 +53,7 @@ public class ProfileActivity extends Activity {
         // 标题用主文字色（近黑），浅色底上保持最强的一级层次。
         title.setTextColor(Ui.TEXT);
         title.setTextSize(28);
-        title.setTypeface(null, 1);
+        title.setTypeface(Ui.serif());
         root.addView(title);
 
         TextView sub = new TextView(this);

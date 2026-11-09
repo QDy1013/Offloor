@@ -66,7 +66,7 @@ final class AppNavigation {
     static View bar(Activity from, int current) {
         // 外层和页面同色，里面是一枚悬浮的胶囊：圆角、柔和投影，和内容之间留出呼吸感。
         FrameLayout shell = new FrameLayout(from);
-        shell.setBackgroundColor(Ui.BG);
+        shell.setBackgroundColor(android.graphics.Color.TRANSPARENT);   // 透出页面的纸纹
         shell.setClipToPadding(false);
         shell.setPadding(Ui.dp(from, 16), Ui.dp(from, 6), Ui.dp(from, 16), Ui.dp(from, 12));
         LinearLayout row = new LinearLayout(from);

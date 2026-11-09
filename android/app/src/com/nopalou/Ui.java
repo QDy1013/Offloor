@@ -18,15 +18,16 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 /**
- * 界面设计规范（v0.20「墨与光」）。
+ * 界面设计规范（v0.21「纸与陶」）。
  *
- * 方向：安静的纸面，一块有分量的墨色。石灰白纸色打底，白卡承载内容，墨黑做主文字；
- * 首页顶部只有一张深墨渐变的「今日概览」卡负责第一眼的分量，其余地方都克制留白。
- * 只有一个墨水蓝强调色。红 / 橙 / 琥珀只表达时间压力，紫 / 青只表达卡片类型，
- * 每种颜色只承担一种含义，用户看到颜色就知道是什么情况。
+ * 方向：一本手边的旧笔记本。暖调羊皮纸做底、带一点肉眼几乎看不见的纸纹；
+ * 米白卡片像夹进本子里的便笺，只用一圈细线收边，不靠投影；
+ * 标题和数字用衬线体，正文用无衬线，读起来像排过版的书页。
+ * 唯一的强调色是烧制过的陶土色，主按钮、选中态、「今天」都用它。
+ * 首页顶部是一幅随时辰变化的小风景（清晨、午后、傍晚、夜里），给工具一点温度。
  *
- * 形状：卡片 20dp 圆角、胶囊按钮全圆角、底部导航是一枚悬浮胶囊；
- * 字号只用 11 / 12 / 13 / 15 / 16 / 20 / 26 这几档，层级靠字重和颜色而不是更多字号。
+ * 颜色语义不变：红 / 橙 / 琥珀只表达时间压力，紫 / 青只表达卡片类型，绿表示完成。
+ * 形状：卡片 18dp 圆角、胶囊按钮全圆角、底部导航是一枚悬浮胶囊，空状态用手捏的陶土色圆团。
  */
 final class Ui {
 
@@ -121,71 +122,71 @@ final class Ui {
     private static void palette(boolean night) {
         dark = night;
         if (!night) {
-            // 浅色：石灰白纸面 + 纯白卡，墨色文字；强调色是一支偏紫的「墨水蓝」，比标准蓝更沉稳。
-            BG = c("#F3F2EE");
-            CARD = c("#FFFFFF");
-            FILL = c("#EBEAE5");
-            LINE = c("#E4E2DC");
-            TEXT = c("#16161A");
-            SUB = c("#62626B");
-            MUTE = c("#93939B");
-            RING = c("#BDBBB4");
-            ACCENT = c("#4A55D8");
-            ACCENT_BG = c("#EDEEFC");
-            ON_ACCENT = Color.WHITE;
-            RED = c("#DC3E42");
-            RED_BG = c("#FCECEC");
-            ORANGE = c("#D46A12");
-            ORANGE_BG = c("#FBEFE2");
-            AMBER_TX = c("#94650A");
-            AMBER_BG = c("#F9F1DC");
-            GREEN = c("#2A9467");
-            GREEN_BG = c("#E3F2EA");
-            VIOLET = c("#7351D4");
-            VIOLET_BG = c("#F1ECFC");
-            TEAL = c("#0E8580");
-            TEAL_BG = c("#E1F2F0");
-            INK = c("#1B1B22");
-            INK_ACTION = c("#A9B2FF");
-            SHADOW = c("#2B2A4A");
-            HERO_TOP = c("#1D1E2B");
-            HERO_BOTTOM = c("#2B2D48");
-            ON_HERO = c("#F5F5FA");
-            HERO_SUB = c("#A3A6C2");
-            HERO_GLOW = c("#6F7BFF");
+            // 浅色：暖调羊皮纸 + 米白卡片 + 暖墨文字；强调色是烧制过的陶土色。
+            BG = c("#F4EEE3");
+            CARD = c("#FCF9F3");
+            FILL = c("#ECE4D6");
+            LINE = c("#E2D8C7");
+            TEXT = c("#2B2520");
+            SUB = c("#6F665B");
+            MUTE = c("#9C9284");
+            RING = c("#C9BDAB");
+            ACCENT = c("#BF5B37");
+            ACCENT_BG = c("#F4E2D6");
+            ON_ACCENT = c("#FFF9F2");
+            RED = c("#B3261E");
+            RED_BG = c("#F6E0DB");
+            ORANGE = c("#B26B12");
+            ORANGE_BG = c("#F5E7D0");
+            AMBER_TX = c("#8A6212");
+            AMBER_BG = c("#F3E8CC");
+            GREEN = c("#577A52");
+            GREEN_BG = c("#E3EADB");
+            VIOLET = c("#7A5683");
+            VIOLET_BG = c("#EEE3EE");
+            TEAL = c("#3D7A73");
+            TEAL_BG = c("#DFEBE6");
+            INK = c("#2E2823");
+            INK_ACTION = c("#F2B08F");
+            SHADOW = c("#6B4E2E");
+            HERO_TOP = c("#F0E5D3");
+            HERO_BOTTOM = c("#EADCC6");
+            ON_HERO = c("#2B2520");
+            HERO_SUB = c("#7A6E5F");
+            HERO_GLOW = c("#E9A877");
         } else {
-            // 深色：近黑底 + 抬升一档的卡片，彩色整体提亮、降饱和，浅底标签改成同色深底。
-            BG = c("#0F0F12");
-            CARD = c("#19191D");
-            FILL = c("#232328");
-            LINE = c("#2B2B31");
-            TEXT = c("#EDEDF0");
-            SUB = c("#A1A1AA");
-            MUTE = c("#6E6E78");
-            RING = c("#55555E");
-            ACCENT = c("#939CFF");
-            ACCENT_BG = c("#22244A");
-            ON_ACCENT = c("#0C0D1F");
-            RED = c("#FF6B6E");
-            RED_BG = c("#3A1C1E");
-            ORANGE = c("#F29A4C");
-            ORANGE_BG = c("#37281A");
-            AMBER_TX = c("#E6B751");
-            AMBER_BG = c("#322A16");
-            GREEN = c("#4CC38A");
-            GREEN_BG = c("#152E28");
-            VIOLET = c("#B39BFF");
-            VIOLET_BG = c("#2A2345");
-            TEAL = c("#3CCBC2");
-            TEAL_BG = c("#142E2D");
-            INK = c("#2A2A31");
-            INK_ACTION = c("#AEB6FF");
+            // 深色：炭火余温。暖黑底、深陶土卡，文字是旧纸的米色，强调色提亮成橘陶。
+            BG = c("#1B1916");
+            CARD = c("#25221E");
+            FILL = c("#2F2B26");
+            LINE = c("#3A342D");
+            TEXT = c("#EFE7DA");
+            SUB = c("#B3A897");
+            MUTE = c("#7F7567");
+            RING = c("#5E564B");
+            ACCENT = c("#E28B65");
+            ACCENT_BG = c("#3E2A20");
+            ON_ACCENT = c("#1B1916");
+            RED = c("#F2786B");
+            RED_BG = c("#3D201C");
+            ORANGE = c("#E5A653");
+            ORANGE_BG = c("#3A2C18");
+            AMBER_TX = c("#E2BC63");
+            AMBER_BG = c("#352C17");
+            GREEN = c("#93B784");
+            GREEN_BG = c("#232D1F");
+            VIOLET = c("#C7A4CF");
+            VIOLET_BG = c("#30242F");
+            TEAL = c("#86C2B8");
+            TEAL_BG = c("#1C2D2A");
+            INK = c("#36302A");
+            INK_ACTION = c("#F2A882");
             SHADOW = Color.BLACK;
-            HERO_TOP = c("#1B1C2A");
-            HERO_BOTTOM = c("#23254A");
-            ON_HERO = c("#F2F2F8");
-            HERO_SUB = c("#9EA1C0");
-            HERO_GLOW = c("#7D88FF");
+            HERO_TOP = c("#2A2520");
+            HERO_BOTTOM = c("#221E1A");
+            ON_HERO = c("#F1E9DC");
+            HERO_SUB = c("#A99C8A");
+            HERO_GLOW = c("#E28B65");
         }
         BLUE = ACCENT;
         BLUE_BG = ACCENT_BG;
@@ -197,6 +198,11 @@ final class Ui {
 
     /** 状态栏 / 导航栏跟随页面底色，图标深浅随主题。 */
     static void systemBars(android.app.Activity a, View root) {
+        if (root.getBackground() instanceof android.graphics.drawable.ColorDrawable
+                && ((android.graphics.drawable.ColorDrawable) root.getBackground()).getColor() == BG) {
+            // 页面纯底色统一换成带纸纹的纸。
+            root.setBackground(paper(root.getContext()));
+        }
         a.getWindow().setStatusBarColor(BG);
         a.getWindow().setNavigationBarColor(BG);
         int flags = 0;
@@ -225,7 +231,7 @@ final class Ui {
         };
         sheet.setOrientation(android.widget.LinearLayout.VERTICAL);
         sheet.setPadding(dp(c, 20), dp(c, 8), dp(c, 20), dp(c, 18));
-        sheet.setBackground(topRound(c, CARD, 28));
+        sheet.setBackground(sheetPaper(c, 28));
         android.widget.FrameLayout grip = new android.widget.FrameLayout(c);
         View handle = new View(c);
         handle.setBackground(round(c, dark ? RING : withAlpha(TEXT, 38), 3));
@@ -295,15 +301,15 @@ final class Ui {
     }
 
     /**
-     * 卡片底：浅色是白卡 + 一层很散的冷调投影（不描边，靠投影浮起来）；
-     * 深色投影看不见，改用亮一档的卡 + 极细描边。
+     * 卡片底：像夹进本子里的米白便笺，一圈很细的暖色描边收边；
+     * 浅色下再垫一层极轻的暖棕投影，只让边缘和纸面分开，不显得“浮”。
      */
     static void cardSurface(View v, float radiusDp) {
         Context c = v.getContext();
         GradientDrawable face = round(c, CARD, radiusDp);
-        if (dark) face.setStroke(1, LINE);
+        face.setStroke(Math.max(1, dp(c, 0.8f)), LINE);
         v.setBackground(ripple(c, face, press(), radiusDp));
-        if (!dark) lift(v, 2f);
+        if (!dark) lift(v, 0.8f);
     }
 
     /** 浅色模式下的柔和浮起：只在 API 28+ 上色，低版本是系统默认灰影。 */
@@ -317,29 +323,231 @@ final class Ui {
     }
 
     /**
-     * 首页「今日概览」卡的底：自上而下的深墨渐变，右上角叠一团很淡的径向光，
-     * 让整块墨色有一点纵深，但不抢文字。
+     * 概览卡的底：比页面深一档的暖沙色渐变 + 纸纹 + 一圈细描边，像一张厚一点的卡纸。
      */
     static Drawable heroSurface(Context c, float radiusDp) {
-        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{HERO_TOP, HERO_BOTTOM});
         base.setCornerRadius(dp(c, radiusDp));
-        GradientDrawable glow = new GradientDrawable();
-        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        glow.setColors(new int[]{withAlpha(HERO_GLOW, dark ? 70 : 80), withAlpha(HERO_GLOW, 0)});
-        glow.setGradientCenter(0.92f, 0.0f);
-        glow.setGradientRadius(dp(c, 220));
-        glow.setCornerRadius(dp(c, radiusDp));
-        android.graphics.drawable.LayerDrawable layer =
-                new android.graphics.drawable.LayerDrawable(new Drawable[]{base, glow});
-        if (dark) {
-            GradientDrawable edge = new GradientDrawable();
-            edge.setCornerRadius(dp(c, radiusDp));
-            edge.setColor(Color.TRANSPARENT);
-            edge.setStroke(1, withAlpha(Color.WHITE, 18));
-            layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{base, glow, edge});
+        GradientDrawable edge = new GradientDrawable();
+        edge.setCornerRadius(dp(c, radiusDp));
+        edge.setColor(Color.TRANSPARENT);
+        edge.setStroke(Math.max(1, dp(c, 0.8f)), dark ? LINE : withAlpha(SHADOW, 34));
+        return new android.graphics.drawable.LayerDrawable(new Drawable[]{base, grain(c), edge});
+    }
+
+    // ---------- 字体 ----------
+
+    /** 展示用衬线体：大标题、数字、栏目名。系统没有衬线中文时会自动回落到无衬线。 */
+    static Typeface serif() {
+        return Typeface.create("serif", Typeface.NORMAL);
+    }
+
+    static Typeface serifBold() {
+        return Typeface.create("serif", Typeface.BOLD);
+    }
+
+    // ---------- 纸纹 ----------
+
+    private static android.graphics.Bitmap grainLight;
+    private static android.graphics.Bitmap grainDark;
+
+    /**
+     * 纸纹：一块 120px 的随机细点平铺。浅色是极淡的暖棕点，深色是极淡的米色点，
+     * 透明度只有 3%～6%，肉眼几乎看不出，但整块底色会从“塑料”变成“纸”。
+     * 种子固定，每次打开都是同一张纸。
+     */
+    static Drawable grain(Context c) {
+        android.graphics.Bitmap bmp = dark ? grainDark : grainLight;
+        if (bmp == null) {
+            int n = 120;
+            bmp = android.graphics.Bitmap.createBitmap(n, n, android.graphics.Bitmap.Config.ARGB_8888);
+            java.util.Random r = new java.util.Random(20261108L);
+            int speck = dark ? Color.rgb(255, 244, 225) : Color.rgb(92, 64, 36);
+            for (int y = 0; y < n; y++) {
+                for (int x = 0; x < n; x++) {
+                    float v = r.nextFloat();
+                    int alpha = v < 0.18f ? (int) (r.nextFloat() * (dark ? 12 : 15)) : 0;
+                    bmp.setPixel(x, y, withAlpha(speck, alpha));
+                }
+            }
+            if (dark) grainDark = bmp; else grainLight = bmp;
         }
-        return layer;
+        android.graphics.drawable.BitmapDrawable d = new android.graphics.drawable.BitmapDrawable(c.getResources(), bmp);
+        d.setTileModeXY(android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT);
+        return d;
+    }
+
+    /** 页面底：纸色 + 纸纹。所有主页面、底部面板都用它。 */
+    static Drawable paper(Context c) {
+        return new android.graphics.drawable.LayerDrawable(new Drawable[]{
+                new android.graphics.drawable.ColorDrawable(BG), grain(c)});
+    }
+
+    /** 底部面板的纸：卡片色 + 纸纹，顶部两个圆角。 */
+    static Drawable sheetPaper(Context c, float radiusDp) {
+        GradientDrawable face = topRound(c, CARD, radiusDp);
+        android.graphics.drawable.LayerDrawable l = new android.graphics.drawable.LayerDrawable(new Drawable[]{face, grain(c)});
+        return l;
+    }
+
+    // ---------- 插画 ----------
+
+    /**
+     * 一团手捏的陶土：不是正圆，而是由四段贝塞尔曲线拼成、边缘微微起伏的圆团。
+     * 空状态、图标底都用它代替几何圆，看起来像手做的东西。seed 不同形状不同。
+     */
+    static Drawable blob(int color, int seed) {
+        return new Blob(color, seed);
+    }
+
+    private static final class Blob extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final float[] k = new float[8];
+
+        Blob(int color, int seed) {
+            paint.setColor(color);
+            java.util.Random r = new java.util.Random(seed * 7919L + 13);
+            for (int i = 0; i < k.length; i++) k[i] = 0.9f + r.nextFloat() * 0.16f;
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            Rect b = getBounds();
+            float cx = b.exactCenterX(), cy = b.exactCenterY();
+            float rx = b.width() / 2f, ry = b.height() / 2f;
+            int n = 8;
+            float[] px = new float[n], py = new float[n];
+            for (int i = 0; i < n; i++) {
+                double a = Math.PI * 2 * i / n - Math.PI / 2;
+                px[i] = cx + (float) Math.cos(a) * rx * k[i];
+                py[i] = cy + (float) Math.sin(a) * ry * k[i];
+            }
+            // Catmull-Rom 转贝塞尔，得到一条处处光滑、但不规则的闭合曲线。
+            path.reset();
+            path.moveTo(px[0], py[0]);
+            for (int i = 0; i < n; i++) {
+                int i0 = (i - 1 + n) % n, i1 = i, i2 = (i + 1) % n, i3 = (i + 2) % n;
+                float c1x = px[i1] + (px[i2] - px[i0]) / 6f, c1y = py[i1] + (py[i2] - py[i0]) / 6f;
+                float c2x = px[i2] - (px[i3] - px[i1]) / 6f, c2y = py[i2] - (py[i3] - py[i1]) / 6f;
+                path.cubicTo(c1x, c1y, c2x, c2y, px[i2], py[i2]);
+            }
+            path.close();
+            canvas.drawPath(path, paint);
+        }
+
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { paint.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
+
+    /**
+     * 首页顶部的小风景：远山、近丘、一轮随时辰移动的日头。
+     * 清晨日头低悬在左、天色发粉；午后高挂偏右、天色是暖沙；傍晚沉到右边、天色转橘；
+     * 夜里换成一弯新月和几点星，山色压暗。全部是纯色块叠出来的，像剪纸或丝网版画。
+     */
+    static Drawable scenery(Context c, int hour) {
+        return new Scenery(c, hour);
+    }
+
+    private static final class Scenery extends Drawable {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final int hour;
+        private final float density;
+
+        Scenery(Context c, int hour) {
+            this.hour = hour;
+            this.density = c.getResources().getDisplayMetrics().density;
+        }
+
+        private boolean night() { return hour < 5 || hour >= 19; }
+
+        @Override
+        public void draw(Canvas canvas) {
+            Rect b = getBounds();
+            float w = b.width(), h = b.height();
+            canvas.save();
+            canvas.translate(b.left, b.top);
+            boolean night = night();
+            boolean morning = hour >= 5 && hour < 11;
+            boolean evening = hour >= 16 && hour < 19;
+            // 天空：上下两色的柔和渐变。
+            int skyTop, skyBottom;
+            if (night) { skyTop = Color.parseColor(dark ? "#1E2230" : "#2F3448"); skyBottom = Color.parseColor(dark ? "#3A3142" : "#5B4A5E"); }
+            else if (morning) { skyTop = Color.parseColor(dark ? "#3B3036" : "#F3DCCF"); skyBottom = Color.parseColor(dark ? "#4A3A33" : "#F6E7D4"); }
+            else if (evening) { skyTop = Color.parseColor(dark ? "#3E2B26" : "#F2C9A8"); skyBottom = Color.parseColor(dark ? "#553528" : "#F4DDBF"); }
+            else { skyTop = Color.parseColor(dark ? "#2F2B26" : "#F1E3CB"); skyBottom = Color.parseColor(dark ? "#3A322A" : "#F6ECDC"); }
+            p.setShader(new android.graphics.LinearGradient(0, 0, 0, h, skyTop, skyBottom, android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, w, h, p);
+            p.setShader(null);
+
+            // 日头 / 月亮：沿一条弧线按时辰移动。
+            float t;
+            if (night) t = 0.78f;
+            else t = Math.max(0f, Math.min(1f, (hour - 5) / 14f));
+            float sx = w * (0.12f + 0.76f * t);
+            float sy = h * (0.70f - 0.48f * (float) Math.sin(Math.PI * t));
+            float sr = 17 * density;
+            if (night) {
+                // 新月：一个圆减去偏移的另一个圆，真正挖空，透出后面的渐变夜空。
+                Path moon = new Path();
+                moon.addCircle(sx, sy, sr * 0.8f, Path.Direction.CW);
+                Path bite = new Path();
+                bite.addCircle(sx + sr * 0.38f, sy - sr * 0.22f, sr * 0.72f, Path.Direction.CW);
+                moon.op(bite, Path.Op.DIFFERENCE);
+                p.setColor(withAlpha(Color.parseColor("#F3E6C8"), 40));
+                canvas.drawCircle(sx, sy, sr * 1.5f, p);
+                p.setColor(Color.parseColor("#F3E6C8"));
+                canvas.drawPath(moon, p);
+                java.util.Random r = new java.util.Random(7);
+                for (int i = 0; i < 14; i++) {
+                    p.setAlpha(80 + r.nextInt(150));
+                    canvas.drawCircle(r.nextFloat() * w, r.nextFloat() * h * 0.55f, density * (0.6f + r.nextFloat() * 0.9f), p);
+                }
+                p.setAlpha(255);
+            } else {
+                int sun = Color.parseColor(evening ? "#E0794A" : morning ? "#E8936B" : "#E9A35C");
+                // 一圈很淡的光晕，再叠实心日头。
+                p.setColor(withAlpha(sun, 46));
+                canvas.drawCircle(sx, sy, sr * 1.9f, p);
+                p.setColor(withAlpha(sun, 80));
+                canvas.drawCircle(sx, sy, sr * 1.35f, p);
+                p.setColor(sun);
+                canvas.drawCircle(sx, sy, sr, p);
+            }
+
+            // 三层山：远山淡、近丘深；夜里整体压暗。
+            int far = Color.parseColor(night ? "#4A4458" : dark ? "#5A4A3E" : "#D9BFA0");
+            int mid = Color.parseColor(night ? "#3A3446" : dark ? "#6B4A38" : "#C98C68");
+            int near = Color.parseColor(night ? "#2A2633" : dark ? "#3E4A36" : "#8A9A72");
+            ridge(canvas, w, h, 0.58f, 0.10f, 1.3f, 0.2f, far);
+            ridge(canvas, w, h, 0.70f, 0.09f, 2.1f, 1.7f, mid);
+            ridge(canvas, w, h, 0.82f, 0.07f, 1.6f, 3.1f, near);
+            canvas.restore();
+        }
+
+        /** 一道山脊：两个不同频率的正弦叠出起伏，底边封到画面最下方。 */
+        private void ridge(Canvas canvas, float w, float h, float base, float amp, float freq, float phase, int color) {
+            path.reset();
+            path.moveTo(0, h);
+            int steps = 48;
+            for (int i = 0; i <= steps; i++) {
+                float x = w * i / steps;
+                double u = (double) i / steps * Math.PI * 2;
+                float y = h * (base - amp * (float) (0.65 * Math.sin(u * freq + phase) + 0.35 * Math.sin(u * freq * 2.3 + phase * 1.7)));
+                path.lineTo(x, y);
+            }
+            path.lineTo(w, h);
+            path.close();
+            p.setColor(color);
+            canvas.drawPath(path, p);
+        }
+
+        @Override public void setAlpha(int alpha) { p.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { p.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
     /** 分组小标题：12sp 中粗、弱化色、略加字距，像杂志的栏目名。 */
@@ -349,7 +557,7 @@ final class Ui {
         t.setTextSize(12);
         t.setTypeface(medium());
         t.setTextColor(MUTE);
-        t.setLetterSpacing(0.06f);
+        t.setLetterSpacing(0.12f);
         t.setIncludeFontPadding(false);
         return t;
     }
@@ -358,7 +566,9 @@ final class Ui {
     static android.widget.LinearLayout group(Context c) {
         android.widget.LinearLayout g = new android.widget.LinearLayout(c);
         g.setOrientation(android.widget.LinearLayout.VERTICAL);
-        g.setBackground(round(c, dark ? FILL : BG, 18));
+        GradientDrawable face = round(c, dark ? FILL : BG, 18);
+        face.setStroke(Math.max(1, dp(c, 0.8f)), LINE);
+        g.setBackground(face);
         g.setClipToOutline(true);
         return g;
     }
