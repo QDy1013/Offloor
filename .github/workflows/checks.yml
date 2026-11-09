@@ -34,3 +34,4 @@ jobs:
             ${{ runner.temp }}/core-checks.json
             ${{ runner.temp }}/browser-checks.json
             ${{ runner.temp }}/reliability-checks.json
+            ${{ runner.temp }}/showcase.json

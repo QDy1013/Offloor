@@ -22,3 +22,6 @@ runs:
     - name: 独立会话场景回归
       shell: bash
       run: python3 eval/run_reliability.py --out "$RUNNER_TEMP/reliability-checks.json"
+    - name: 导出构造场景回放
+      shell: bash
+      run: python3 eval/run_showcase.py --out "$RUNNER_TEMP/showcase.json"

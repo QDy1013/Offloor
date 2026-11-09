@@ -123,6 +123,10 @@ final class AiQueue {
             store(c);
         } catch(JSONException error) { throw new IllegalStateException(error); }
     }
+    static synchronized void imageUnavailable(Context c,Collection<JSONObject> batch) {
+        try { AiQueueCore.imageUnavailable(load(c),batch);store(c); }
+        catch(JSONException error) { throw new IllegalStateException(error); }
+    }
     static synchronized void clear(Context c) {
         List<JSONObject> all = new ArrayList<>(load(c)); items.clear();
         try { storage.allowRebuild(); } catch (Exception error) { throw new IllegalStateException(error); }

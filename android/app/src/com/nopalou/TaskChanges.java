@@ -25,6 +25,9 @@ public final class TaskChanges {
         while(history.size()>20) history.remove(0);
         revision++;
     }
+    void action(long at, String actor, String description, String detail) {
+        record(new Engine.Msg("", "", "", actor, detail, "", at), description);
+    }
     void defer(Engine.Msg m, boolean needsConfirm) {
         if (pending.isEmpty()) baseNeedsConfirm=needsConfirm;
         if (!pending.containsKey(m.id)) {

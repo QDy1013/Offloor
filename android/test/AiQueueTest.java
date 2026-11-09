@@ -33,6 +33,16 @@ public final class AiQueueTest {
         List<JSONObject> capacity = new ArrayList<>();
         for (int i=0;i<AiQueueCore.MAX+1;i++) AiQueueCore.add(capacity, request("v").put("key", "msg:"+i), i+1);
         check("队列上限受控", capacity.size() == AiQueueCore.MAX && !"msg:0".equals(capacity.get(0).optString("key")));
+        List<JSONObject> images=new ArrayList<>();
+        JSONObject oldImage=new JSONObject().put("type","img").put("key","img:one").put("path","old.jpg");
+        AiQueueCore.add(images,oldImage,3000);
+        JSONObject newImage=new JSONObject().put("type","img").put("key","img:one").put("path","new.jpg");
+        AiQueueCore.add(images,newImage,3100);
+        AiQueueCore.imageUnavailable(images,Arrays.asList(oldImage));
+        check("旧图片缓存失效不误伤替换请求",!newImage.optBoolean("imageExpired")&&"queued".equals(newImage.optString("state")));
+        AiQueueCore.imageUnavailable(images,Arrays.asList(newImage));
+        check("缓存丢失保留可见失败及补充路径",images.size()==1&&"failed".equals(newImage.optString("state"))&&newImage.optString("error").contains("重新分享"));
+        check("缺失图片不会反复重试空路径",AiQueueCore.retry(images,3200)==0&&"failed".equals(newImage.optString("state")));
         System.out.println("PASS " + count);
     }
 }

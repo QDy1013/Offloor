@@ -62,6 +62,13 @@ final class AiQueueCore {
         }
         return changed;
     }
+    static void imageUnavailable(List<JSONObject> list,Collection<JSONObject> batch) throws JSONException {
+        Set<String> ids=new HashSet<>();for(JSONObject item:batch)ids.add(item.optString("requestId"));
+        for(JSONObject current:list)if("img".equals(current.optString("type")) && ids.contains(current.optString("requestId"))) {
+            current.put("state","failed").put("imageExpired",true).put("error","图片缓存不可用，请重新分享截图");
+            current.remove("path");
+        }
+    }
     static int retry(List<JSONObject> list, long now) throws JSONException {
         int count = 0;
         for (JSONObject item : list) if ("failed".equals(item.optString("state")) && !item.optBoolean("imageExpired",false)) {

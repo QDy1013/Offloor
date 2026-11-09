@@ -263,7 +263,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         renderQueued = false;
         // 完成动画还没播完就离开页面（切到课表、锁屏、深浅色切换重建）：直接落定，不丢这次点击。
         if (!pendingDone.isEmpty()) {
-            for (Engine.Card c : pendingDone) c.done = true;
+            Engine shown=demo==null?engine:demo.engine;
+            if(shown!=null)for(Engine.Card c:pendingDone)shown.setCardDone(c,true,System.currentTimeMillis());
             pendingDone.clear();
             if (demo == null) EngineHolder.saveAsync(this);
         }
@@ -1177,6 +1178,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             }
         });
         menuSection(body, "演示");
+        menuRow(body,holder,"情境演示","逐步体验改期、歧义核对和取消 · 独立构造场景",Ui.TEXT,
+                () -> startActivity(new Intent(this,ShowcaseActivity.class)));
         menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
         menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
         menuSection(body, "应用");
@@ -2270,20 +2273,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         content.addView(actions, actionsLp);
 
         // 原始消息
-        TextView section = uiText("原始消息", 13, Ui.SUB, true);
+        TextView section = uiText("来源与处理记录", 13, Ui.SUB, true);
         section.setPadding(dp(this, 2), dp(this, 26), 0, dp(this, 10));
         content.addView(section);
-        StringBuilder original = new StringBuilder(c.sourceText == null ? "原消息不可用" : c.sourceText);
-        List<TaskChanges.Event> history = c.changes.history();
-        if (!history.isEmpty()) {
-            original.append("\n\n变更记录（最近 ").append(history.size()).append(" 条）");
-            for (int i = history.size() - 1; i >= 0; i--) {
-                TaskChanges.Event event = history.get(i);
-                original.append("\n\n").append(dateTimeLabel(event.at)).append(" · ").append(event.actor == null ? "来源未知" : event.actor)
-                        .append("\n").append(event.description).append("\n").append(event.text == null ? "" : event.text);
-            }
-        }
-        if (!TextUtils.isEmpty(c.lastRevisionText)) original.append("\n\n最新更正\n").append(c.lastRevisionText);
+        StringBuilder original = new StringBuilder(TaskTrace.text(c));
+        original.append("\n\n记录范围：当前来源与最近 20 条处理记录；旧版本未记录的操作不补写。");
         if (c.context != null && !c.context.isEmpty()) {
             original.append("\n\n相关上下文");
             for (String line : c.context) original.append("\n· ").append(line);
@@ -2378,12 +2372,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     /** 标记完成 / 恢复成待办；标记完成时底部给 4 秒撤销。 */
     void toggleDone(Engine.Card c) {
-        if (c.done) {
-            c.done = false;   // 恢复成待办
+        Engine shown=demo==null?engine:demo.engine;
+        boolean completing=!c.done;
+        if(shown==null || !shown.setCardDone(c,completing,System.currentTimeMillis()))return;
+        if (!completing) {
             animateInCard = c;
             hideUndo();
         } else {
-            c.done = true;    // 标记已完成
             showUndo(c);
         }
         render();
@@ -2398,7 +2393,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         undoAction.setOnClickListener(v -> {
             hideUndo();
             if (c.done) {
-                c.done = false;
+                Engine shown=demo==null?engine:demo.engine;
+                if(shown==null || !shown.setCardDone(c,false,System.currentTimeMillis()))return;
                 animateInCard = c;
                 render();
                 if (demo == null) EngineHolder.saveAsync(this);

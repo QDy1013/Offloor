@@ -100,7 +100,7 @@ final class AiConfig {
         int failed = AiQueue.failedCount(c);
         return (MODE_CHARGING.equals(a.mode) ? "充电时批量复核" : "有网即复核")
                 + (n > 0 ? " · 排队 " + n + " 条" : " · 无待处理请求")
-                + (failed > 0 ? " · " + failed + " 条失败，可手动重试" : "")
+                + (failed > 0 ? " · " + failed + " 条失败，请查看原因" : "")
                 + "\n" + AiBudget.summary(c, a.dailyLimit);
     }
 }

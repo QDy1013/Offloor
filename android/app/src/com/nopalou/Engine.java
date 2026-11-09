@@ -1646,7 +1646,10 @@ public class Engine {
         if (!removedCards.contains(card)) removedCards.add(card);
     }
     public boolean resolvePendingChange(Card selected, String messageId) {
-        if (selected == null || !cards.contains(selected)) return false;
+        return resolvePendingChange(selected, messageId, System.currentTimeMillis());
+    }
+    public boolean resolvePendingChange(Card selected, String messageId, long actedAt) {
+        if (selected == null || actedAt <= 0 || !cards.contains(selected)) return false;
         Msg change = selected.changes.find(messageId);
         if (change == null || !Objects.equals(change.groupId, selected.groupId)) return false;
         String revision = detectRevision(change.text);
@@ -1655,15 +1658,19 @@ public class Engine {
         for (Card c : new ArrayList<>(cards)) {
             if (!Objects.equals(c.groupId, change.groupId) || c.changes.find(messageId) == null) continue;
             c.changes.remove(messageId);
+            if(c!=selected)c.changes.action(actedAt,"本人","变更已关联到「"+selected.displayTitle()+"」，本项保留原安排",change.text);
             if (!c.changes.hasPending()) {
                 c.needsConfirm = c.deadline == 0 || (!c.deadlineUserSet && c.changes.baseNeedsConfirm);
                 c.reason = c.needsConfirm ? TIME_UNCERTAIN : "";
             }
         }
-        if (change.ts < selected.lastChangeTs) selected.changes.record(change, "这条变更早于当前有效版本，已保留当前版本");
-        else if ("revoke".equals(revision)) archiveCancellation(selected, change);
+        if (change.ts < Math.max(selected.sourceTs,selected.lastChangeTs)) selected.changes.action(actedAt,"本人","变更早于当前版本，保留当前时间",change.text);
+        else if ("revoke".equals(revision)) {
+            selected.changes.action(actedAt,"本人","确认这条取消通知对应本事项",change.text);
+            archiveCancellation(selected,change);selected.removedAt=actedAt;
+        }
         else {
-            selected.changes.record(change, "本人确认对应事项，时间调整为 " + absoluteTime(deadline.value));
+            selected.changes.action(actedAt,"本人", "确认对应事项，时间调整为 " + absoluteTime(deadline.value),change.text);
             selected.deadline = deadline.value; selected.deadlineText = humanDeadline(deadline.value);
             selected.sourceTimeUncertain = change.timeUncertain;
             selected.needsConfirm = change.timeUncertain || "low".equals(deadline.conf) || selected.changes.hasPending();
@@ -1674,11 +1681,14 @@ public class Engine {
         notifyChanged(); return true;
     }
     public boolean ignorePendingChange(Card selected, String messageId) {
-        if (selected == null || !cards.contains(selected) || selected.changes.find(messageId) == null) return false;
+        return ignorePendingChange(selected,messageId,System.currentTimeMillis());
+    }
+    public boolean ignorePendingChange(Card selected, String messageId, long actedAt) {
+        if (selected == null || actedAt <= 0 || !cards.contains(selected) || selected.changes.find(messageId) == null) return false;
         Msg change = selected.changes.find(messageId);
         for (Card c : cards) if (Objects.equals(c.groupId, change.groupId) && c.changes.find(messageId) != null) {
             c.changes.remove(messageId);
-            c.changes.record(change, "本人忽略了这条变更");
+            c.changes.action(actedAt,"本人","忽略这条变更，保留当前安排",change.text);
             if (!c.changes.hasPending()) { c.needsConfirm = c.deadline == 0 || (!c.deadlineUserSet && c.changes.baseNeedsConfirm); c.reason = c.needsConfirm ? TIME_UNCERTAIN : ""; }
         }
         notifyChanged(); return true;
@@ -1781,7 +1791,11 @@ public class Engine {
 
     /** 移除误识别卡片，保留完整内容供用户恢复。 */
     public boolean dismissCard(Card card, long now) {
+        return dismissCard(card,now,"本人","移除事项，可在已移除列表恢复");
+    }
+    private boolean dismissCard(Card card,long now,String actor,String description) {
         if (card == null || now <= 0 || !cards.remove(card)) return false;
+        card.changes.action(now,actor,description,card.displayTitle());
         card.removedAt = now;
         removedCards.add(card);
         notifyChanged();
@@ -1796,7 +1810,10 @@ public class Engine {
 
     /** 已有更新的同题接龙时保留当前名单，避免恢复出两张提醒。 */
     public boolean restoreCard(Card card) {
-        if (card == null || !removedCards.contains(card)) return false;
+        return restoreCard(card,System.currentTimeMillis());
+    }
+    public boolean restoreCard(Card card,long actedAt) {
+        if (card == null || actedAt <= 0 || !removedCards.contains(card)) return false;
         for (Card active : cards) {
             if (card.cancelled && Objects.equals(card.groupId, active.groupId) && Objects.equals(card.title, active.title)) return false;
             if (card.id != null && card.id.equals(active.id)) return false;
@@ -1811,6 +1828,7 @@ public class Engine {
         card.removedAt = 0;
         if (card.cancelled) { card.cancelled = false; card.needsConfirm = true; card.reason = "该事项曾被来源取消，请核对后确认"; }
         cards.add(card);
+        card.changes.action(actedAt,"本人","从已移除列表恢复事项",card.displayTitle());
         notifyChanged();
         return true;
     }
@@ -1822,8 +1840,15 @@ public class Engine {
 
     /** null 保留当前时间，0 将时间标记为待确认。原始标题仍用于匹配群更正。 */
     public boolean editCard(Card card, String title, Long deadline) {
+        return editCard(card,title,deadline,System.currentTimeMillis());
+    }
+    public boolean editCard(Card card,String title,Long deadline,long actedAt) {
+        if(card==null || title==null || actedAt<=0 || !cards.contains(card))return false;
         String label = title.trim();
         if (!cards.contains(card) || label.isEmpty() || (deadline != null && deadline < 0)) return false;
+        String previousTitle=card.displayTitle();long previousTime=card.deadline;
+        boolean changed=!Objects.equals(previousTitle,label) || (deadline!=null && (!card.deadlineUserSet || previousTime!=deadline));
+        if(!changed)return true;
         card.titleOverride = label.equals(card.title) ? null : label;
         if (deadline != null) {
             card.deadlineUserSet = true;
@@ -1832,8 +1857,17 @@ public class Engine {
             card.needsConfirm = deadline == 0 || card.changes.hasPending();
             if (TIME_UNCERTAIN.equals(card.reason)) card.reason = "";
         }
+        String detail="标题："+previousTitle+" → "+card.displayTitle();
+        if(deadline!=null)detail+="\n时间："+absoluteTime(previousTime)+" → "+absoluteTime(card.deadline);
+        card.changes.action(actedAt,"本人",deadline==null?"修正事项标题":"核对事项标题和时间",detail);
         notifyChanged();
         return true;
+    }
+    public boolean setCardDone(Card card,boolean done,long actedAt) {
+        if(card==null || actedAt<=0 || !cards.contains(card) || card.done==done)return false;
+        card.done=done;
+        card.changes.action(actedAt,"本人",done?"标记事项已完成":"撤销完成，恢复待办",card.displayTitle());
+        notifyChanged();return true;
     }
 
     public static String humanDeadline(long ts) {
@@ -2017,7 +2051,7 @@ public class Engine {
                         && !"jielong".equals(c.kind)) {
                     c.reason = "AI 复核认为这不是需要你做的事" + (blank(v.note) ? "" : "：" + clip(v.note, 40))
                             + "。如有误可在“已移除的卡片”恢复";
-                    return dismissCard(c, now);
+                    return dismissCard(c,now,"AI 复核","复核认为无需处理，移入可恢复记录");
                 }
                 notifyChanged();
                 return true;
@@ -2040,9 +2074,9 @@ public class Engine {
             if (blank(c.place) && !blank(v.place)) { c.place = clip(v.place, 30); changed = true; }
             if (blank(c.channel) && !blank(v.channel) && !"jielong".equals(c.kind)) { c.channel = clip(v.channel, 20); changed = true; }
             if (blank(c.bring) && !blank(v.bring) && "exam".equals(c.kind)) { c.bring = clip(v.bring, 30); changed = true; }
-            boolean sure = c.deadlineUserSet || (!c.sourceTimeUncertain && !c.changes.hasPending() && plausibleDeadline(v.deadline, c.sourceTs)
+            boolean sure = !c.changes.hasPending() && (c.deadlineUserSet || (!c.sourceTimeUncertain && plausibleDeadline(v.deadline, c.sourceTs)
                     && c.deadline == v.deadline && v.timeSure && !blank(c.title)
-                    && !c.title.startsWith("待确认"));
+                    && !c.title.startsWith("待确认")));
             if (c.needsConfirm && sure) {
                 c.needsConfirm = false;
                 changed = true;

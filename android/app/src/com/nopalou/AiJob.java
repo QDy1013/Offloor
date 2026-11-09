@@ -149,7 +149,7 @@ public class AiJob extends JobService {
                     EngineHolder.diag(app, "收到", r.group + " · 图片转写 " + r.messages + "条");
                     AiQueue.remove(app, imgs);
                 } catch (java.io.FileNotFoundException gone) {
-                    AiQueue.remove(app, imgs);
+                    AiQueue.imageUnavailable(app,imgs);
                 } catch (AiClient.BudgetException e) {
                     run.halted = true; run.budgetWait=true; return false;
                 } catch (AiClient.AuthException e) {
