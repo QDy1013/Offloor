@@ -20,7 +20,7 @@ import android.widget.TextView;
 
 /**
  * 待办 / 课表 / 考试成绩 / 校园四个主页面之间的底部导航。
- * 悬浮圆角底座，图标与文字上下排列；选中图标衬浅靛蓝胶囊，
+ * 悬浮圆角底座，图标与文字上下排列；选中项整体衬浅靛蓝圆角背景，
  * 四项等宽，长标签与大字体也有独立空间；
  * 切换用 150ms 淡入淡出，不再整页横滑，像同一个 App 里换页而不是开新窗口。
  */
@@ -94,10 +94,9 @@ final class AppNavigation {
             tab.setContentDescription(title + (selected ? "，当前页面" : ""));
             tab.setSelected(selected);
             tab.setFocusable(true);
-            tab.setBackground(Ui.ripple(from, null, Ui.press(), 20));
+            tab.setBackground(Ui.ripple(from, selected ? Ui.round(from, Ui.ACCENT_BG, 20) : null, Ui.press(), 20));
             Ui.pressScale(tab, .96f);
             FrameLayout iconWell = new FrameLayout(from);
-            if (selected) iconWell.setBackground(Ui.round(from, Ui.ACCENT_BG, 16));
             tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from, 52), Ui.dp(from, 30)));
 
             ImageView icon = new ImageView(from);
