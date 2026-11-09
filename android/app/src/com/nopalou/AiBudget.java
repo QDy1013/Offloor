@@ -17,7 +17,8 @@ final class AiBudget {
     }
     static synchronized void reserve(Context c, int limit) throws IOException {
         AiBudgetCore b = load(c);
-        if (!b.reserve(System.currentTimeMillis(), limit)) throw new AiClient.BudgetException("已达到今日 AI 请求上限，明日继续；可在设置中调整");
+        int currentLimit=AiBudgetCore.limit(AiConfig.prefs(c).getInt("daily_limit",limit));
+        if (!b.reserve(System.currentTimeMillis(), currentLimit)) throw new AiClient.BudgetException("已达到今日 AI 请求上限，明日继续；可在设置中调整");
         if (!save(c, b)) throw new IOException("调用计数保存失败，本次未发送");
     }
     static synchronized void tokens(Context c, long tokens) { AiBudgetCore b = load(c); b.tokens(tokens); save(c, b); }
