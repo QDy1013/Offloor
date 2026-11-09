@@ -22,6 +22,10 @@ public class UpdateCatalogTest {
     public static void main(String[] args) throws Exception {
         UpdateCatalog t=new UpdateCatalog(catalog(PKG,item(PKG)),PKG,21);
         check("select matching variant",t.packageName.equals(PKG) && t.versionCode==22);
+        check("home notice appears for a newer compatible version",t.shouldNotify(21,CERT));
+        check("home notice stays hidden for the installed version",!t.shouldNotify(22,CERT));
+        check("home notice stays hidden after upgrading beyond cached metadata",!t.shouldNotify(23,CERT));
+        check("home notice never offers a different signing identity",!t.shouldNotify(21,"b".repeat(64)));
         check("same version may be downloaded again",new UpdateCatalog(catalog(PKG,item(PKG)),PKG,22).versionCode==22);
         rejects("downgrade rejected",() -> new UpdateCatalog(catalog(PKG,item(PKG)),PKG,23));
         rejects("another package is never used as fallback",() -> new UpdateCatalog(catalog(PKG,item(PKG)),"com.nopalou",1));

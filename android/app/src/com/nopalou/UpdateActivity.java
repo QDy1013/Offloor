@@ -45,9 +45,9 @@ public class UpdateActivity extends Activity {
         try { return a.getPackageManager().getPackageInfo(a.getPackageName(),0).versionName; } catch (Exception e) { return ""; }
     }
     private long installedVersion() throws Exception { return code(getPackageManager().getPackageInfo(getPackageName(),0)); }
-    private static long code(PackageInfo p) { return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():p.versionCode; }
-    private static int signatureFlags() { return Build.VERSION.SDK_INT>=28?PackageManager.GET_SIGNING_CERTIFICATES:PackageManager.GET_SIGNATURES; }
-    private static String certificate(PackageInfo p) throws Exception {
+    static long code(PackageInfo p) { return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():p.versionCode; }
+    static int signatureFlags() { return Build.VERSION.SDK_INT>=28?PackageManager.GET_SIGNING_CERTIFICATES:PackageManager.GET_SIGNATURES; }
+    static String certificate(PackageInfo p) throws Exception {
         Signature[] signatures=Build.VERSION.SDK_INT>=28 && p.signingInfo!=null?p.signingInfo.getApkContentsSigners():p.signatures;
         if (signatures==null || signatures.length!=1) throw new IOException("安装签名暂不支持");
         return UpdateCatalog.hex(MessageDigest.getInstance("SHA-256").digest(signatures[0].toByteArray()));
@@ -86,7 +86,7 @@ public class UpdateActivity extends Activity {
         if (directory==null) throw new IOException("下载存储暂不可用，请稍后重试");
         return new File(directory,"offloor-update-"+t.sha256+".apk");
     }
-    private String metadata() throws Exception {
+    static String metadata() throws Exception {
         String address=UpdateCatalog.LATEST+"?t="+System.currentTimeMillis();
         for (int redirects=0;redirects<4;redirects++) {
             if (!UpdateCatalog.metadataUrl(address)) throw new IOException("更新地址不受支持");

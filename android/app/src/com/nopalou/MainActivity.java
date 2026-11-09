@@ -75,6 +75,17 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView sub;
     /** 撞车提醒横幅：几天内几件事挤在一起时显示在统计句下方。 */
     TextView clashBanner;
+    private TextView updateBanner;
+    private final Runnable updateNoticeChanged = this::showUpdateNotice;
+    private void showUpdateNotice() {
+        if (isFinishing() || isDestroyed() || updateBanner==null) return;
+        UpdateCatalog next=UpdateNotice.available(this);
+        updateBanner.setVisibility(next==null?View.GONE:View.VISIBLE);
+        if (next!=null) {
+            String notes=next.notes.trim().replace('\n',' ');
+            updateBanner.setText("发现新版本 "+next.versionName+" · 点击更新  ›"+(notes.isEmpty()?"":"\n"+notes));
+        }
+    }
     TextView notifStatus;
     TextView empty;
     boolean accessChecked;
@@ -129,6 +140,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         @Override public void run() {
             if (!resumed) return;
             tickClock();
+            UpdateNotice.check(MainActivity.this, updateNoticeChanged);
             uiHandler.postDelayed(this, 60_000L - System.currentTimeMillis() % 60_000L);
         }
     };
@@ -206,6 +218,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
+        showUpdateNotice();
+        UpdateNotice.check(this, updateNoticeChanged);
         // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。
         try {
             android.service.notification.NotificationListenerService.requestRebind(
@@ -440,6 +454,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
         page.addView(top, lp(-1, dp(this, 60)));
+        updateBanner=uiText("",13,Ui.ACCENT,true);
+        updateBanner.setPadding(dp(this,16),dp(this,13),dp(this,16),dp(this,13));
+        updateBanner.setBackground(Ui.ripple(this,Ui.round(this,Ui.ACCENT_BG,18),Ui.press(),18));
+        updateBanner.setMaxLines(3); updateBanner.setEllipsize(TextUtils.TruncateAt.END);
+        updateBanner.setLineSpacing(dp(this,3),1f);
+        updateBanner.setOnClickListener(v -> startActivity(new Intent(this,UpdateActivity.class)));
+        updateBanner.setVisibility(View.GONE);
+        LinearLayout.LayoutParams updateLp=lp(-1,-2); updateLp.bottomMargin=dp(this,10);
+        page.addView(updateBanner,updateLp);
+        showUpdateNotice();
 
         // 今日概览：深墨渐变卡。日期 → 一句话结论 → 补充数量 → 未来七天的截止分布。
         hero = new LinearLayout(this);

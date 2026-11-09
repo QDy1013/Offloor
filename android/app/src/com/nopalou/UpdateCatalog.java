@@ -48,6 +48,9 @@ final class UpdateCatalog {
         notes=j.optString("notes",""); if (notes.length()>3000) throw new IOException("更新说明过长");
         json=new JSONObject().put("schema",1).put("packages",new JSONObject().put(packageName,j));
     }
+    boolean shouldNotify(long installedVersion,String installedCertificate) {
+        return versionCode>installedVersion && certificate.equals(installedCertificate);
+    }
     static boolean metadataUrl(String url) {
         try { URI u=new URI(url); return LATEST.equals(u.getScheme()+"://"+u.getRawAuthority()+u.getRawPath()) && u.getFragment()==null && u.getUserInfo()==null; }
         catch (Exception e) { return false; }
