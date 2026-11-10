@@ -1,0 +1,27 @@
+name: 核心与页面回归
+description: 在发布之前检查引擎 AI 适配和校园页面
+runs:
+  using: composite
+  steps:
+    - name: 安装浏览器测试依赖
+      shell: bash
+      run: |
+        npm --prefix eval/browser ci --ignore-scripts --no-audit --no-fund
+        node eval/browser/node_modules/playwright-core/cli.js install --with-deps chromium
+    - name: 准备校验过的 JVM JSON 实现
+      shell: bash
+      run: |
+        curl --fail --location --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar --output "$RUNNER_TEMP/org-json.jar"
+        printf '%s  %s\n' 3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed "$RUNNER_TEMP/org-json.jar" | sha256sum --check
+    - name: 引擎与 JSON 适配回归
+      shell: bash
+      run: python3 eval/run_checks.py --android-jar "$ANDROID_HOME/platforms/android-34/android.jar" --json-jar "$RUNNER_TEMP/org-json.jar" --out "$RUNNER_TEMP/core-checks.json"
+    - name: 校园页面回归
+      shell: bash
+      run: python3 eval/run_browser_checks.py --out "$RUNNER_TEMP/browser-checks.json"
+    - name: 独立会话场景回归
+      shell: bash
+      run: python3 eval/run_reliability.py --out "$RUNNER_TEMP/reliability-checks.json"
+    - name: 导出构造场景回放
+      shell: bash
+      run: python3 eval/run_showcase.py --out "$RUNNER_TEMP/showcase.json"

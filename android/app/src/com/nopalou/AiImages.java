@@ -15,15 +15,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 截图 / 图片消息识别：图片 → 视觉模型逐条转写 → 每条当成一条群消息走引擎（规则 → 复核）。
@@ -33,9 +30,12 @@ final class AiImages {
     static final String PKG_SCREENSHOT = "screenshot";
     static final String PKG_SHARE = "share";
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
-    private static final Pattern HM = Pattern.compile("(?:^|\\D)([01]?\\d|2[0-3])[:：]([0-5]\\d)(?!\\d)");
+    private static final java.util.Set<String> CAPTURING = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     private AiImages() { }
+    static void cleanupCache(Context c) {
+        IO.execute(() -> { try { AiQueue.cleanupImages(c); } catch(RuntimeException error) { EngineHolder.diag(c,"队列","图片缓存整理暂未完成"); } });
+    }
 
     static final class Result {
         int messages, added, reviewed;
@@ -80,21 +80,37 @@ final class AiImages {
     static void fromNotification(Context ctx, Uri uri, String gid, String group, String sender, String pkg, long ts) {
         if (!AiConfig.load(ctx).visionReady()) return;
         final Context app = ctx.getApplicationContext();
+        Engine engine = EngineHolder.get(app); // 通知回调在主线程，记录接收时的数据批次。
+        if (engine == null) return;
+        final String imageId=NotifFilter.messageId("i",pkg,gid,sender,uri.toString(),ts);
+        if(engine.notificationSeen(imageId) || !CAPTURING.add(imageId))return;
+        final Engine.Escalation request = engine.beginImageRequest(new Engine.Msg("image", gid, group, sender, "", pkg, ts));
+        if (!EngineHolder.saveIfChanged(app)) { CAPTURING.remove(imageId);return; }
         IO.execute(() -> {
             try {
                 byte[] jpeg = loadJpeg(app, uri);
                 File dir = new File(app.getCacheDir(), "ai-img");
                 if (!dir.isDirectory() && !dir.mkdirs()) return;
-                File f = new File(dir, "n" + Math.abs((gid + "|" + uri + "|" + ts).hashCode()) + ".jpg");
+                AiQueue.cleanupImages(app);
+                long used=0; File[] cached=dir.listFiles();
+                if(cached!=null) for(File file:cached) if(file.isFile()) used+=file.length();
+                if(jpeg.length>4*1024*1024 || used+jpeg.length>64L*1024*1024) throw new IOException("图片缓存已满");
+                File f = new File(dir, java.util.UUID.randomUUID() + ".jpg");
                 try (FileOutputStream out = new FileOutputStream(f)) { out.write(jpeg); }
                 AiQueue.add(app, new JSONObject()
-                        .put("type", "img").put("key", "img:" + f.getName()).put("path", f.getAbsolutePath())
+                        .put("type", "img").put("key", "img:" + imageId).put("path", f.getAbsolutePath())
+                        .put("epoch", request.epoch).put("scopeVersion", request.scopeVersion).put("profileKey", request.profileKey)
                         .put("groupId", gid).put("groupName", group).put("sender", sender)
                         .put("pkg", pkg).put("ts", ts));
+                onMain(() -> {
+                    Engine current=EngineHolder.get(app);
+                    if(current!=null && request.epoch.equals(current.aiEpoch()) && current.acknowledgeImage(imageId)) EngineHolder.save(app);
+                    return null;
+                });
                 AiJob.schedule(app);
             } catch (Exception e) {
                 EngineHolder.diag(app, "跳过", "通知图片读取失败：" + e.getClass().getSimpleName());
-            }
+            } finally { CAPTURING.remove(imageId); }
         });
     }
 
@@ -106,28 +122,42 @@ final class AiImages {
      */
     static Result recognize(Context ctx, byte[] jpeg, String gid, String group, String pkg,
                             String sender, long ts, boolean reviewNow) throws Exception {
+        return recognize(ctx, jpeg, gid, group, pkg, sender, ts, reviewNow, beginRequest(ctx, gid, group, pkg, sender, ts));
+    }
+
+    static Engine.Escalation beginRequest(Context ctx, String gid, String group, String pkg, String sender, long ts) throws Exception {
+        return onMain(() -> {
+            Engine eng = EngineHolder.get(ctx);
+            if (eng == null) throw new IOException("引擎不可用");
+            return eng.beginImageRequest(new Engine.Msg("image", gid == null ? "" : gid, group, sender, "", pkg, ts));
+        });
+    }
+
+    static Result recognize(Context ctx, byte[] jpeg, String gid, String group, String pkg,
+                            String sender, long ts, boolean reviewNow, Engine.Escalation request) throws Exception {
         AiConfig cfg = AiConfig.load(ctx);
         if (!cfg.ready()) throw new IOException("还没有配置 AI 识别接口");
         if (!cfg.visionReady()) throw new AiClient.AuthException("没有填写图片模型，截图识别不可用");
         AiClient client = new AiClient(cfg);
         AiClient.Shot shot = client.ocr(jpeg);
-        return ingest(ctx, client, shot.messages, shot.group, gid, group, pkg, sender, ts, reviewNow);
+        return ingest(ctx, client, shot.messages, shot.group, gid, group, pkg, sender, ts, reviewNow, request);
     }
 
     /** 分享过来的纯文本：不需要模型也能走规则；配置了模型再当场复核。 */
     static Result recognizeText(Context ctx, String text, long now) throws Exception {
+        final Engine.Escalation request = beginRequest(ctx, null, "分享的文字", PKG_SHARE, "分享", now);
         List<String[]> lines = new ArrayList<>();
         for (String part : text.split("\\n\\s*\\n")) {
             String t = part.trim();
             if (!t.isEmpty()) lines.add(new String[]{"", "", t});
         }
         AiConfig cfg = AiConfig.load(ctx);
-        return ingest(ctx, cfg.ready() ? new AiClient(cfg) : null, lines, "", null, "分享的文字", PKG_SHARE, "分享", now, true);
+        return ingest(ctx, cfg.ready() ? new AiClient(cfg) : null, lines, "", null, "分享的文字", PKG_SHARE, "分享", now, true, request);
     }
 
     private static Result ingest(Context ctx, AiClient client, List<String[]> lines, String shotGroup,
                                  String gid, String group, String pkg, String sender, long ts,
-                                 boolean reviewNow) throws Exception {
+                                 boolean reviewNow, Engine.Escalation request) throws Exception {
         final Context app = ctx.getApplicationContext();
         final Result r = new Result();
         final String groupName = gid != null ? group
@@ -140,6 +170,7 @@ final class AiImages {
         onMain(() -> {
             Engine eng = EngineHolder.get(app);
             if (eng == null) throw new IOException("引擎不可用");
+            if (!eng.currentRequest(request)) throw new IOException("识别期间事项、档案或群设置已变化，旧结果未导入，请重新识别");
             if (userShared && Engine.MODE_NORMAL.equals(eng.groupMode(groupId))) {
                 // 用户主动分享的内容，默认按“重点关注”处理：不被“与我无关的课程群”规则挡掉
                 eng.setGroupMode(groupId, groupName, pkg, Engine.MODE_FOCUS, System.currentTimeMillis());
@@ -151,8 +182,10 @@ final class AiImages {
                 for (String[] line : lines) {
                     String who = Engine.blank(line[0]) ? (Engine.blank(sender) ? "群友" : sender) : line[0];
                     long at = messageTime(line[1], ts);
-                    String id = "s" + Math.abs((groupId + "|" + who + "|" + line[2]).hashCode()) + "_" + (at / 60_000L);
-                    eng.process(new Engine.Msg(id, groupId, groupName, who, line[2], pkg, at));
+                    String id = NotifFilter.messageId("s", pkg, groupId, who, line[2], at / 60_000L);
+                    Engine.Msg message = new Engine.Msg(id, groupId, groupName, who, line[2], pkg, at);
+                    message.timeUncertain = userShared && ChatTime.needsTimeConfirmation(line[1], line[2]);
+                    eng.process(message);
                 }
             } finally {
                 eng.escalator = saved;
@@ -185,30 +218,7 @@ final class AiImages {
 
     /** 截图里的时间原文 → 毫秒：带日期的按日期算；只有“20:05”的取不晚于现在的那一次；看不出就用兜底时间。 */
     static long messageTime(String raw, long fallback) {
-        if (Engine.blank(raw)) return fallback;
-        long now = fallback > 0 ? fallback : System.currentTimeMillis();
-        String v = raw.trim();
-        Matcher m = HM.matcher(v);
-        boolean onlyClock = m.find() && v.replaceAll("[0-9:：\\s上下午晚早]", "").isEmpty();
-        if (onlyClock) {
-            Calendar c = Calendar.getInstance();
-            c.setTimeInMillis(now);
-            int hour = Integer.parseInt(m.group(1));
-            if ((v.contains("下午") || v.contains("晚")) && hour < 12) hour += 12;
-            c.set(Calendar.HOUR_OF_DAY, hour);
-            c.set(Calendar.MINUTE, Integer.parseInt(m.group(2)));
-            c.set(Calendar.SECOND, 0);
-            c.set(Calendar.MILLISECOND, 0);
-            long t = c.getTimeInMillis();
-            return t > now + 60_000L ? t - 86400_000L : t;
-        }
-        if (v.contains("昨天")) {
-            long base = now - 86400_000L;
-            return m.find(0) ? messageTime(m.group(1) + ":" + m.group(2), base) : base;
-        }
-        Engine.Deadline d = Engine.parseDeadline(v, now);
-        if (d.ok() && d.value <= now + 60_000L && d.value > now - 60L * 86400_000L) return d.value;
-        return fallback;
+        return ChatTime.screenshotTime(raw, fallback);
     }
 
     static <T> T onMain(Callable<T> task) throws Exception {

@@ -1,5 +1,7 @@
 """从源码构建两个签名 APK，需要 Android SDK 34、Build Tools 34.0.0 和 JDK 17+。"""
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -13,6 +15,23 @@ ROOT = Path(__file__).resolve().parent
 
 def run(*args):
     subprocess.run([str(arg) for arg in args], check=True)
+
+
+def provenance(src):
+    def git(*args):
+        result = subprocess.run(["git", *args], cwd=ROOT.parent, capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+    digest = hashlib.sha256()
+    for file in sorted(p for p in src.rglob("*") if p.is_file()):
+        name=file.relative_to(src).as_posix()
+        if name == "assets/build-info.json": continue
+        data=file.read_bytes()
+        digest.update(name.encode("utf-8")+b"\0"+hashlib.sha256(data).digest())
+    model=src/"assets/model.tsv"
+    return {"schema":1,"gitCommit":git("rev-parse","HEAD"),"gitTree":git("rev-parse","HEAD^{tree}"),
+            "dirty":bool(git("status","--porcelain","--untracked-files=all")),"sourceSha256":digest.hexdigest(),
+            "modelSha256":hashlib.sha256(model.read_bytes()).hexdigest() if model.exists() else None,
+            "package":ET.parse(src/"AndroidManifest.xml").getroot().get("package")}
 
 
 def build(name: str, src: Path, stage: Path, sdk: Path, keystore: Path) -> Path:
@@ -49,6 +68,7 @@ def build(name: str, src: Path, stage: Path, sdk: Path, keystore: Path) -> Path:
     run(d8, "--lib", android_jar, "--min-api", "24", "--output", dex, class_archive)
     with ZipFile(base, "a", ZIP_DEFLATED) as archive:
         archive.write(dex / "classes.dex", "classes.dex")
+        archive.writestr("assets/build-info.json",json.dumps(provenance(src),ensure_ascii=False,sort_keys=True)+"\n")
     run(align, "-f", "4", base, aligned)
     run(signer, "sign", "--ks", keystore, "--ks-key-alias", "androiddebugkey",
         "--ks-pass", "pass:android", "--key-pass", "pass:android",

@@ -57,7 +57,7 @@ class EngineSnapshot:
         return self.cards
 
 
-def run_java(rows: list[dict], java: str, javac: str, timing: bool = False) -> EngineSnapshot:
+def run_java(rows: list[dict], java: str, javac: str, timing: bool = False, source_ref: str | None = None) -> EngineSnapshot:
     app = ROOT / "android" / "app"
     fields = ("msg_id", "group_id", "group_name", "sender", "text")
     messages = "".join(
@@ -67,10 +67,16 @@ def run_java(rows: list[dict], java: str, javac: str, timing: bool = False) -> E
         for row in rows
     )
     with TemporaryDirectory(prefix="nopalou-java-eval-", dir=Path.cwd()) as classes:
+        source = app / "src/com/nopalou"
+        if source_ref:
+            source = Path(classes) / "sources"; source.mkdir()
+            for name in ("Engine", "StateFormat", "TaskChanges", "ChangeDiff"):
+                result = subprocess.run(["git", "show", f"{source_ref}:android/app/src/com/nopalou/{name}.java"],cwd=ROOT,capture_output=True)
+                if result.returncode == 0: (source / (name + ".java")).write_bytes(result.stdout)
         subprocess.run(
             [javac, "-encoding", "UTF-8", "-d", classes,
-             str(app / "src" / "com" / "nopalou" / "Engine.java"),
-             str(app / "src" / "com" / "nopalou" / "ChangeDiff.java"), str(ROOT / "eval" / "EngineEval.java")],
+             *[str(source / (name + ".java")) for name in ("Engine", "StateFormat", "TaskChanges", "ChangeDiff") if (source / (name + ".java")).exists()],
+             str(ROOT / "eval" / "EngineEval.java")],
             check=True,
         )
         result = subprocess.run(
@@ -99,6 +105,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, help="另存对照 JSON 报告的路径")
     parser.add_argument("--timing", action="store_true", help="附加桌面 JVM 中 Engine.process 的耗时统计")
+    parser.add_argument("--source-ref", help="可选，回放指定 Git 提交中的 Java 引擎，模型仍为当前未变的权重")
     args = parser.parse_args()
     java, javac = shutil.which("java"), shutil.which("javac")
     if not java or not javac:
@@ -108,14 +115,14 @@ def main() -> None:
     cut = int(len(rows) * 0.7)
     train_rows, hold = rows[:cut], rows[cut:]
     split, train_texts = split_report(train_rows, hold)
-    java_snapshot = run_java(hold, java, javac, args.timing)
+    java_snapshot = run_java(hold, java, javac, args.timing, args.source_ref)
     python_pipeline = Pipeline(Model(ROOT / "engine" / "model.json"))
     python_jielong_ids = set()
     for row in hold:
         python_jielong_ids.update(card.source_msg_id for card in python_pipeline.process(row)
                                   if card.kind == "jielong")
 
-    report = {"split": split}
+    report = {"split": split, "java_source_ref": args.source_ref or "working tree"}
     for name, engine, reminder_ids in (
         ("Java", java_snapshot, java_snapshot.jielong_ids),
         ("Python", python_pipeline, python_jielong_ids),

@@ -128,7 +128,7 @@ public final class Step39Test {
         say(old, "g9", "老课程群", "王老师", report, NOW);
         ByteArrayOutputStream legacy = new ByteArrayOutputStream();
         old.saveState(legacy);
-        String noGroups = legacy.toString("UTF-8").replaceAll("(?m)^GROUP\t.*\n", "");
+        String noGroups = legacy.toString("UTF-8").replaceAll("(?m)^(?:GROUP|FORMAT|CHECKSUM)\t.*\n", "");
         Engine up = fresh();
         up.loadState(new ByteArrayInputStream(noGroups.getBytes("UTF-8")));
         List<Engine.GroupInfo> seeded = up.groupList();

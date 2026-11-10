@@ -44,13 +44,6 @@ public class NotifListener extends NotificationListenerService {
     /** MessagingStyle 里更早的历史消息（EXTRA_HISTORIC_MESSAGES），部分聊天软件会放在这里。 */
     private static final String KEY_HISTORIC = "android.messages.historic";
 
-    /** 已处理消息编号的存档：同一条消息被重复推送或重复扫描时直接跳过。 */
-    private static final String SEEN_PREFS = "notif_seen";
-    private static final String KEY_SEEN = "ids";
-    /** 只记最近这么多条：够覆盖通知栏里的消息，以及导入的一个月群记录。 */
-    private static final int SEEN_MAX = 8000;
-    private static LinkedHashSet<String> seen;
-
     /** 当前连上的服务实例；界面点「扫描历史」时通过它读通知栏。没连上时为 null。 */
     private static volatile NotifListener instance;
 
@@ -93,7 +86,8 @@ public class NotifListener extends NotificationListenerService {
         // 整个方法体都包在 try/catch(Throwable) 里：这里一抛异常，系统就会解绑服务，之后就再也收不到消息。
         try {
             int[] counts = new int[2];
-            if (!handle(sbn, counts, false)) return;
+            boolean fresh = handle(sbn, counts, false);
+            if (!fresh && (sbn == null || !NotifFilter.accept(sbn.getPackageName()))) return;
             // 全部处理成功才存盘和记"收到"。
             finishBatch();
         } catch (Throwable t) {
@@ -203,15 +197,16 @@ public class NotifListener extends NotificationListenerService {
         for (NotifParser.Parsed p : NotifParser.media(title, text, msgSenders, msgTexts, msgTimes, isSummary)) {
             long sentAt = p.time > 0 ? p.time : sbn.getPostTime();
             if (sentAt <= 0) sentAt = System.currentTimeMillis();
-            String id = "m" + group.hashCode() + "_" + (p.sender + "|" + p.body).hashCode() + "_" + sentAt;
-            if (!markSeen(this, id)) continue;
+            String id = NotifFilter.messageId("m", sbn.getPackageName(), gid, p.sender, p.body, sentAt);
+            if (wasSeen(this, id)) continue;
             String placeholder = p.body.replace("[有全体消息]", "");
             if (eng.noteMedia(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt), placeholder)) media++;
+            markSeen(this, id);
         }
         for (int i = 0; i < imageUris.size(); i++) {
             long at = imageTimes.get(i) > 0 ? imageTimes.get(i) : sbn.getPostTime();
             // 会话通知每次都带上前面的旧消息：同一张图只识别一次
-            if (!markSeen(this, "i" + (gid + "|" + imageUris.get(i) + "|" + at).hashCode())) continue;
+            if (wasSeen(this, NotifFilter.messageId("i", sbn.getPackageName(), gid, imageSenders.get(i), imageUris.get(i).toString(), at))) continue;
             AiImages.fromNotification(this, imageUris.get(i), gid, group, imageSenders.get(i),
                     sbn.getPackageName(), at);
         }
@@ -232,13 +227,10 @@ public class NotifListener extends NotificationListenerService {
             long sentAt = p.time > 0 ? p.time : sbn.getPostTime();
             if (sentAt <= 0) sentAt = System.currentTimeMillis();
             // 消息编号：同一群同一发送者同一正文同一时间视为同一条，避免重复出卡。
-            String id = "n" + group.hashCode() + "_"
-                    + (p.sender + "|" + p.body).hashCode() + "_"
-                    + (p.time > 0 ? p.time : sbn.getPostTime());
+            String id = NotifFilter.messageId("n", sbn.getPackageName(), gid, p.sender, p.body, sentAt);
             counts[0]++;
             // 会话通知每次都会带上前面几条旧消息，扫描也会读到处理过的消息：处理过的直接跳过。
-            if (!markSeen(this, id)) continue;
-            eng.process(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt));
+            if (!eng.processNotification(new Engine.Msg(id, gid, group, p.sender, p.body, sbn.getPackageName(), sentAt), false)) continue;
             fresh++;
         }
         counts[1] += fresh;
@@ -282,8 +274,9 @@ public class NotifListener extends NotificationListenerService {
         EngineHolder.persistLast(this);
         if (!EngineHolder.saveIfChanged(this)) {
             EngineHolder.diag(this, "出错", "卡片保存失败，等待下次通知重试");
+            return; // 卡片尚未落盘时不能先提交去重记录，否则重启后无法重新扫描这条通知。
         }
-        saveSeen(this);
+        // 通知编号与卡片在同一快照中提交；备份恢复时两者一并回退。
     }
 
     /**
@@ -320,12 +313,11 @@ public class NotifListener extends NotificationListenerService {
         int fresh = 0;
         for (int i = 0; i < bodies.size(); i++) {
             String body = bodies.get(i);
-            String id = "p" + pkg.hashCode() + "_" + (title + "|" + body).hashCode() + "_" + sbn.getPostTime() + "_" + i;
+            String id = NotifFilter.messageId("p", pkg, title, app, body, sbn.getPostTime());
             counts[0]++;
-            if (!markSeen(this, id)) continue;
-            EngineHolder.diag(this, "平台", app + "｜" + title + "｜" + body);
+            EngineHolder.diag(this, "平台", app + " · 收到文字 " + body.length() + " 字");
             long at = sbn.getPostTime() > 0 ? sbn.getPostTime() : System.currentTimeMillis();
-            eng.processPlatform(new Engine.Msg(id, NotifFilter.groupId(pkg, title), title, app, body, pkg, at));
+            if (!eng.processNotification(new Engine.Msg(id, NotifFilter.groupId(pkg, title), title, app, body, pkg, at), true)) continue;
             fresh++;
         }
         counts[1] += fresh;
@@ -379,7 +371,7 @@ public class NotifListener extends NotificationListenerService {
                 }
                 r.messages = counts[0];
                 r.fresh = counts[1];
-                if (changed) finishBatch();
+                if (changed || (eng != null && eng.hasStateChanges())) finishBatch();
             }
         } catch (Throwable t) {
             EngineHolder.diag(this, "出错", "扫描通知栏：" + t.getClass().getSimpleName() + ": " + t.getMessage());
@@ -398,40 +390,14 @@ public class NotifListener extends NotificationListenerService {
         return r;
     }
 
-    /** 记下一条消息编号。第一次见返回 true，处理过返回 false。 */
+    /** 编号随引擎快照保存，不能与卡片使用不同的恢复版本。 */
+    static synchronized boolean wasSeen(Context ctx, String id) {
+        Engine engine = EngineHolder.get(ctx);
+        return engine != null && engine.notificationSeen(id);
+    }
     static synchronized boolean markSeen(Context ctx, String id) {
-        loadSeen(ctx);
-        if (seen.contains(id)) return false;
-        seen.add(id);
-        if (seen.size() > SEEN_MAX) {
-            java.util.Iterator<String> it = seen.iterator();
-            while (seen.size() > SEEN_MAX && it.hasNext()) {
-                it.next();
-                it.remove();
-            }
-        }
-        return true;
-    }
-
-    private static synchronized void loadSeen(Context ctx) {
-        if (seen != null) return;
-        seen = new LinkedHashSet<>();
-        try {
-            String raw = ctx.getApplicationContext().getSharedPreferences(SEEN_PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_SEEN, "");
-            if (raw != null && !raw.isEmpty()) seen.addAll(Arrays.asList(raw.split("\n")));
-        } catch (Throwable ignored) {
-            // 读不到就从空集合开始，最多让引擎自己的去重兜底。
-        }
-    }
-
-    static synchronized void saveSeen(Context ctx) {
-        if (seen == null) return;
-        try {
-            SharedPreferences sp = ctx.getApplicationContext().getSharedPreferences(SEEN_PREFS, Context.MODE_PRIVATE);
-            sp.edit().putString(KEY_SEEN, android.text.TextUtils.join("\n", seen)).apply();
-        } catch (Throwable ignored) {
-        }
+        Engine engine = EngineHolder.get(ctx);
+        return engine != null && engine.markNotification(id);
     }
 
     @Override
@@ -475,7 +441,11 @@ public class NotifListener extends NotificationListenerService {
 
     @Override
     public void onDestroy() {
-        if (instance == this) instance = null;
+        if (instance == this) {
+            instance = null;
+            EngineHolder.listenerConnected = false;
+            EngineHolder.refreshCards();
+        }
         super.onDestroy();
     }
 

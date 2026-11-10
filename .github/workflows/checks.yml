@@ -1,0 +1,37 @@
+name: 候选版检查
+on:
+  pull_request:
+  push:
+    branches: ['codex/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 准备 Android SDK
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-34' 'build-tools;34.0.0' > /dev/null
+      - uses: ./.github/actions/checks
+      - name: 构建独立测试包
+        run: python3 android/build.py --sdk "$ANDROID_HOME" --preview --out "$RUNNER_TEMP/check-build"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checks
+          path: |
+            ${{ runner.temp }}/core-checks.json
+            ${{ runner.temp }}/browser-checks.json
+            ${{ runner.temp }}/reliability-checks.json
+            ${{ runner.temp }}/showcase.json

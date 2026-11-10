@@ -11,6 +11,9 @@ on:
     branches: [main]
     paths:
       - "android/**"
+      - "eval/**"
+      - "engine/**"
+      - ".github/actions/checks/**"
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
@@ -38,11 +41,18 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: 准备 Android SDK（Platform 34 + Build Tools 34.0.0）
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: 核心回归（失败则不发布）
+        uses: ./.github/actions/checks
 
       - name: 还原签名文件
         env:
@@ -66,6 +76,24 @@ jobs:
           if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then
             echo "::error::签名和手机上已装的 Offloor 不一致（应为 $EXPECTED_CERT_SHA256）。这样的包不能覆盖安装，已停止发布。请换成正式渠道用的那个 keystore。"
             exit 1
+          fi
+
+      - name: 读取应用更新渠道
+        uses: actions/checkout@v4
+        with:
+          ref: updates
+          path: update-feed
+
+      - name: 发布同一安装包到应用更新目录
+        run: |
+          SUBJECT=$(git log -1 --format=%s)
+          python3 android/prepare_updates.py --sdk "$ANDROID_HOME" --out update-feed --existing update-feed/latest.json --apk "$RUNNER_TEMP/out/nopalou.apk" --notes "$SUBJECT"
+          git -C update-feed config user.name 'github-actions[bot]'
+          git -C update-feed config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C update-feed add -- latest.json apks
+          if ! git -C update-feed diff --cached --quiet; then
+            git -C update-feed commit -m "Publish app update from $GITHUB_SHA"
+            git -C update-feed push origin HEAD:updates
           fi
 
       - name: 发布到 Releases

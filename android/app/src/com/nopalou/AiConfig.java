@@ -19,11 +19,20 @@ final class AiConfig {
 
     final boolean enabled;
     final String base, key, model, vision, mode;
+    final String keyError;
+    final Context context;
+    final int dailyLimit;
 
-    private AiConfig(SharedPreferences p) {
+    private AiConfig(Context c) {
+        context = c.getApplicationContext() == null ? c : c.getApplicationContext();
+        SharedPreferences p = prefs(context);
+        String secret = "", issue = "";
+        try { secret = AiSecrets.read(p); }
+        catch (Exception e) { issue = "密钥无法从系统密钥库读取，请重新填写并保存"; }
+        key = secret; keyError = issue;
+        dailyLimit = AiBudgetCore.limit(p.getInt("daily_limit", 30));
         enabled = p.getBoolean("enabled", false);
         base = trimBase(p.getString("base", DEFAULT_BASE));
-        key = p.getString("key", "").trim();
         model = orDefault(p.getString("model", DEFAULT_MODEL), DEFAULT_MODEL);
         // 图片模型可以留空：所选服务不支持看图时只做文字复核
         vision = p.getString("vision", DEFAULT_VISION).trim();
@@ -31,7 +40,7 @@ final class AiConfig {
     }
 
     static AiConfig load(Context c) {
-        return new AiConfig(prefs(c));
+        return new AiConfig(c);
     }
 
     static SharedPreferences prefs(Context c) {
@@ -53,15 +62,20 @@ final class AiConfig {
         return ready() && !vision.isEmpty();
     }
 
-    static void save(Context c, boolean enabled, String base, String key, String model, String vision, String mode) {
-        prefs(c).edit()
+    static void save(Context c, boolean enabled, String base, String key, String model, String vision, String mode, int dailyLimit) {
+        final String encrypted;
+        try { encrypted = AiSecrets.encode(key == null ? "" : key.trim()); }
+        catch (Exception e) { throw new IllegalStateException("系统密钥库暂时不可用，设置未保存，请稍后重试"); }
+        boolean saved = prefs(c).edit()
                 .putBoolean("enabled", enabled)
                 .putString("base", trimBase(base))
-                .putString("key", key == null ? "" : key.trim())
+                .putString("key_cipher", encrypted).remove("key")
+                .putInt("daily_limit", AiBudgetCore.limit(dailyLimit))
                 .putString("model", orDefault(model, DEFAULT_MODEL))
                 .putString("vision", vision == null ? "" : vision.trim())
                 .putString("mode", MODE_CHARGING.equals(mode) ? MODE_CHARGING : MODE_NOW)
-                .apply();
+                .commit();
+        if (!saved) throw new IllegalStateException("设置保存失败，请重试");
     }
 
     static String trimBase(String b) {
@@ -79,9 +93,14 @@ final class AiConfig {
     static String summary(Context c) {
         AiConfig a = load(c);
         if (!a.enabled) return "未开启 · 只用本机规则识别";
+        if (!a.keyError.isEmpty()) return a.keyError;
         if (!a.ready()) return "已开启但还没填好接口";
+        if (AiQueue.storageBlocked(c)) return "队列存档异常 · 可先清空队列后重试，本机卡片不受影响";
         int n = AiQueue.size(c);
+        int failed = AiQueue.failedCount(c);
         return (MODE_CHARGING.equals(a.mode) ? "充电时批量复核" : "有网即复核")
-                + (n > 0 ? " · 排队 " + n + " 条" : " · 队列已清空");
+                + (n > 0 ? " · 排队 " + n + " 条" : " · 无待处理请求")
+                + (failed > 0 ? " · " + failed + " 条失败，请查看原因" : "")
+                + "\n" + AiBudget.summary(c, a.dailyLimit);
     }
 }

@@ -81,6 +81,11 @@ REVISION_STOP = ("刚才", "上条", "之前", "那条", "截止", "更正",
 REVISION_PRONOUN_NEAR = ("刚才", "刚刚", "那条")
 # "之前"类指代词：原发送者本人说时，取此人在本群最新的一张卡，不限时间
 REVISION_PRONOUN_FAR = ("之前", "上条", "上面", "前面")
+GENERIC_HOMEWORK_REVISION = re.compile(
+    r"(?:^|[，,。；;\s])(?:这次|本次|此次)?作业\s*(?:截止(?:时间)?|提交时间|时间)?\s*"
+    r"(?:改到|改为|改成|调整为|延期到|推迟到|顺延到|提前到)"
+)
+HOMEWORK_SUBJECTS = ("作业", "实验报告", "预习报告", "课后习题", "读书报告", "读书笔记", "读书心得")
 
 AT_ALL_RE = re.compile(r"@\s*所有人|@\s*全体|\[有全体消息\]")
 
@@ -393,6 +398,9 @@ class Pipeline:
         if rev:
             target = self._revision_target(
                 msg, text, title_only=(rev == "supersede" and self._natural_revision_only(text)))
+            if self._revision_ambiguous:
+                self._remember(msg)
+                return produced
             if target is not None:
                 if rev == "revoke":
                     target.revoked = True
@@ -713,6 +721,7 @@ class Pipeline:
         指代词分两类："刚才"类只认 30 分钟内发的，"之前"类由原发送者本人说时
         不限时间，取此人在本群最新的一张卡。
         """
+        self._revision_ambiguous = False
         sender = msg.get("sender") or ""
         text = AT_ALL_RE.sub(" ", text)
         gid = msg.get("group_id") or ""
@@ -731,6 +740,8 @@ class Pipeline:
             keys.add(g)
         best = None
         best_score = 0
+        tied = False
+        best_matches = []
         for c in reversed(self.cards):
             if c.group_id != gid:
                 continue
@@ -744,21 +755,47 @@ class Pipeline:
             score = sum(g in blob for g in keys)
             if score > best_score:
                 best, best_score = c, score
+                tied = False
+                best_matches = [c]
+            elif score > 0 and score == best_score:
+                tied = True
+                best_matches.append(c)
         if best is not None:
-            return best
+            return self._defer_revision(text, best_matches) if tied else best
+        if sender and GENERIC_HOMEWORK_REVISION.search(text):
+            homework = [c for c in self.cards
+                        if c.group_id == gid and c.sender == sender and not c.revoked and c.kind == "todo"
+                        and 0 <= (ts - c.sent_at).total_seconds() <= 7 * 86400
+                        and any(word in (c.source_text or "") for word in HOMEWORK_SUBJECTS)]
+            if len(homework) > 1:
+                return self._defer_revision(text, homework)
+            if homework:
+                return homework[0]
         if title_only:
             return None
+        source_matches = [c for c in self.cards if c.group_id == gid and not c.revoked
+                          and (trusted or sender == c.sender)
+                          and any(key in (c.source_text or "") for key in keys)]
+        if source_matches:
+            return source_matches[0] if len(source_matches) == 1 else self._defer_revision(text, source_matches)
         for c in reversed(self.cards):
             if c.group_id != gid or c.revoked or (not trusted and sender != c.sender):
                 continue
-            if any(key in (c.source_text or "") for key in keys):
-                return c
             if near:
                 dt = (ts - c.sent_at).total_seconds()
                 if 0 <= dt <= 30 * 60:
                     return c
             if far and sender == c.sender:
                 return c
+        return None
+
+    def _defer_revision(self, text: str, matches: list[Card]) -> None:
+        self._revision_ambiguous = True
+        for card in matches:
+            card.needs_confirm = True
+            reason = "群里有变更，但对应事项不明确，请核对：" + text[:80]
+            if reason not in card.reasons:
+                card.reasons.append(reason)
         return None
 
     # ---- 输出

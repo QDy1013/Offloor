@@ -53,4 +53,14 @@ public final class NotifFilter {
         }
         return -1;
     }
+
+    static String messageId(String kind, String pkg, String group, String sender, String body, long sentAt) {
+        StringBuilder key = new StringBuilder();
+        for (String value : new String[]{kind, pkg, group, sender, body, String.valueOf(sentAt)}) {
+            key.append(value == null ? -1 : value.length()).append(':');
+            if (value != null) key.append(value);
+        }
+        try { return kind + StateFormat.digest(key.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        catch (Exception error) { throw new IllegalStateException(error); }
+    }
 }
