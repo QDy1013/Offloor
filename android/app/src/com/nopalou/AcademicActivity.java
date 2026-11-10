@@ -320,7 +320,7 @@ public class AcademicActivity extends Activity {
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.BOTTOM); c.addView(top);
         LinearLayout left = CourseUi.column(this); top.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
         left.addView(text("总绩点", 12, Ui.SUB, true));
-        TextView big = text(data.gpa == null ? "—" : String.format(Locale.ROOT, "%.2f", data.gpa), 44, Ui.TEXT, true);
+        TextView big = text(data.gpa == null ? "—" : formatGpa(data.gpa), 44, Ui.TEXT, true);
         big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); big.setIncludeFontPadding(false); big.setPadding(0, dp(6), 0, 0);
         left.addView(big);
         double credits = Academic.credits(data.grades); int courses = data.grades.size();
@@ -337,7 +337,7 @@ public class AcademicActivity extends Activity {
             LinearLayout cap = new LinearLayout(this); cap.setGravity(Gravity.CENTER_VERTICAL); c.addView(cap);
             cap.addView(text("学期绩点走势", 12, Ui.SUB, true), new LinearLayout.LayoutParams(0, -2, 1));
             double delta = values.get(values.size() - 1) - values.get(values.size() - 2);
-            if (Math.abs(delta) >= 0.005) cap.addView(Ui.tag(this, (delta > 0 ? "↑ " : "↓ ") + String.format(Locale.ROOT, "%.2f", Math.abs(delta)),
+            if (Math.abs(delta) >= 0.0005) cap.addView(Ui.tag(this, (delta > 0 ? "↑ " : "↓ ") + formatGpa(Math.abs(delta)),
                     delta > 0 ? Ui.GREEN : Ui.ORANGE, delta > 0 ? Ui.GREEN_BG : Ui.ORANGE_BG));
             CourseUi.gap(c, 10);
             Trend trend = new Trend(this, labels, values);
@@ -347,7 +347,7 @@ public class AcademicActivity extends Activity {
         if (data.gpa != null) { CourseUi.gap(c, 12); c.addView(text("总绩点来自教务系统学生画像", 11, Ui.MUTE, false)); }
     }
     private static List<String> describe(List<String> l, List<Double> v) {
-        List<String> out = new ArrayList<>(); for (int i = 0; i < l.size(); i++) out.add(l.get(i) + " " + String.format(Locale.ROOT, "%.2f", v.get(i))); return out;
+        List<String> out = new ArrayList<>(); for (int i = 0; i < l.size(); i++) out.add(l.get(i) + " " + formatGpa(v.get(i))); return out;
     }
     private View stat(String value, String label) {
         LinearLayout s = CourseUi.column(this); s.setGravity(Gravity.END);
@@ -372,7 +372,7 @@ public class AcademicActivity extends Activity {
         TextView meta = text(grades.size() + " 门 · " + trim(Academic.credits(grades)) + " 学分", 12, Ui.MUTE, false); meta.setPadding(0, dp(3), 0, 0); t.addView(meta);
         if (w != null) {
             LinearLayout gp = CourseUi.column(this); gp.setGravity(Gravity.END); gp.setPadding(0, 0, dp(10), 0);
-            TextView v = text(String.format(Locale.ROOT, "%.2f", w), 17, Ui.ACCENT, true); v.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); gp.addView(v);
+            TextView v = text(formatGpa(w), 17, Ui.ACCENT, true); v.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); gp.addView(v);
             gp.addView(text("学期绩点", 10, Ui.MUTE, false)); head.addView(gp);
         }
         head.addView(chevron(open), new LinearLayout.LayoutParams(dp(18), dp(18)));
@@ -393,7 +393,7 @@ public class AcademicActivity extends Activity {
         List<String> meta = new ArrayList<>();
         if (!g.type.isEmpty()) meta.add(g.type);
         if (g.credits != null) meta.add(trim(g.credits) + " 学分");
-        if (g.gp != null) meta.add("绩点 " + trim(g.gp));
+        if (g.gp != null) meta.add("绩点 " + formatGpa(g.gp));
         if (!meta.isEmpty()) { TextView m = text(TextUtils.join(" · ", meta), 12, Ui.SUB, false); m.setPadding(0, dp(3), 0, 0); left.addView(m); }
         int[] band = band(g.score);
         TextView score = text(g.score.isEmpty() ? "—" : g.score, g.score.length() > 3 ? 13 : 16, band[0], true);
@@ -434,7 +434,7 @@ public class AcademicActivity extends Activity {
         tiles.addView(new View(this), new LinearLayout.LayoutParams(dp(10), 1));
         tiles.addView(tile("学分", g.credits == null ? "—" : trim(g.credits), Ui.TEXT, Ui.FILL), new LinearLayout.LayoutParams(0, dp(78), 1));
         tiles.addView(new View(this), new LinearLayout.LayoutParams(dp(10), 1));
-        tiles.addView(tile("绩点", g.gp == null ? "—" : trim(g.gp), Ui.TEXT, Ui.FILL), new LinearLayout.LayoutParams(0, dp(78), 1));
+        tiles.addView(tile("绩点", g.gp == null ? "—" : formatGpa(g.gp), Ui.TEXT, Ui.FILL), new LinearLayout.LayoutParams(0, dp(78), 1));
         if (!g.detail.isEmpty()) {
             CourseUi.gap(body, 24); body.addView(text("成绩构成", 13, Ui.SUB, true)); CourseUi.gap(body, 4);
             for (String part : g.detail.split("；")) component(body, part.trim());
@@ -470,6 +470,9 @@ public class AcademicActivity extends Activity {
             track.post(() -> { fill.getLayoutParams().width = (int) (track.getWidth() * v / 100); fill.requestLayout(); });
         }
     }
+    static String formatGpa(double gpa) {
+        return String.format(Locale.ROOT, "%.3f", gpa);
+    }
     private static String trim(double d) {
         String s = String.format(Locale.ROOT, "%.2f", d);
         return s.contains(".") ? s.replaceAll("0+$", "").replaceAll("\\.$", "") : s;
@@ -502,7 +505,7 @@ public class AcademicActivity extends Activity {
                 bar.setColor(last ? Ui.ACCENT : Ui.withAlpha(Ui.ACCENT, Ui.dark ? 90 : 60));
                 canvas.drawRoundRect(r, 7 * d, 7 * d, bar);
                 value.setColor(last ? Ui.ACCENT : Ui.SUB);
-                canvas.drawText(String.format(Locale.ROOT, "%.2f", values.get(i)), cx, top - 6 * d, value);
+                canvas.drawText(formatGpa(values.get(i)), cx, top - 6 * d, value);
                 label.setColor(last ? Ui.TEXT : Ui.MUTE);
                 canvas.drawText(labels.get(i), cx, h - 4 * d, label);
             }
