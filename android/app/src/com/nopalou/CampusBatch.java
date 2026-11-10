@@ -189,10 +189,13 @@ final class CampusBatch {
             String url=web.getUrl(); if (!CampusServices.allowed(url)) { timeout(); return; }
             int active=generation; probing=true;
             String prefix=injected?"":scripts+"\nNwpuAuto.install();NwpuAuto.focus();"; injected=true;
-            web.evaluateJavascript(prefix+"\nJSON.stringify({auth:NwpuSso.inspect(),read:NwpuAuto.inspect("+JSONObject.quote(service.id)+","+collection.visited()+","+JSONObject.quote(collection.context())+")})",raw -> {
+            web.evaluateJavascript(prefix+"\nJSON.stringify({pageUrl:location.href,auth:NwpuSso.inspect(),read:NwpuAuto.inspect("+JSONObject.quote(service.id)+","+collection.visited()+","+JSONObject.quote(collection.context())+")})",raw -> {
                 if (!alive() || active!=generation || service==null) return; probing=false;
                 if (!url.equals(web.getUrl())) { schedule(40); return; }
                 JSONObject result; try { result=decode(raw); } catch (Exception e) { injected=false; timeout(); return; }
+                // WebView.getUrl() can advance before the new document commits. Never
+                // interpret the previous login form as the destination's auth state.
+                if (!url.equals(result.optString("pageUrl"))) { injected=false; timeout(); return; }
                 JSONObject login=result.optJSONObject("auth");
                 if (login==null || !authenticate(login,url)) return;
                 if (CampusServices.isPortal(url)) { portal(login); return; }
@@ -235,13 +238,23 @@ final class CampusBatch {
             if (CampusServices.readUrl(target) && !CampusServices.isPortal(target) && !target.equals(web.getUrl()) && handoffs.add("route:"+target)) { navigate(target); return; }
             String key="portal:"+service.id;
             if (handoffs.add(key)) {
-                int active=generation;
+                int active=generation; String page=web.getUrl();
                 String call=service.id.startsWith("portal_")?"NwpuSso.clickService("+JSONObject.quote(service.title):"NwpuSso.click("+JSONObject.quote(service.id);
                 web.evaluateJavascript(call+","+JSONObject.quote("batch-app-"+generation)+")",clicked -> {
                     if (!alive() || active!=generation || service==null) return;
-                    if (!"true".equals(clicked) && handoffs.add("catalog:"+service.id)) {
-                        handoffs.remove(key); web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("batch-catalog-"+generation)+")",ignored -> schedule(100));
-                    } else schedule(100);
+                    if (!page.equals(web.getUrl())) { schedule(100); return; }
+                    if ("true".equals(clicked)) { timeout(); return; }
+                    // A Vue app/catalog can render after this probe. A missing button is
+                    // not a completed handoff: release both gates until an actual click.
+                    handoffs.remove(key);
+                    String catalog="catalog:"+service.id;
+                    if (handoffs.add(catalog)) {
+                        web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("batch-catalog-"+generation)+")",opened -> {
+                            if (!alive() || active!=generation || service==null) return;
+                            if (!"true".equals(opened)) handoffs.remove(catalog);
+                            timeout();
+                        });
+                    } else timeout();
                 });
             } else timeout();
         }
