@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 31,
-      "versionName": "0.31",
-      "size": 390858,
-      "sha256": "2689c05299d273b378af3fa65d72adcc22a91278a7bb8cd03717a89788c49bc9",
+      "versionCode": 32,
+      "versionName": "0.32",
+      "size": 407375,
+      "sha256": "6f82cdc463c5b707b72252b2d5f1d908b8d9d923b58510eb31fd8175a929fb86",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2689c05299d273b378af3fa65d72adcc22a91278a7bb8cd03717a89788c49bc9/offloor.apk",
-      "notes": "合并 codex/reliability-v0.30（可靠性修复与 v0.31 情境演示）到 main"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/6f82cdc463c5b707b72252b2d5f1d908b8d9d923b58510eb31fd8175a929fb86/offloor.apk",
+      "notes": "merge: integrate campus updates with latest main"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
