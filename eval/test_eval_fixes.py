@@ -4,7 +4,7 @@
 对应关系：
   9  手写集不再按答案设发送者，run_hardset.py 要分别报告"全部老师/全部学生"两种设定
   10 留出集按句子去重切分，report.json 顶层要有 split 字段说明重复率
-  11 时间准确率按"更正后的答案"比，本方案 time_acc 高于旧口径 0.9085
+  11 用独立场景验证时间评分确实采用更正后的答案，不把历史总分当作评分器正确性的证明
   12 消融"去掉回复潮"要真的关掉回复潮，burst_promoted == 0
 
 另外守住两条底线：
@@ -297,10 +297,26 @@ def check_time_acc(rep) -> None:
     print("\n[11] 时间准确率按更正后的答案比")
     main = _block(rep, MAIN)
     acc = main.get("time_acc")
-    # 主控修订：原定 ≥0.99 不对。改口径后剩下的错是 Python 引擎真错（更正没用上 9 张、被无关更正改坏 4 张等），
-    # 所以只要求比旧口径 0.9085 高（被更正后改对的卡不再判错）
-    check(f'"{MAIN}" 的 time_acc 高于旧口径 0.9085', is_ratio(acc) and float(acc) > 0.9085,
-          f"实际 {acc}")
+    check(f'"{MAIN}" 如实报告时间准确率', is_ratio(acc), f"实际 {acc}")
+    from datetime import datetime
+    from types import SimpleNamespace
+    from eval.run_eval import corrected_deadlines, score
+
+    old = "2026-11-13T18:00:00"
+    changed = "2026-11-16T22:00:00"
+    rows = [
+        {"msg_id": "original", "group_id": "fixture", "label": "action", "todo": {"deadline": old}},
+        {"msg_id": "correction", "group_id": "fixture", "label": "action", "hard": "supersede",
+         "supersedes": "original", "todo": {"deadline": changed}},
+    ]
+    card = SimpleNamespace(kind="todo", source_msg_id="original", group_id="fixture",
+                           deadline=datetime.fromisoformat(changed))
+    engine = SimpleNamespace(cards=[card], active_cards=lambda: [card], n_noise=0, n_level3=0, n_promoted=0)
+    check("已经按更正更新时间的卡得分 1", score(rows, engine)["time_acc"] == 1)
+    card.deadline = datetime.fromisoformat(old)
+    check("仍保留旧时间的卡得分 0", score(rows, engine)["time_acc"] == 0)
+    rows.append({"msg_id": "again", "supersedes": "correction", "todo": {"deadline": old}})
+    check("连续更正回溯到原始事项", corrected_deadlines(rows, {"original": changed})["original"] == old)
 
 
 def check_burst_ablation(rep) -> None:

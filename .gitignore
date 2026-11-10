@@ -13,3 +13,4 @@ android/build/
 *.keystore
 .env
 .env.*
+node_modules/

@@ -12,6 +12,9 @@ def main():
     for text in ("明天09:99考试", "明天25:00考试", "明天18点90分考试"):
         assert parse_deadline(text, start).value is None, text
     assert parse_deadline("明天上午9:00考试", start).value == datetime(2026, 11, 5, 9)
+    for text in ("2月30日18点前交报告", "13月10日18点前交报告", "本月31日18点前交报告"):
+        assert parse_deadline(text,start).value is None,text
+    assert parse_deadline("两小时内交报告",start).value == datetime(2026,11,4,12)
     print("✓ 非法钟点和正常钟点全部通过")
 
 

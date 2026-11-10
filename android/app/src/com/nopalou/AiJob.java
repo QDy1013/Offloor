@@ -28,7 +28,10 @@ public class AiJob extends JobService {
     /** 单次 Job 最多发多少次请求，剩下的下次继续，避免一次占用太久。 */
     static final int MAX_CALLS = 8;
 
-    private volatile boolean stopped;
+    private static final class Run {
+        volatile boolean stopped, halted, budgetWait;
+    }
+    private volatile Run active;
 
     static void schedule(Context ctx) {
         try {
@@ -70,28 +73,30 @@ public class AiJob extends JobService {
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .setPersisted(true);
+        b.setMinimumLatency(delay);
         if (AiConfig.MODE_CHARGING.equals(cfg.mode)) {
             b.setRequiresCharging(true);
-        } else {
-            b.setMinimumLatency(delay);
         }
         return b.build();
     }
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        stopped = false;
+        final Run run = new Run();
+        active = run;
         Thread t = new Thread(() -> {
             boolean retry = false;
             try {
-                retry = work();
+                retry = work(run);
             } catch (Throwable e) {
                 EngineHolder.diag(this, "出错", "AI 复核：" + e.getClass().getSimpleName());
                 retry = true;
             }
-            boolean more = !retry && !stopped && AiQueue.size(this) > 0;
+            if (active != run || run.stopped) return;
+            boolean more = !retry && !run.halted && AiQueue.size(this) > 0;
             jobFinished(params, retry);
-            if (more) schedule(this);        // 本轮额度用完还有剩：排下一轮
+            if(run.budgetWait) deferBudget(this,AiConfig.load(this));
+            else if (more) schedule(this);        // 本轮额度用完还有剩：排下一轮
         }, "nopalou-ai");
         t.setPriority(Thread.NORM_PRIORITY - 1);
         t.start();
@@ -100,13 +105,15 @@ public class AiJob extends JobService {
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        stopped = true;
+        Run run = active;
+        if (run != null) run.stopped = true;
         return true;     // 被系统打断（断网、拔电）：保留队列，稍后重试
     }
 
     /** @return true 表示遇到可重试的错误，交给系统退避重排 */
-    private boolean work() throws Exception {
+    private boolean work(Run run) throws Exception {
         Context app = getApplicationContext();
+        AiQueue.cleanupImages(app);
         AiConfig cfg = AiConfig.load(app);
         if (!cfg.ready()) return false;
         AiClient client = new AiClient(cfg);
@@ -116,26 +123,43 @@ public class AiJob extends JobService {
             List<JSONObject> stale = AiQueue.peek(app, "img", AiQueue.MAX);
             if (!stale.isEmpty()) AiQueue.remove(app, stale);
         }
-        while (!stopped && calls < MAX_CALLS) {
+        while (!run.stopped && calls < MAX_CALLS && AiConfig.ready(app)) {
             // 先做图片：转写出的文字还会产生新的复核条目，同一轮里接着处理
             List<JSONObject> imgs = AiQueue.peek(app, "img", 1);
             if (!imgs.isEmpty()) {
                 JSONObject o = imgs.get(0);
+                Engine.Escalation imageRequest = new Engine.Escalation();
+                imageRequest.epoch = o.optString("epoch", null);
+                imageRequest.profileKey = o.optString("profileKey", null);
+                imageRequest.scopeVersion = o.optString("scopeVersion", null);
+                imageRequest.msg = new Engine.Msg("image", o.optString("groupId"), o.optString("groupName"),
+                        o.optString("sender"), "", o.optString("pkg"), o.optLong("ts"));
+                if (!AiImages.onMain(() -> {
+                    Engine e = EngineHolder.get(app);
+                    return e != null && e.currentRequest(imageRequest);
+                })) {
+                    AiQueue.remove(app, imgs);
+                    continue;
+                }
                 calls++;
                 try {
                     byte[] jpeg = readFile(new File(o.optString("path")));
                     AiImages.Result r = AiImages.recognize(app, jpeg, o.optString("groupId"), o.optString("groupName"),
-                            o.optString("pkg"), o.optString("sender"), o.optLong("ts"), false);
+                            o.optString("pkg"), o.optString("sender"), o.optLong("ts"), false, imageRequest);
                     EngineHolder.diag(app, "收到", r.group + " · 图片转写 " + r.messages + "条");
                     AiQueue.remove(app, imgs);
                 } catch (java.io.FileNotFoundException gone) {
-                    AiQueue.remove(app, imgs);
+                    AiQueue.imageUnavailable(app,imgs);
+                } catch (AiClient.BudgetException e) {
+                    run.halted = true; run.budgetWait=true; return false;
                 } catch (AiClient.AuthException e) {
+                    run.halted = true;
                     EngineHolder.diag(app, "出错", "AI 识别：" + e.getMessage());
+                    AiQueue.park(app,imgs,"接口配置或额度异常，修改设置后可重试");
                     return false;
                 } catch (AiClient.BadRequestException e) {
                     EngineHolder.diag(app, "跳过", "图片识别被拒：" + e.getMessage());
-                    AiQueue.remove(app, imgs);
+                    AiQueue.park(app,imgs,"图片被接口拒绝，请检查图片模型后重试");
                 } catch (IOException e) {
                     AiQueue.failed(app, imgs);
                     return true;
@@ -144,9 +168,20 @@ public class AiJob extends JobService {
             }
             List<JSONObject> batch = AiQueue.peek(app, "esc", BATCH);
             if (batch.isEmpty()) break;
+            List<JSONObject> staleRequests = new ArrayList<>();
+            List<Engine.Escalation> items = AiImages.onMain(() -> {
+                List<Engine.Escalation> current = new ArrayList<>();
+                Engine engine = EngineHolder.get(app);
+                for (JSONObject item : batch) {
+                    Engine.Escalation request = AiQueue.toEscalation(item);
+                    if (engine != null && engine.currentRequest(request)) current.add(request);
+                    else staleRequests.add(item);
+                }
+                return current;
+            });
+            if (!staleRequests.isEmpty()) AiQueue.remove(app, staleRequests);
+            if (items.isEmpty()) continue;
             calls++;
-            List<Engine.Escalation> items = new ArrayList<>();
-            for (JSONObject o : batch) items.add(AiQueue.toEscalation(o));
             List<Engine.AiVerdict> verdicts;
             try {
                 Engine.Profile profile = AiImages.onMain(() -> {
@@ -154,12 +189,16 @@ public class AiJob extends JobService {
                     return e == null ? null : e.getProfile();
                 });
                 verdicts = client.judge(items, profile, System.currentTimeMillis());
+            } catch (AiClient.BudgetException e) {
+                run.halted = true; run.budgetWait=true; return false;
             } catch (AiClient.AuthException e) {
+                    run.halted = true;
                 EngineHolder.diag(app, "出错", "AI 复核：" + e.getMessage());
+                AiQueue.park(app,batch,"接口配置或额度异常，修改设置后可重试");
                 return false;
             } catch (AiClient.BadRequestException e) {
                 EngineHolder.diag(app, "跳过", "AI 复核被拒：" + e.getMessage());
-                AiQueue.remove(app, batch);
+                AiQueue.park(app,batch,"请求被接口拒绝，请检查模型和输入后重试");
                 continue;
             } catch (IOException e) {
                 AiQueue.failed(app, batch);
@@ -167,6 +206,7 @@ public class AiJob extends JobService {
             }
             final List<Engine.AiVerdict> vs = verdicts;
             Integer changed = AiImages.onMain(() -> {
+                if (run.stopped || active != run || !AiConfig.ready(app)) return 0;
                 Engine e = EngineHolder.get(app);
                 if (e == null) return 0;
                 int n = 0;
@@ -176,10 +216,28 @@ public class AiJob extends JobService {
                 return n;
             });
             applied += changed == null ? 0 : changed;
-            AiQueue.remove(app, batch);
+            List<JSONObject> answered = new ArrayList<>(), missing = new ArrayList<>();
+            for (JSONObject item : batch) {
+                Engine.Escalation request = AiQueue.toEscalation(item);
+                boolean found = false;
+                for (Engine.AiVerdict verdict : vs) {
+                    if (request.cardId != null ? request.cardId.equals(verdict.cardId)
+                            : verdict.msg != null && request.msg.id.equals(verdict.msg.id)) { found = true; break; }
+                }
+                (found ? answered : missing).add(item);
+            }
+            AiQueue.remove(app, answered);
+            if (!missing.isEmpty()) { AiQueue.failed(app, missing); return true; }
         }
         if (calls > 0) EngineHolder.diag(app, "复核", "AI 复核 " + calls + " 批，改动 " + applied + " 张卡");
         return false;
+    }
+
+    private static void deferBudget(Context app, AiConfig cfg) {
+        if(!cfg.ready())return;
+        JobScheduler js = (JobScheduler) app.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (js != null) js.schedule(build(app, cfg, AiBudget.untilTomorrow()));
+        EngineHolder.diag(app, "复核", "今日请求上限已用完，队列保留至明日");
     }
 
     private static byte[] readFile(File f) throws IOException {

@@ -330,7 +330,7 @@ public final class Step22Test {
         eq("全部正常：level", 0, r.level);
         check("全部正常：issues 不是 null", r.issues != null);
         if (r.issues != null) eq("全部正常：issues 为空", 0, r.issues.size());
-        eq("全部正常：summary", "自动读取正常", r.summary());
+        eq("全部正常：summary", "通知服务已连接", r.summary());
     }
 
     private static void testNoAccess() {

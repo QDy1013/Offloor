@@ -197,8 +197,6 @@ def parse_deadline(text: str, send: datetime) -> TimeParse:
     abs_matches.sort(key=lambda x: x.start())
     for m in abs_matches:
         mo, dd = int(m.group(2)), int(m.group(3))
-        if not (1 <= mo <= 12 and 1 <= dd <= 31):
-            continue
         # 紧跟在"第/页/题/章/节"后面的数字是编号，不是日期
         if t[max(0, m.start() - 1):m.start()] in ("第", "页", "题", "章", "节"):
             continue
@@ -215,8 +213,7 @@ def parse_deadline(text: str, send: datetime) -> TimeParse:
             if base < send.date() - timedelta(days=180) and not m.group(1):
                 base = date(year + 1, mo, dd)   # 只写月日且已过去很久 → 次年
         except ValueError:
-            base = None
-            continue
+            return TimeParse(None, False, "none", note="非法日期")
         date_conf = "high"
         note = "绝对日期"
         break
@@ -235,7 +232,7 @@ def parse_deadline(text: str, send: datetime) -> TimeParse:
                     date_conf = "high"
                     note = "本月几号"
                 except ValueError:
-                    base = None
+                    return TimeParse(None, False, "none", note="非法日期")
 
     if base is None:
         for w, delta in REL_DAYS:
@@ -284,6 +281,13 @@ def parse_deadline(text: str, send: datetime) -> TimeParse:
         note += " · 上课前按早八"
 
     if base is None and not has_time:
+        durations = list(re.finditer(r"(?<![\d零一二两三四五六七八九十])(\d{1,3}|[一二两三四五六七八九十]{1,3}|半)\s*(小时|分钟)\s*(?:之内|内|后截止|后提交|后交)", t))
+        if len(durations) == 1:
+            match = durations[0]
+            amount = .5 if match[1] == "半" else _cn2int(match[1])
+            if amount is not None and 0 < amount <= 168:
+                duration = timedelta(hours=amount) if match[2] == "小时" else timedelta(minutes=amount)
+                return TimeParse(send + duration, True, "high", note="按发送时刻和明确时限计算")
         return TimeParse(None, False, "none", note="无时间表达")
 
     if base is None:
