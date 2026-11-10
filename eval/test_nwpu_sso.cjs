@@ -81,6 +81,15 @@ function check(name,fn) { fn(); count++; console.log('PASS '+name); }
         await page.evaluate(() => NwpuSso.click('card','portal-open'));
         await page.waitForURL('https://yktapp.nwpu.edu.cn/home');
         check('normal async app handler opens ticket handoff in the same first-party view',() => assert.equal(page.url(),'https://yktapp.nwpu.edu.cn/home'));
+        await load('https://ecampus.nwpu.edu.cn/main.html','<p onclick="window.academicHit=(window.academicHit||0)+1">翱翔教务</p>');
+        const academic=await page.evaluate(() => [NwpuSso.click('classroom','portal-classroom'),window.academicHit,NwpuSso.click('classroom','portal-classroom')]);
+        check('classroom uses the observed academic app when the portal has no room shortcut',() => assert.deepEqual(academic,[true,1,false]));
+        await page.setContent('<p onclick="window.academicHit=99">翱翔教务</p><span onclick="window.roomHit=1">空闲教室</span>');
+        const direct=await page.evaluate(() => [NwpuSso.click('classroom','portal-room-direct'),window.roomHit,window.academicHit]);
+        check('direct classroom shortcut takes priority over the academic app',() => assert.deepEqual(direct,[true,1,1]));
+        await load('https://zizhu.nwpu.edu.cn/home','<p onclick="window.academicHit=1">翱翔教务</p>');
+        const outside=await page.evaluate(() => NwpuSso.click('classroom','outside-portal'));
+        check('academic fallback never activates outside the official portal',() => assert.equal(outside,false));
         console.log(count+' checks passed');
     } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

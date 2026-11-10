@@ -44,23 +44,29 @@
             const time=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
             const date=requested?requested.date:now.toISOString().slice(0,10), start=requested?requested.start:time(min), end=requested?requested.end:time(Math.min(1439,min+60));
             const beforeRooms=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
-            const beforeChanged=state.changed;
-            const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false,called:false,startedAt:0,beforeRooms,beforeChanged,sawPending:false};
+            const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false,called:false,resultSeen:false,beforeRooms,beforePosted:vm.posted && vm.posted.freeListParam};
             vm.byWeek=false; vm.byTime=true; vm.freeListParam.campusId=String(site.value);
             const run=()=>{try {
                 const p=vm.freeListParam.dateTimeSegmentCmd;
                 p.startDateTime=date;p.endDateTime=date;p.startTime=query.start;p.endTime=query.end;
-                query.startedAt=Date.now(); query.called=true; vm.queryFreeList();
+                query.called=true;
+                // Watch the room list itself: unrelated long requests on the academic page
+                // must not keep the whole page "pending" forever.
+                if (typeof vm.$watch==='function') { try { vm.$watch('freeRooms',()=>{query.resultSeen=true;},{deep:true}); } catch (_) {} }
+                vm.queryFreeList();
             } catch (_) {query.failed=true;} };
             if (typeof vm.$nextTick==='function') vm.$nextTick(run); else Promise.resolve().then(run);
         }
         const q=state.classroom;
-        if (q.called && state.pending>0) q.sawPending=true;
         const rooms=Array.isArray(vm.freeRooms)?vm.freeRooms.length:0;
         const roomSignature=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
-        const resultChanged=roomSignature!==q.beforeRooms || state.changed!==q.beforeChanged;
+        const resultChanged=roomSignature!==q.beforeRooms;
         const empty=Array.from(root.document.querySelectorAll('.el-table__empty-text,.ant-empty-description,.dataTables_empty,.no-data,.empty-data')).some(e=>visible(e) && /暂无(?:数据|记录)|无(?:数据|记录)|没有(?:数据|记录)/.test(label(e)));
-        const settled=q.called && (resultChanged || q.sawPending) && state.pending===0;
+        // Only the school's successful query callback sets posted.freeListParam.
+        // Page mutations and campus-option requests are not room-query responses.
+        const posted=vm.posted && vm.posted.freeListParam, segment=posted && posted.dateTimeSegmentCmd;
+        const matched=posted && posted!==q.beforePosted && String(posted.campusId)===q.campus && segment && segment.startDateTime===q.date && segment.endDateTime===q.date && segment.startTime===q.start && segment.endTime===q.end;
+        const settled=q.called && (matched || (!vm.posted && q.resultSeen && resultChanged));
         return {condition:q.condition,ready:!!(settled && (Array.isArray(vm.freeRooms) || empty)),failed:q.failed,rows:rooms};
     }
     function install() {
@@ -205,7 +211,7 @@
         }
         // JWXT keeps student task links inside collapsed navigation. Follow their observed
         // read-page href directly; never activate teacher review or evaluation submit controls.
-        if (state.focus && kind==='deadlines') for (const e of root.document.querySelectorAll('a[href]')) {
+        if (state.focus && ['deadlines','classroom'].includes(kind)) for (const e of root.document.querySelectorAll('a[href]')) {
             const name=label(e), target=safeTarget(e);
             if (!readLabel(name,kind) || !target || target===root.location.href || new URL(target).origin!==root.location.origin) continue;
             const key='page:'+target;
@@ -239,7 +245,7 @@
         state.planned = actions;
         const query = Array.from(scope().querySelectorAll('button,input[type="button"],input[type="submit"],[role="button"]')).find(e => visible(e) && /^(查询|搜索|查找)$/.test(label(e)) && !disabled(e));
         const queryKey = query && viewKey() + '|query:' + label(query) + ':' + filterKey(filters(scope())) + customKey(customFilters(scope()));
-        return {pending: state.pending, settling: !!(room && !room.ready && !room.failed) || loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160, pageKey: pageKey(), snapshot,
+        return {pending: room?(room.ready?0:1):state.pending, settling: room?(!room.ready && !room.failed):(loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160), pageKey: pageKey(), snapshot,
             preparing: room?(!room.ready && !room.failed):!!query && !seen.has(queryKey),
             actions: actions.map(a => ({key: a.key, type: a.type, label: a.label, url: a.url || '', context: a.context || ''}))};
     }

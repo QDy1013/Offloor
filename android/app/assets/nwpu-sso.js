@@ -10,7 +10,7 @@
         network: /^(网络自助|校园网|网费|网络服务|深澜计费自助服务)$/,
         library: /^(图书馆|我的图书馆|借阅查询|图书借阅)$/, seats: /^(空间预约|座位预约|图书馆座位预约)$/,
         classroom: /^(空闲教室|空闲教室查询|自习教室查询)$/, sports: /^(体育场馆个人预约|体育场馆预约|场馆预约)$/,
-        bus: /^(校车查询|校车服务|校车时刻|校车时刻表)$/, deadlines: /^(我的评教|学生评教|评教任务|选课安排|选课时间)$/,
+        bus: /^(校车预约|校车查询|校车服务|校车时刻|校车时刻表|通勤车|小车预约)$/, deadlines: /^(我的评教|学生评教|评教任务|选课安排|选课时间)$/,
         affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/, housing: /^(智慧公寓|住宿信息|学生公寓|我的宿舍)$/
     };
     const central = /^(?:翱翔门户|统一身份认证|统一认证|统一登录|校园统一认证|CAS)(?:账号)?(?:登[录陆])?(?:入口)?$/i;
@@ -93,7 +93,14 @@
         if (activated.has(key) || !root.NwpuCampus || !root.NwpuCampus.allowed(root.location.href)) return false;
         const re = kind === 'sso' ? central : kind === 'catalog' ? /^(应用中心|应用系统|全部应用|全部服务)$/ : labels[kind];
         if (!re) return false;
-        const e = candidates(root.document).find(e => re.test(label(e)) && (kind !== 'sso' || /登录|登陆|统一|CAS/i.test(label(e)))); if (!e) return false;
+        const items = candidates(root.document);
+        let e = items.find(e => re.test(label(e)) && (kind !== 'sso' || /登录|登陆|统一|CAS/i.test(label(e))));
+        // The portal exposes the academic app, not an individual room-query shortcut.
+        // Use its normal SSO handler before following the observed academic room link.
+        if (!e && kind === 'classroom' && new URL(root.location.href).hostname === 'ecampus.nwpu.edu.cn') {
+            e = items.find(e => /^(翱翔教务|教务系统)$/.test(label(e)));
+        }
+        if (!e) return false;
         activated.add(key);
         return activateElement(e);
     }

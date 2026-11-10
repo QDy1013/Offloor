@@ -15,6 +15,8 @@ final class CampusServices {
     static final String PORTAL = "https://ecampus.nwpu.edu.cn/main.html";
     // Registered portal CAS entry observed in the existing NWPU login implementation.
     static final String PORTAL_SSO = "https://uis.nwpu.edu.cn/cas/login?service=https%3A%2F%2Fecampus.nwpu.edu.cn%2F%3Fpath%3Dhttps%253A%252F%252Fecampus.nwpu.edu.cn%252Fmain.html%2523%252FIndex";
+    // Official same-origin page used for read-only live trip queries.
+    static final String BUS_RESERVATION = "https://hq-bus.nwpu.edu.cn/h5/";
     static final String HOME = "https://jwxt.nwpu.edu.cn/student/home";
     static final String NOTICES = "https://xygg.nwpu.edu.cn/xygg/xngg.htm";
     static final Service[] ALL = {

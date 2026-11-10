@@ -15,7 +15,9 @@ final class CampusClassroomRefresh {
     private final Listener listener;
     private CampusBatch batch;
     private FrameLayout stage;
-    private boolean stopped;
+    private boolean stopped,finished;
+    private final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+    private int dayOperation;
     CampusClassroomRefresh(Activity host,String token,Listener listener) { this.host=host; this.token=token; this.listener=listener; }
     void start(CampusData data,CampusClassroomQuery query) {
         try {
@@ -34,12 +36,36 @@ final class CampusClassroomRefresh {
         } catch (Exception e) { finish("教室查询暂时无法启动，请稍后重试"); }
     }
     private void finish(String error) {
-        if (stopped) return;
-        stop();
+        if (stopped || finished) return;
+        finished=true;
+        if (!error.isEmpty()) stop();
         if (!host.isFinishing() && !host.isDestroyed()) listener.finished(error);
     }
+    interface DayListener { void finished(org.json.JSONObject result,String error); }
+    void day(String name,String date,DayListener callback) {
+        WebView web=batch==null?null:batch.classroomWeb();
+        if (stopped || !finished || web==null) { callback.finished(null,"查询会话已失效，请重新查询教室"); return; }
+        final int operation=++dayOperation;
+        try {
+            String script=CampusSilentRefresh.asset(host,"nwpu-room-day.js");
+            web.evaluateJavascript(script+";window.__louRoomDayOperation="+operation+";window.__louRoomDay=null;NwpuRoomDay.load("+org.json.JSONObject.quote(name)+","+org.json.JSONObject.quote(date)+").then(r=>{if(window.__louRoomDayOperation==="+operation+")window.__louRoomDay={result:r}}).catch(()=>{if(window.__louRoomDayOperation==="+operation+")window.__louRoomDay={error:true}});",null);
+            long until=android.os.SystemClock.elapsedRealtime()+160_000;
+            Runnable poll=new Runnable() { public void run() {
+                if (stopped || operation!=dayOperation) return;
+                web.evaluateJavascript("JSON.stringify(window.__louRoomDay)",value -> {
+                    if (stopped || operation!=dayOperation) return;
+                    org.json.JSONObject result=new org.json.JSONObject();
+                    try { Object raw=new org.json.JSONTokener(value).nextValue(); if (raw instanceof String) result=new org.json.JSONObject((String)raw); } catch (Exception ignored) { }
+                    if (result.has("result")) callback.finished(result.optJSONObject("result"),"");
+                    else if (result.optBoolean("error") || android.os.SystemClock.elapsedRealtime()>until) callback.finished(null,"未读到今天的节次状态，请稍后重试");
+                    else handler.postDelayed(this,400);
+                });
+            }};
+            handler.postDelayed(poll,300);
+        } catch (Exception e) { callback.finished(null,"教室详情暂时无法读取"); }
+    }
     void stop() {
-        if (stopped) return; stopped=true;
+        if (stopped) return; stopped=true; handler.removeCallbacksAndMessages(null); dayOperation++;
         if (batch!=null) { batch.stop(); batch=null; }
         if (stage!=null && stage.getParent() instanceof ViewGroup) ((ViewGroup)stage.getParent()).removeView(stage);
         // A late write can still finish, but the page accepts only this query's result token.

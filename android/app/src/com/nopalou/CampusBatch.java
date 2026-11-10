@@ -79,6 +79,7 @@ final class CampusBatch {
         total=waiting.size(); initialDone=doneIds.size();
     }
     void start() { for (int i=0;i<(focused?1:3);i++) lanes.add(new Lane()); pump(); }
+    WebView classroomWeb() { return focused && !stopped && !lanes.isEmpty()?lanes.get(0).web:null; }
     void stop() {
         if (stopped) return; stopped=true; handler.removeCallbacksAndMessages(null);
         for (Lane lane:lanes) { lane.generation++; lane.web.stopLoading(); stage.removeView(lane.web); lane.web.destroy(); }

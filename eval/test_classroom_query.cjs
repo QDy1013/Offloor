@@ -74,4 +74,38 @@ check('the default daytime query covers the next hour', () => {
     const f = fixture(); f.inspect(); const p = f.school.posted.freeListParam.dateTimeSegmentCmd;
     assert.equal(p.startTime, '08:30'); assert.equal(p.endTime, '09:30');
 });
+check('page mutations and unrelated pending requests cannot complete a room query', () => {
+    const f = fixture();
+    f.school.freeRooms = []; f.school.queryFreeList = function () { this.calls++; };
+    f.api.setClassroomQuery(request); f.inspect();
+    f.root.__louAutoDriver.changed++; f.root.__louAutoDriver.pending = 1;
+    let r = f.inspect(); assert.equal(r.settling, true); assert.equal(r.preparing, true);
+    f.root.__louAutoDriver.pending = 0;
+    r = f.inspect(); assert.equal(r.settling, true); assert.equal(r.pending, 1);
+    assert.equal(f.school.calls, 1);
+});
+check('a fresh successful empty response completes only the matching query', () => {
+    const f = fixture();
+    f.school.freeRooms = []; f.school.queryFreeList = function () { this.calls++; };
+    f.api.setClassroomQuery(request); f.inspect();
+    f.school.posted.freeListParam = {...f.school.freeListParam, campusId: 'observed-c'};
+    assert.equal(f.inspect().settling, true);
+    f.school.posted.freeListParam = JSON.parse(JSON.stringify(f.school.freeListParam));
+    const r = f.inspect(); assert.equal(r.settling, false); assert.equal(r.pending, 0);
+    assert.equal(r.snapshot.modules.classroom.state, 'empty');
+});
+check('an old response with identical conditions cannot finish a new query', () => {
+    const f = fixture();
+    f.school.posted.freeListParam = {campusId: 'observed-y', dateTimeSegmentCmd: {startDateTime: request.date, endDateTime: request.date, startTime: request.start, endTime: request.end}};
+    f.school.queryFreeList = function () { this.calls++; };
+    f.api.setClassroomQuery(request); assert.equal(f.inspect().settling, true);
+    f.school.posted.freeListParam = JSON.parse(JSON.stringify(f.school.freeListParam));
+    assert.equal(f.inspect().settling, false);
+});
+check('a completed room response is not blocked by unrelated long-running requests', () => {
+    const f = fixture(); f.root.__louAutoDriver.pending = 2;
+    f.api.setClassroomQuery(request); const r = f.inspect();
+    assert.equal(r.settling, false); assert.equal(r.pending, 0);
+    assert.equal(r.snapshot.modules.classroom.state, 'ok');
+});
 console.log(checks + ' checks passed');

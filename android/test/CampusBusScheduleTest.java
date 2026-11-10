@@ -33,6 +33,8 @@ public class CampusBusScheduleTest {
         List<CampusBusSchedule.Route> weekend=CampusBusSchedule.routes(module,true);
         check("weekend excludes teacher-only buses",weekend.size()==1 && weekend.get(0).departures.size()==1 && weekend.get(0).departures.get(0).time.equals("09:10"));
         check("missing timetable stays empty",CampusBusSchedule.routes(null,false).isEmpty());
+        check("live reservation entry is the official first-party page",CampusServices.allowed(CampusServices.BUS_RESERVATION) && CampusServices.readUrl(CampusServices.BUS_RESERVATION));
+        check("live read entry is the official bus H5 page",CampusServices.BUS_RESERVATION.equals("https://hq-bus.nwpu.edu.cn/h5/"));
         check("Shanghai weekday selection matches schedule",!CampusBusSchedule.weekend(CampusSummary.date("2026-11-09 08:00")) && CampusBusSchedule.weekend(CampusSummary.date("2026-11-08 08:00")));
         if (args.length>0) {
             JSONObject real=new JSONObject(Files.readString(Paths.get(args[0]))).getJSONObject("modules").getJSONObject("bus");
