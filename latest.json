@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 26,
-      "versionName": "0.26",
-      "size": 288174,
-      "sha256": "8bc291e34ac54f56e8071ca97e99f2a09cc54f37d80a705173fe8cef6fcb6480",
+      "versionCode": 31,
+      "versionName": "0.31",
+      "size": 390858,
+      "sha256": "2689c05299d273b378af3fa65d72adcc22a91278a7bb8cd03717a89788c49bc9",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/8bc291e34ac54f56e8071ca97e99f2a09cc54f37d80a705173fe8cef6fcb6480/offloor.apk",
-      "notes": "网费与一卡通余额优先自动读取；修复门户循环跳转、进程结束后任务恢复和教务入口；电费仅展示电量，不显示宿舍资料。电表关联和部分校方查询仍有未读通的情况。"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2689c05299d273b378af3fa65d72adcc22a91278a7bb8cd03717a89788c49bc9/offloor.apk",
+      "notes": "合并 codex/reliability-v0.30（可靠性修复与 v0.31 情境演示）到 main"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
