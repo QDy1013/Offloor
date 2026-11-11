@@ -24,12 +24,13 @@ final class CourseUi {
         return t;
     }
     static TextView action(Context c, String value, boolean primary, Runnable click) {
-        TextView t = text(c, value, 14, primary ? Ui.ON_ACCENT : Ui.TEXT, true);
+        TextView t = text(c, value, 15, primary ? Ui.ON_ACCENT : Ui.TEXT, true);
         Ui.pressScale(t, 0.97f);
         t.setGravity(Gravity.CENTER);
         t.setMinHeight(Ui.dp(c, 48));
         t.setPadding(Ui.dp(c, 14), Ui.dp(c, 10), Ui.dp(c, 14), Ui.dp(c, 10));
-        t.setBackground(Ui.ripple(c, Ui.round(c, primary ? Ui.ACCENT : Ui.CARD, 16), Ui.press(), 16));
+        // 次级按钮用 FILL：放在白卡上也看得出是按钮（原来用 CARD，卡片里的次级按钮和底色融在一起）。
+        t.setBackground(Ui.ripple(c, Ui.round(c, primary ? Ui.ACCENT : Ui.FILL, 16), Ui.press(), 16));
         if (primary) Ui.lift(t, 3f);
         t.setOnClickListener(v -> click.run()); t.setFocusable(true);
         return t;

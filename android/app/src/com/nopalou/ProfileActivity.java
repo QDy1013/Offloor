@@ -2,12 +2,9 @@ package com.nopalou;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -38,129 +35,49 @@ public class ProfileActivity extends Activity {
     }
 
     void buildUi(Engine.Profile p) {
+        // 和其他二级页面同一套：顶栏返回 + 标题、白卡分组、统一输入框和按钮。
         ScrollView sv = new ScrollView(this);
-        // 页面底色统一走规范里的极浅冷灰，替换原来的深色底。
         sv.setBackgroundColor(Ui.BG);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(this, 18), dp(this, 28), dp(this, 18), dp(this, 28));
+        LinearLayout root = CourseUi.column(this);
         sv.addView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(Ui.topBar(this, "我的档案"));
 
-        TextView title = new TextView(this);
-        title.setText("我的档案");
-        // 标题用主文字色（近黑），浅色底上保持最强的一级层次。
-        title.setTextColor(Ui.TEXT);
-        title.setTextSize(28);
-        title.setTypeface(null, 1);
-        root.addView(title);
+        LinearLayout who = Ui.card(root);
+        Ui.heading(who, "这些信息用来做什么",
+                "楼外用姓名、别名和学号判断群里是不是在叫你，用班级、小组和课程判断一条通知和你有没有关系，"
+                        + "比如“第5组周五展示”“软工2402 交报告”。只保存在本机，不确定的可以留空。");
+        etName = field(who, "姓名", "如：张三", p.name);
+        etAlias = field(who, "别名（逗号分隔）", "如：三三，小张", join(p.aliases));
+        etSid = field(who, "学号", "如：2024001", p.studentId);
 
-        TextView sub = new TextView(this);
-        sub.setText("只留在本机，用来判断哪条消息跟你有关。不确定的可以留空。");
-        // 副标题降为次级灰，和标题拉开强弱。
-        sub.setTextColor(Ui.SUB);
-        sub.setTextSize(12);
-        sub.setLineSpacing(dp(this, 3), 1f);
-        sub.setPadding(0, dp(this, 8), 0, dp(this, 14));
-        root.addView(sub);
+        LinearLayout belong = Ui.card(root);
+        Ui.heading(belong, "班级与课程", null);
+        etGroup = field(belong, "小组", "如：第5组", p.groupNo);
+        etClass = field(belong, "班级", "如：软工2402", p.className);
+        etCourse = field(belong, "课程（逗号分隔）", "如：高等数学，大学物理", join(p.courses));
 
-        etName = field(root, "姓名", "如：张三", p.name, InputType.TYPE_CLASS_TEXT);
-        etAlias = field(root, "别名（逗号分隔）", "如：三三，小张", join(p.aliases), InputType.TYPE_CLASS_TEXT);
-        etSid = field(root, "学号", "如：2024001", p.studentId, InputType.TYPE_CLASS_TEXT);
-        etGroup = field(root, "小组", "如：第5组", p.groupNo, InputType.TYPE_CLASS_TEXT);
-        etClass = field(root, "班级", "如：软工2402", p.className, InputType.TYPE_CLASS_TEXT);
-        etCourse = field(root, "课程（逗号分隔）", "如：高等数学，大学物理", join(p.courses), InputType.TYPE_CLASS_TEXT);
+        LinearLayout actions = CourseUi.column(this);
+        actions.setPadding(dp(this, 16), dp(this, 16), dp(this, 16), 0);
+        root.addView(actions);
+        actions.addView(CourseUi.action(this, "保存", true, () -> commit(collect(), false)), CourseUi.row(dp(this, 48)));
+        CourseUi.gap(actions, 10);
+        actions.addView(CourseUi.action(this, "使用演示身份", false, () -> commit(Engine.Profile.demo(), true)),
+                CourseUi.row(dp(this, 48)));
 
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(0, dp(this, 18), 0, 0);
-
-        Button save = primaryButton("保存");
-        save.setOnClickListener(v -> commit(collect(), false));
-        bar.addView(save);
-
-        Button demo = button("使用演示身份");
-        demo.setOnClickListener(v -> commit(Engine.Profile.demo(), true));
-        bar.addView(demo);
-
-        root.addView(bar);
-
-        TextView tip = new TextView(this);
-        tip.setText("演示身份：" + demoLine(Engine.Profile.demo())
-                + "\n演示模式用它，不要用自己的真实信息跑演示。");
-        tip.setTextColor(Ui.SUB);
-        tip.setTextSize(11);
+        TextView tip = CourseUi.text(this, "演示身份：" + demoLine(Engine.Profile.demo())
+                + "\n离线演示和通知回放用它，不要用自己的真实信息跑演示。", 12, Ui.MUTE, false);
         tip.setLineSpacing(dp(this, 3), 1f);
-        tip.setPadding(0, dp(this, 16), 0, 0);
-        root.addView(tip);
+        tip.setPadding(dp(this, 4), dp(this, 14), dp(this, 4), dp(this, 28));
+        actions.addView(tip);
 
         setContentView(sv);
         Ui.systemBars(this, sv);
     }
 
     /** 加一行"标签 + 输入框"，返回输入框。 */
-    EditText field(LinearLayout root, String label, String hint, String value,
-                   int inputType) {
-        TextView t = new TextView(this);
-        t.setText(label);
-        // 字段标签用次级灰，弱于输入内容。
-        t.setTextColor(Ui.SUB);
-        t.setTextSize(12);
-        t.setPadding(0, dp(this, 10), 0, dp(this, 6));
-        root.addView(t);
-
-        EditText e = new EditText(this);
-        e.setHint(hint);
-        // 提示文字用弱化灰，正文用主文字色，浅色底上都清晰可读。
-        e.setHintTextColor(Ui.MUTE);
-        e.setTextColor(Ui.TEXT);
-        e.setTextSize(15);
-        e.setSingleLine(true);
-        e.setInputType(inputType);
-        e.setPadding(dp(this, 14), dp(this, 13), dp(this, 14), dp(this, 13));
-        GradientDrawable g = new GradientDrawable();
-        // 输入框：和首页搜索框同一种浅灰填充，不加描边。
-        g.setColor(Ui.FILL);
-        g.setCornerRadius(dp(this, 14));
-        e.setBackground(g);
-        if (value != null && !value.trim().isEmpty()) e.setText(value);
-        root.addView(e, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return e;
-    }
-
-    Button primaryButton(String text) {
-        Button b = button(text);
-        // 主按钮：品牌蓝底 + 纯白文字，浅色界面里唯一的高饱和块。
-        b.setTextColor(Ui.ON_ACCENT);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(Ui.ACCENT);
-        g.setCornerRadius(dp(this, 14));
-        b.setBackground(g);
-        b.setTypeface(Ui.medium());
-        return b;
-    }
-
-    Button button(String text) {
-        Button btn = new Button(this);
-        btn.setText(text);
-        btn.setTextSize(15);
-        btn.setAllCaps(false);
-        // 次按钮：浅灰填充 + 墨色文字，与首页次级按钮一致。
-        btn.setTextColor(Ui.TEXT);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(Ui.FILL);
-        g.setCornerRadius(dp(this, 14));
-        btn.setBackground(g);
-        btn.setStateListAnimator(null);
-        btn.setMinHeight(dp(this, 50));
-        btn.setPadding(dp(this, 22), dp(this, 10), dp(this, 22), dp(this, 10));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(this, 10);
-        btn.setLayoutParams(lp);
-        return btn;
+    EditText field(LinearLayout parent, String label, String hint, String value) {
+        return Ui.field(parent, label, hint, value == null ? "" : value.trim(), InputType.TYPE_CLASS_TEXT);
     }
 
     /** 从输入框读档案；空白项一律置空，交给引擎的 clean 处理。 */

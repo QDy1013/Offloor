@@ -1136,7 +1136,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         menuRow(body, holder, "存档与恢复", EngineHolder.storageIssue == null ? "本机存档与有效备份"
                 : EngineHolder.storageIssue, EngineHolder.storageBlocked() ? Ui.RED : Ui.TEXT, this::showStorageState);
         menuSection(body, "识别");
-        menuRow(body, holder, "AI 识别", AiConfig.summary(this), Ui.TEXT,
+        menuRow(body, holder, "AI 识别", AiConfig.load(this).enabled ? AiConfig.summary(this)
+                        : "未开启 · 可选，帮规则找回漏掉的待办、补全时间地点", Ui.TEXT,
                 () -> startActivity(new Intent(this, AiActivity.class)));
         menuRow(body, holder, "截图识别", "群里只发了图片？选截图，逐条转写成待办", Ui.TEXT,
                 () -> startActivity(new Intent(this, ShotActivity.class).putExtra(ShotActivity.EXTRA_PICK, true)));
@@ -2692,13 +2693,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         boolean remind = ReminderReceiver.isEnabled(this) && ReminderReceiver.canNotify(this);
         int done = (access ? 1 : 0) + (battery ? 1 : 0) + (autostart ? 1 : 0);
 
-        TextView title = uiText("让自动整理一直在线", 21, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        TextView title = uiText("让自动整理一直在线", 20, Ui.TEXT, false);
+        title.setTypeface(Ui.medium());
         LinearLayout.LayoutParams tLp = lp(-1, -2);
         tLp.topMargin = dp(this, 16);
         setupBody.addView(title, tLp);
         TextView intro = uiText("手机会在后台悄悄关掉不常用的应用。做完下面三步，群里的作业、考试和接龙才能一直自动整理。",
-                14, Ui.SUB, false);
+                13, Ui.SUB, false);
         intro.setLineSpacing(dp(this, 4), 1f);
         LinearLayout.LayoutParams iLp = lp(-1, -2);
         iLp.topMargin = dp(this, 8);
@@ -2745,6 +2746,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 fillSetup();
             }
         });
+        setupStep(6, "AI 复核", "可选 · 帮规则找回漏掉的待办、补全时间地点，可以完全在本机运行", AiConfig.ready(this),
+                "已开启", "了解", () -> startActivity(new Intent(this, AiActivity.class)));
         if (setupDone != null) setupDone.setText(done == 3 ? "全部就绪" : access ? "稍后再说" : "稍后再说（暂时收不到群消息）");
     }
 

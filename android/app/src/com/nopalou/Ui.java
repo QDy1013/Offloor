@@ -552,6 +552,244 @@ final class Ui {
         return withAlpha(TEXT, 20);
     }
 
+    // ---------- 设置页通用控件：所有二级页面共用同一套尺寸、字号和颜色 ----------
+
+    /** 二级页面顶栏：返回 + 20sp 标题。 */
+    static android.widget.LinearLayout topBar(android.app.Activity a, String title) {
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(a);
+        bar.setPadding(dp(a, 4), dp(a, 8), dp(a, 12), dp(a, 4));
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.addView(CourseUi.icon(a, "prev", "返回", a::finish));
+        bar.addView(CourseUi.text(a, title, 20, TEXT, true));
+        return bar;
+    }
+
+    /** 设置页的一张内容卡：左右 16dp 外边距、20dp 圆角，返回卡片本身用来继续加内容。 */
+    static android.widget.LinearLayout card(android.widget.LinearLayout parent) {
+        Context c = parent.getContext();
+        android.widget.LinearLayout card = CourseUi.column(c);
+        card.setPadding(dp(c, 20), dp(c, 18), dp(c, 20), dp(c, 20));
+        cardSurface(card, 20);
+        android.widget.LinearLayout.LayoutParams p = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        p.setMargins(dp(c, 16), dp(c, 12), dp(c, 16), 0);
+        parent.addView(card, p);
+        return card;
+    }
+
+    /** 卡片标题（16sp）加一段可选说明（13sp 次级色）。返回说明文字，没有说明时返回 null。 */
+    static TextView heading(android.widget.LinearLayout parent, String title, String desc) {
+        Context c = parent.getContext();
+        parent.addView(CourseUi.text(c, title, 16, TEXT, true));
+        if (desc == null || desc.isEmpty()) return null;
+        TextView d = CourseUi.text(c, desc, 13, SUB, false);
+        d.setLineSpacing(dp(c, 3), 1);
+        d.setPadding(0, dp(c, 6), 0, 0);
+        parent.addView(d);
+        return d;
+    }
+
+    /** 标签 + 输入框：浅灰填充、14dp 圆角、15sp，返回输入框。 */
+    static android.widget.EditText field(android.widget.LinearLayout parent, String label, String hint,
+                                         String value, int inputType) {
+        Context c = parent.getContext();
+        TextView t = CourseUi.text(c, label, 12, SUB, false);
+        t.setPadding(0, dp(c, 12), 0, dp(c, 6));
+        parent.addView(t);
+        android.widget.EditText e = new android.widget.EditText(c);
+        e.setHint(hint);
+        e.setHintTextColor(MUTE);
+        e.setTextColor(TEXT);
+        e.setTextSize(15);
+        e.setSingleLine(true);
+        e.setInputType(inputType);
+        e.setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12));
+        e.setBackground(round(c, FILL, 14));
+        if (value != null) e.setText(value);
+        parent.addView(e, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        return e;
+    }
+
+    /** 开关跟随强调色，不再用系统默认的蓝绿色。 */
+    static void tint(android.widget.Switch s) {
+        int[][] states = {{android.R.attr.state_checked}, {}};
+        s.setThumbTintList(new ColorStateList(states, new int[]{ACCENT, dark ? SUB : CARD}));
+        s.setTrackTintList(new ColorStateList(states, new int[]{withAlpha(ACCENT, 110), dark ? FILL : RING}));
+    }
+
+    /** 一行开关：左边标题和说明，右边开关，整行都能点。返回开关。 */
+    static android.widget.Switch toggle(android.widget.LinearLayout parent, String title, String desc, boolean on) {
+        Context c = parent.getContext();
+        android.widget.LinearLayout row = new android.widget.LinearLayout(c);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(c, 10), 0, dp(c, 10));
+        android.widget.LinearLayout words = CourseUi.column(c);
+        words.addView(CourseUi.text(c, title, 15, TEXT, true));
+        if (desc != null && !desc.isEmpty()) {
+            TextView d = CourseUi.text(c, desc, 12, SUB, false);
+            d.setLineSpacing(dp(c, 2), 1);
+            d.setPadding(0, dp(c, 3), 0, 0);
+            words.addView(d);
+        }
+        row.addView(words, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+        android.widget.Switch s = new android.widget.Switch(c);
+        s.setChecked(on);
+        s.setContentDescription(title);
+        tint(s);
+        android.widget.LinearLayout.LayoutParams sp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+        sp.leftMargin = dp(c, 12);
+        row.addView(s, sp);
+        row.setOnClickListener(v -> s.toggle());
+        parent.addView(row, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        return s;
+    }
+
+    /** 说明要点：左边一枚带字的小圆，右边标题和说明。用于“这是做什么的”一类解释。 */
+    static void point(android.widget.LinearLayout parent, String mark, int color, int bg, String title, String desc) {
+        Context c = parent.getContext();
+        android.widget.LinearLayout row = new android.widget.LinearLayout(c);
+        row.setPadding(0, dp(c, 12), 0, 0);
+        TextView m = CourseUi.text(c, mark, 13, color, true);
+        m.setGravity(android.view.Gravity.CENTER);
+        m.setIncludeFontPadding(false);
+        m.setBackground(disc(c, bg));
+        android.widget.LinearLayout.LayoutParams mp = new android.widget.LinearLayout.LayoutParams(dp(c, 28), dp(c, 28));
+        mp.rightMargin = dp(c, 12);
+        row.addView(m, mp);
+        android.widget.LinearLayout words = CourseUi.column(c);
+        words.addView(CourseUi.text(c, title, 15, TEXT, true));
+        if (desc != null && !desc.isEmpty()) {
+            TextView d = CourseUi.text(c, desc, 13, SUB, false);
+            d.setLineSpacing(dp(c, 3), 1);
+            d.setPadding(0, dp(c, 3), 0, 0);
+            words.addView(d);
+        }
+        row.addView(words, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+        parent.addView(row, new android.widget.LinearLayout.LayoutParams(-1, -2));
+    }
+
+    /** 小号胶囊操作：强调色字、浅强调底，用在清单行尾。 */
+    static TextView chipAction(Context c, String text, Runnable click) {
+        TextView t = CourseUi.text(c, text, 13, ACCENT, true);
+        t.setGravity(android.view.Gravity.CENTER);
+        t.setMinHeight(dp(c, 36));
+        t.setPadding(dp(c, 14), dp(c, 6), dp(c, 14), dp(c, 6));
+        t.setBackground(ripple(c, round(c, ACCENT_BG, 99), press(), 99));
+        t.setOnClickListener(v -> click.run());
+        t.setFocusable(true);
+        return t;
+    }
+
+    /**
+     * 引导清单的一步：左边序号或对勾，中间标题和说明，右边可选操作。
+     * action 为空或已完成时不显示操作按钮。
+     */
+    static android.widget.LinearLayout step(android.widget.LinearLayout parent, int n, String title, String desc,
+                                            boolean done, String action, Runnable run) {
+        Context c = parent.getContext();
+        android.widget.LinearLayout row = new android.widget.LinearLayout(c);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(c, 10), 0, dp(c, 10));
+        View mark;
+        if (done) {
+            android.widget.ImageView check = new android.widget.ImageView(c);
+            check.setImageDrawable(new CheckCircle(c, GREEN, GREEN, 24, true));
+            check.setContentDescription("已完成");
+            mark = check;
+        } else {
+            TextView num = CourseUi.text(c, String.valueOf(n), 12, SUB, true);
+            num.setGravity(android.view.Gravity.CENTER);
+            num.setIncludeFontPadding(false);
+            num.setBackground(disc(c, FILL));
+            mark = num;
+        }
+        android.widget.LinearLayout.LayoutParams mp = new android.widget.LinearLayout.LayoutParams(dp(c, 24), dp(c, 24));
+        mp.rightMargin = dp(c, 12);
+        row.addView(mark, mp);
+        android.widget.LinearLayout words = CourseUi.column(c);
+        words.addView(CourseUi.text(c, title, 15, done ? SUB : TEXT, true));
+        if (desc != null && !desc.isEmpty()) {
+            TextView d = CourseUi.text(c, desc, 12, done ? MUTE : SUB, false);
+            d.setLineSpacing(dp(c, 2), 1);
+            d.setPadding(0, dp(c, 2), 0, 0);
+            words.addView(d);
+        }
+        row.addView(words, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+        if (!done && action != null && run != null) {
+            android.widget.LinearLayout.LayoutParams ap = new android.widget.LinearLayout.LayoutParams(-2, -2);
+            ap.leftMargin = dp(c, 10);
+            row.addView(chipAction(c, action, run), ap);
+        }
+        parent.addView(row, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        return row;
+    }
+
+    /**
+     * 单选卡片：圆形选择标记、标题、可选徽标和说明。选中时描边与底色换成强调色；
+     * 不可用时变淡并把说明换成原因，点不动。
+     */
+    static final class Choice {
+        final android.widget.LinearLayout view;
+        private final View mark;
+        private final TextView title;
+        private final TextView desc;
+        private boolean selected;
+        private boolean enabled = true;
+
+        Choice(android.widget.LinearLayout parent, String titleText, String badge, String descText, Runnable click) {
+            Context c = parent.getContext();
+            view = CourseUi.column(c);
+            view.setPadding(dp(c, 16), dp(c, 14), dp(c, 16), dp(c, 14));
+            android.widget.LinearLayout head = new android.widget.LinearLayout(c);
+            head.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            mark = new View(c);
+            head.addView(mark, new android.widget.LinearLayout.LayoutParams(dp(c, 18), dp(c, 18)));
+            title = CourseUi.text(c, titleText, 15, TEXT, true);
+            android.widget.LinearLayout.LayoutParams tp = new android.widget.LinearLayout.LayoutParams(0, -2, 1);
+            tp.leftMargin = dp(c, 10);
+            head.addView(title, tp);
+            if (badge != null && !badge.isEmpty()) head.addView(tag(c, badge, ACCENT, ACCENT_BG));
+            view.addView(head);
+            desc = CourseUi.text(c, descText, 12, SUB, false);
+            desc.setLineSpacing(dp(c, 3), 1);
+            desc.setPadding(dp(c, 28), dp(c, 6), 0, 0);
+            view.addView(desc);
+            view.setOnClickListener(v -> { if (enabled && click != null) click.run(); });
+            view.setFocusable(true);
+            android.widget.LinearLayout.LayoutParams p = new android.widget.LinearLayout.LayoutParams(-1, -2);
+            p.topMargin = dp(c, 10);
+            parent.addView(view, p);
+            paint();
+        }
+
+        boolean selected() { return selected; }
+        boolean enabled() { return enabled; }
+
+        void select(boolean on) {
+            selected = on;
+            paint();
+        }
+
+        void disable(String reason) {
+            enabled = false;
+            if (reason != null) desc.setText(reason);
+            paint();
+        }
+
+        private void paint() {
+            Context c = view.getContext();
+            int fill = selected ? ACCENT_BG : (dark ? FILL : BG);
+            int stroke = selected ? ACCENT : LINE;
+            view.setBackground(ripple(c, roundStroke(c, fill, stroke, 16, selected ? 1.5f : 1f), press(), 16));
+            GradientDrawable ring = new GradientDrawable();
+            ring.setShape(GradientDrawable.OVAL);
+            ring.setColor(selected ? CARD : Color.TRANSPARENT);
+            ring.setStroke(dp(c, selected ? 5 : 1.5f), selected ? ACCENT : RING);
+            mark.setBackground(ring);
+            view.setAlpha(enabled ? 1f : 0.55f);
+            view.setContentDescription(title.getText() + (selected ? "，已选" : "") + (enabled ? "" : "，不可用"));
+        }
+    }
+
     static Drawable searchGlyph(Context c, int color, float sizeDp) {
         return new SearchGlyph(dp(c, sizeDp), color);
     }
