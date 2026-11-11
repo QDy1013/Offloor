@@ -1,4 +1,9 @@
-"""从源码构建两个签名 APK，需要 Android SDK 34、Build Tools 34.0.0 和 JDK 17+。"""
+"""从源码构建两个签名 APK，需要 Android SDK 34、Build Tools 34.0.0 和 JDK 17+。
+
+装了 Android NDK 时，主 App 会同时编入端侧小模型推理库（见 build_native.py）；没有 NDK 也能打包，只是本机模型不可用。
+"""
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -7,17 +12,20 @@ from pathlib import Path
 import shutil
 import xml.etree.ElementTree as ET
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+import build_native  # noqa: E402
 
 
 def run(*args):
     subprocess.run([str(arg) for arg in args], check=True)
 
 
-def provenance(src):
+def provenance(src, native=None):
     def git(*args):
         result = subprocess.run(["git", *args], cwd=ROOT.parent, capture_output=True, text=True)
         return result.stdout.strip() if result.returncode == 0 else None
@@ -31,10 +39,12 @@ def provenance(src):
     return {"schema":1,"gitCommit":git("rev-parse","HEAD"),"gitTree":git("rev-parse","HEAD^{tree}"),
             "dirty":bool(git("status","--porcelain","--untracked-files=all")),"sourceSha256":digest.hexdigest(),
             "modelSha256":hashlib.sha256(model.read_bytes()).hexdigest() if model.exists() else None,
-            "package":ET.parse(src/"AndroidManifest.xml").getroot().get("package")}
+            "package":ET.parse(src/"AndroidManifest.xml").getroot().get("package"),
+            "nativeSha256":hashlib.sha256(native.read_bytes()).hexdigest() if native else None,
+            "llamaCpp":build_native.LLAMA_COMMIT if native else None}
 
 
-def build(name: str, src: Path, stage: Path, sdk: Path, keystore: Path) -> Path:
+def build(name: str, src: Path, stage: Path, sdk: Path, keystore: Path, native: Path | None = None) -> Path:
     tools = sdk / "build-tools" / "34.0.0"
     android_jar = sdk / "platforms" / "android-34" / "android.jar"
     win = os.name == "nt"
@@ -68,7 +78,9 @@ def build(name: str, src: Path, stage: Path, sdk: Path, keystore: Path) -> Path:
     run(d8, "--lib", android_jar, "--min-api", "24", "--output", dex, class_archive)
     with ZipFile(base, "a", ZIP_DEFLATED) as archive:
         archive.write(dex / "classes.dex", "classes.dex")
-        archive.writestr("assets/build-info.json",json.dumps(provenance(src),ensure_ascii=False,sort_keys=True)+"\n")
+        archive.writestr("assets/build-info.json",json.dumps(provenance(src, native),ensure_ascii=False,sort_keys=True)+"\n")
+        if native:
+            archive.write(native, f"lib/{build_native.ABI}/{build_native.LIB}")
     run(align, "-f", "4", base, aligned)
     run(signer, "sign", "--ks", keystore, "--ks-key-alias", "androiddebugkey",
         "--ks-pass", "pass:android", "--key-pass", "pass:android",
@@ -85,6 +97,9 @@ def main():
     parser.add_argument("--keystore", type=Path, help="现有 Android 调试密钥库，供覆盖安装时保持签名")
     parser.add_argument("--preview", action="store_true", help="构建可与原版并存的独立测试版，不读取原版本机数据")
     parser.add_argument("--timetable-test", action="store_true", help="构建直接进入课表的转发测试包，不含消息后台服务或授权引导")
+    parser.add_argument("--ndk", type=Path, help="Android NDK 目录；默认取 ANDROID_NDK_HOME 或 SDK 下的 ndk/")
+    parser.add_argument("--no-native", action="store_true", help="不编入端侧小模型推理库")
+    parser.add_argument("--require-native", action="store_true", help="找不到 NDK 时报错（发布用）")
     args = parser.parse_args()
     if not args.sdk or not (args.sdk / "platforms" / "android-34" / "android.jar").is_file():
         parser.error("需要 Android SDK Platform 34。请设置 ANDROID_HOME 或传入 --sdk。")
@@ -100,6 +115,16 @@ def main():
         run("keytool", "-genkeypair", "-keystore", keystore, "-storepass", "android",
             "-keypass", "android", "-alias", "androiddebugkey", "-keyalg", "RSA",
             "-keysize", "2048", "-validity", "10000", "-dname", "CN=Android Debug,O=Android,C=US")
+
+    native = None
+    if not args.no_native and not args.timetable_test:
+        ndk = args.ndk or build_native.find_ndk(args.sdk)
+        if ndk:
+            native = build_native.build_android(ndk.resolve(), out)
+        elif args.require_native:
+            parser.error("需要 Android NDK 才能编入端侧小模型推理库，可用 --ndk 指定。")
+        else:
+            print("没有找到 Android NDK：本次安装包不含端侧小模型推理库，“本机小模型”选项会显示不可用。", flush=True)
 
     with TemporaryDirectory(prefix="compile-", dir=out) as stage:
         if args.preview or args.timetable_test:
@@ -140,9 +165,9 @@ def main():
                         tree.getroot().remove(permission)
                 tree.write(manifest, encoding="utf-8", xml_declaration=True)
                 name = "nopalou-timetable-test"
-            apks = [build(name, src, Path(stage), args.sdk.resolve(), keystore)]
+            apks = [build(name, src, Path(stage), args.sdk.resolve(), keystore, native)]
         else:
-            apks = [build(name, ROOT / directory, Path(stage), args.sdk.resolve(), keystore)
+            apks = [build(name, ROOT / directory, Path(stage), args.sdk.resolve(), keystore, native if name == "nopalou" else None)
                     for name, directory in (("nopalou", "app"), ("replay", "replay"))]
         for apk in apks:
             apk.replace(out / apk.name)

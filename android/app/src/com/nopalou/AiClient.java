@@ -27,7 +27,7 @@ import java.util.Map;
  * ocr：把聊天截图逐条转写成消息（截图 OCR 兜底）。
  * 只在后台线程调用。
  */
-final class AiClient {
+final class AiClient implements AutoCloseable {
 
     /** 密钥错误、余额不足、模型名错：重试也没用。 */
     static final class AuthException extends IOException {
@@ -46,8 +46,60 @@ final class AiClient {
     static final String TIME_FMT = "yyyy-MM-dd HH:mm";
 
     private final AiConfig cfg;
+    /** 本机模式下第一次复核时才加载模型，同一个客户端里的多批请求复用；close() 时释放。 */
+    private LocalLlm llm;
+    private volatile boolean cancelled;
 
     AiClient(AiConfig cfg) { this.cfg = cfg; }
+
+    /** 系统叫停后台任务时调用：本机模型正在生成就尽快停下。 */
+    void cancel() {
+        cancelled = true;
+        LocalLlm l;
+        synchronized (this) { l = llm; }
+        if (l != null) l.cancel();
+    }
+
+    @Override
+    public synchronized void close() {
+        if (llm != null) { llm.close(); llm = null; }
+    }
+
+    private LocalLlm localModel() throws IOException {
+        synchronized (this) {
+            if (cancelled) throw new IOException("已取消");
+            if (llm == null) {
+                try {
+                    llm = LocalLlm.open(LocalModelStore.file(cfg.context), LocalLlm.defaultThreads());
+                } catch (IOException e) {
+                    // 模型缺失、损坏或这台手机不支持：重试也没用，停下等用户处理
+                    throw new AuthException(e.getMessage());
+                }
+            }
+            return llm;
+        }
+    }
+
+    /**
+     * 本机推理：按语法约束生成，再去掉思考段。输出不完整属于这批内容本身的问题（贪心解码每次结果相同），
+     * 按“被拒”处理，避免同一批反复重试。
+     */
+    private String local(String system, String user, String grammar, int maxTokens) throws IOException {
+        LocalLlm model = localModel();
+        String prompt = LocalLlmCore.wantsNoThink(LocalModelStore.name(cfg.context)) ? user + "\n/no_think" : user;
+        String out;
+        try {
+            out = model.generate(system, prompt, grammar, maxTokens);
+        } catch (IOException e) {
+            String m = e.getMessage() == null ? "" : e.getMessage();
+            if (m.contains("取消")) throw e;
+            if (m.contains("上下文")) throw new BadRequestException(m);
+            throw new IOException("本机模型：" + m, e);
+        }
+        out = LocalLlmCore.stripThink(out);
+        if (out.isEmpty()) throw new BadRequestException("本机模型没有输出");
+        return out;
+    }
 
     // ---------- 复判 / 补全 ----------
 
@@ -98,9 +150,11 @@ final class AiClient {
                 o.put("send_time", fmt(e.msg.ts) + " 周" + "一二三四五六日".charAt(weekdayIndex(e.msg.ts)));
                 o.put("group", nz(e.msg.groupName));
                 o.put("sender", nz(e.msg.sender));
-                o.put("text", clip(e.msg.text, 1200));
+                // 本机模型上下文只有 4096 token，一批 3 条：正文和前文都截短些
+                o.put("text", clip(e.msg.text, cfg.local ? 400 : 1200));
                 JSONArray ctx = new JSONArray();
-                for (String s : e.context) ctx.put(clip(s, 120));
+                int from = cfg.local ? Math.max(0, e.context.size() - 3) : 0;   // 本机只带最近 3 条
+                for (String s : e.context.subList(from, e.context.size())) ctx.put(clip(s, cfg.local ? 80 : 120));
                 if (ctx.length() > 0) o.put("earlier_messages", ctx);
                 o.put("local_guess", e.label);
                 arr.put(o);
@@ -109,6 +163,14 @@ final class AiClient {
             JSONArray msgs = new JSONArray()
                     .put(new JSONObject().put("role", "system").put("content", JUDGE_SYSTEM))
                     .put(new JSONObject().put("role", "user").put("content", req.toString()));
+            if (cfg.local) {
+                String out = local(JUDGE_SYSTEM, req.toString(), LocalLlmCore.judgeGrammar(items.size()), LocalLlmCore.JUDGE_MAX_TOKENS);
+                try {
+                    return parseVerdicts(new JSONObject(stripFence(out)), byId);
+                } catch (JSONException ex) {
+                    throw new BadRequestException("本机模型输出不完整（可能超出长度上限）");
+                }
+            }
             JSONObject res = new JSONObject(stripFence(chat(cfg.model, msgs, 1500, true)));
             return parseVerdicts(res, byId);
         } catch (JSONException ex) {
@@ -184,6 +246,7 @@ final class AiClient {
     }
 
     Shot ocr(byte[] jpeg) throws IOException {
+        if (cfg.local) throw new AuthException("本机模型不支持截图识别");
         try {
             JSONArray content = new JSONArray()
                     .put(new JSONObject().put("type", "image_url").put("image_url",
@@ -212,6 +275,7 @@ final class AiClient {
 
     /** 设置页“测试连接”：发一句最短的请求。 */
     String ping() throws IOException {
+        if (cfg.local) return local("", "只回复 JSON：{\"ok\":true}", LocalLlmCore.PING_GRAMMAR, 20);
         try {
             JSONArray msgs = new JSONArray().put(new JSONObject().put("role", "user")
                     .put("content", "只回复 JSON：{\"ok\":true}"));

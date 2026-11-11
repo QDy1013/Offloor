@@ -152,7 +152,8 @@ final class AiImages {
             if (!t.isEmpty()) lines.add(new String[]{"", "", t});
         }
         AiConfig cfg = AiConfig.load(ctx);
-        return ingest(ctx, cfg.ready() ? new AiClient(cfg) : null, lines, "", null, "分享的文字", PKG_SHARE, "分享", now, true, request);
+        // 本机模型一批要几十秒，不在前台当场复核：先按规则出卡，再排队交给后台任务
+        return ingest(ctx, cfg.ready() && !cfg.local ? new AiClient(cfg) : null, lines, "", null, "分享的文字", PKG_SHARE, "分享", now, true, request);
     }
 
     private static Result ingest(Context ctx, AiClient client, List<String[]> lines, String shotGroup,

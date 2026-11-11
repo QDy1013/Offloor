@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "android/app/src/com/nopalou"
 SOURCES = ("Engine", "NotifFilter", "DemoScenario", "ReminderPlan", "TodayView", "ClashPlan",
-           "NotifParser", "DiagLog", "HealthCheck", "ChangeDiff", "SectionTimes", "TodayPlan", "StateFormat", "StateStore", "TaskChanges", "ChatTime", "SecretCodec", "AiBudgetCore", "TaskTrace", "ShowcaseScenario")
+           "NotifParser", "DiagLog", "HealthCheck", "ChangeDiff", "SectionTimes", "TodayPlan", "StateFormat", "StateStore", "TaskChanges", "ChatTime", "SecretCodec", "AiBudgetCore", "TaskTrace", "ShowcaseScenario", "LocalLlmCore")
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
                                          "-cp", classes, "com.nopalou." + test.stem, *extra])
         if compiled and args.android_jar:
             classpath = os.pathsep.join((classes, str(args.json_jar.resolve()), str(args.android_jar.resolve())))
-            adapters = sorted({"AiQueue", "AiConfig", "AiSecrets", "AiBudget", "AccountFiles", "UpgradeDataBackup"} | {
+            adapters = sorted({"AiQueue", "AiConfig", "AiSecrets", "AiBudget", "AccountFiles", "UpgradeDataBackup", "LocalModelStore"} | {
                 file.stem for file in APP.glob("*.java")
                 if file.stem not in SOURCES and not re.search(r"^import android\.", file.read_text(encoding="utf-8"), re.M)
             })

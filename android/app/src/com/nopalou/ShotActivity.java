@@ -123,7 +123,7 @@ public class ShotActivity extends Activity {
             try {
                 AiImages.Result r = AiImages.recognizeText(this, value, System.currentTimeMillis());
                 runOnUiThread(() -> done(r.added > 0 ? "新增 " + r.added + " 张待办" : "没有找到需要你做的事",
-                        "共 " + r.messages + " 段文字" + (AiConfig.ready(this) ? "，已经过 AI 复核。" : "，按本机规则识别。"), true));
+                        "共 " + r.messages + " 段文字" + (!AiConfig.ready(this) ? "，按本机规则识别。" : AiConfig.load(this).local ? "，已按规则出卡，本机模型稍后在后台复核。" : "，已经过 AI 复核。"), true));
             } catch (Exception e) {
                 runOnUiThread(() -> done("识别失败", message(e), false));
             }
@@ -132,7 +132,10 @@ public class ShotActivity extends Activity {
 
     private void images(List<Uri> uris) {
         if (!AiConfig.load(this).visionReady()) {
-            done("截图识别需要先开启 AI 识别", "在“AI 识别”里填写接口、密钥和图片模型（例如通义千问 qwen-vl-plus），之后再分享截图即可。", false);
+            AiConfig cfg = AiConfig.load(this);
+            done("截图识别需要先开启 AI 识别", cfg.enabled && cfg.local
+                    ? "本机小模型不支持看图。截图识别需要在“AI 识别”里切换到云端接口并填写图片模型；复制的文字仍可直接分享给楼外。"
+                    : "在“AI 识别”里填写接口、密钥和图片模型（例如通义千问 qwen-vl-plus），之后再分享截图即可。", false);
             buttons.addView(CourseUi.action(this, "去设置 AI 识别", true,
                     () -> { startActivity(new Intent(this, AiActivity.class)); finish(); }), CourseUi.row(dp(48)));
             return;
