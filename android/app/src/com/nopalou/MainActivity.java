@@ -102,8 +102,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private Button autoReadButton;
     private LinearLayout liveFilters;
     private TextView stateFilter;
-    /** 顶部日期筛选：默认「今天起」，直接看到今天及以后还没做的事。 */
-    // 「全部」放第一个并作为默认：没写日期、规则判断不了时间的事项也在首页直接看得到。
+    /** 「新增」放在「全部」左侧；默认仍为「全部」，不隐藏没写日期的事项。 */
+    private TextView newCardsTab;
+    private boolean newCardsOnly;
+    private NewCardTracker newCardTracker;
     private static final String[] WINDOW_LABELS = {"全部", "今天起", "今天", "明天", "待确认"};
     private static final Engine.CardWindow[] WINDOW_TABS = {Engine.CardWindow.ANY, Engine.CardWindow.UPCOMING,
             Engine.CardWindow.TODAY, Engine.CardWindow.TOMORROW, Engine.CardWindow.NEEDS_CONFIRM};
@@ -201,6 +203,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             accessChecked = b.getBoolean("accessChecked", false);
             restoreUsageNotice = b.getBoolean("usageNoticeShowing", false);
             keywords = b.getString("keywords", "");
+            newCardsOnly = b.getBoolean("newCardsOnly", false);
             Engine.CardScope[] scopes = Engine.CardScope.values();
             int selected = b.getInt("scope", 0);
             scope = scopes[Math.max(0, Math.min(selected, scopes.length - 1))];
@@ -216,6 +219,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             return;
         }
         engine.listener = this;
+        newCardTracker = NewCardTracker.get(this);
         buildUi();
         // 每次打开 App 都确保看门狗已登记（已存在时不会重复登记，不影响原有周期）。
         WatchdogJob.schedule(this);
@@ -324,6 +328,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         state.putBoolean("accessChecked", accessChecked);
         state.putBoolean("usageNoticeShowing", usageNoticeDialog != null && usageNoticeDialog.isShowing());
         state.putString("keywords", keywords);
+        state.putBoolean("newCardsOnly", newCardsOnly);
         state.putInt("scope", scope.ordinal());
         state.putInt("window", window.ordinal());
         state.putInt("visibleLimit", visibleLimit);
@@ -820,10 +825,22 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         chipScroll.setClipToPadding(false);
         LinearLayout tabs = new LinearLayout(this);
         tabs.setGravity(Gravity.CENTER_VERTICAL);
+        newCardsTab = chip("新增");
+        newCardsTab.setContentDescription("本次打开应用新增的卡片");
+        newCardsTab.setOnClickListener(v -> {
+            newCardsOnly = true;
+            scope = Engine.CardScope.ALL;
+            window = Engine.CardWindow.ANY;
+            resetCardPage();
+        });
+        LinearLayout.LayoutParams newLp = lp(-2, dp(this, 36));
+        newLp.rightMargin = dp(this, 8);
+        tabs.addView(newCardsTab, newLp);
         for (int i = 0; i < WINDOW_TABS.length; i++) {
             final int index = i;
             TextView tab = chip(WINDOW_LABELS[i]);
             tab.setOnClickListener(v -> {
+                newCardsOnly = false;
                 scope = Engine.CardScope.ALL;
                 window = WINDOW_TABS[index];
                 resetCardPage();
@@ -895,7 +912,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private void showFilterMenu() {
         String[] labels = {"全部事项", "未完成", "已过期", "已完成"};
         alert().setTitle("按状态查看").setSingleChoiceItems(labels,
-                window == Engine.CardWindow.ANY ? scope.ordinal() : -1, (d, which) -> {
+                !newCardsOnly && window == Engine.CardWindow.ANY ? scope.ordinal() : -1, (d, which) -> {
+                    newCardsOnly = false;
                     scope = Engine.CardScope.values()[which];
                     window = Engine.CardWindow.ANY;
                     d.dismiss();
@@ -904,6 +922,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void updateWindowTabs(Engine shown, long now) {
+        NewCardSession session = demo == null ? newCardTracker.observe(engine) : null;
         // 与 WINDOW_TABS 同序：全部、今天起、今天、明天、待确认。
         int[] counts = new int[WINDOW_TABS.length];
         for (Engine.Card c : shown.all()) {
@@ -914,8 +933,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             else if ("待确认".equals(bucket)) counts[4]++;
             if (Engine.isUpcoming(c, now)) counts[1]++;
         }
+        newCardsTab.setVisibility(demo == null ? View.VISIBLE : View.GONE);
+        styleChip(newCardsTab, "新增", String.valueOf(session == null ? 0 : session.count(shown.all())),
+                newCardsOnly && demo == null);
         for (int i = 0; i < windowTabs.length; i++) {
-            boolean selected = scope == Engine.CardScope.ALL && window == WINDOW_TABS[i];
+            boolean selected = (!newCardsOnly || demo != null) && scope == Engine.CardScope.ALL && window == WINDOW_TABS[i];
             styleChip(windowTabs[i], WINDOW_LABELS[i], String.valueOf(counts[i]), selected,
                     i == CONFIRM_TAB && counts[i] > 0);
         }
@@ -1069,6 +1091,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 .setPositiveButton(added > 0 ? "查看" : "好", (d, w) -> {
                     if (added > 0) {
                         // 历史消息里的事项可能已经过期，切到「全部」才看得全。
+                        newCardsOnly = false;
                         scope = Engine.CardScope.ALL;
                         window = Engine.CardWindow.ANY;
                         resetCardPage();
@@ -1105,6 +1128,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void showAllCards() {
+        newCardsOnly = false;
         scope = Engine.CardScope.ALL;
         window = Engine.CardWindow.ANY;
         keywords = "";
@@ -1607,19 +1631,23 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             if (needSetup) autoReadButton.setText(WatchdogJob.accessEnabled(this) ? "检查自动读取" : "开启自动读取");
         }
 
-        List<Engine.Card> list = demo == null
-                ? shown.queryCards(keywords, scope, window, visibleLimit + 1, now)
-                : shown.ranked(PAGE_SIZE, now);
+        List<Engine.Card> list = demo != null ? shown.ranked(PAGE_SIZE, now)
+                : newCardsOnly ? newCardTracker.observe(engine).queryCards(shown, keywords, scope, visibleLimit + 1, now)
+                : shown.queryCards(keywords, scope, window, visibleLimit + 1, now);
         if (list.isEmpty()) {
             boolean upcomingOnly = keywords.trim().isEmpty() && scope == Engine.CardScope.ALL
                     && window == Engine.CardWindow.UPCOMING;
             // 默认的「今天起」不算用户主动筛选：一张卡都没有时照常显示开启读取/等待消息的说明。
-            boolean filtered = !keywords.trim().isEmpty() || scope != Engine.CardScope.ALL
+            boolean filtered = newCardsOnly || !keywords.trim().isEmpty() || scope != Engine.CardScope.ALL
                     || (window != Engine.CardWindow.ANY && !(upcomingOnly && shown.all().isEmpty()));
             if (demo != null) {
                 emptyIcon.setBackground(new Ui.CheckCircle(this, Ui.ACCENT, Ui.ACCENT, 52, true));
                 emptyTitle.setText("演示卡片已清理");
                 empty.setText("退出演示后可以重新体验。");
+            } else if (newCardsOnly && keywords.trim().isEmpty()) {
+                emptyIcon.setBackground(new Ui.CheckCircle(this, Ui.GREEN, Ui.GREEN, 52, true));
+                emptyTitle.setText("本次没有新增卡片");
+                empty.setText("这里显示自上次打开以来新增的卡片。\n本次使用中新收到的卡片也会加入，原有卡片仍在「全部」里。");
             } else if (upcomingOnly && filtered) {
                 emptyIcon.setBackground(new Ui.CheckCircle(this, Ui.GREEN, Ui.GREEN, 52, true));
                 emptyTitle.setText("今天起没有要做的事");

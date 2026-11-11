@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "android/app/src/com/nopalou"
 SOURCES = ("Engine", "NotifFilter", "DemoScenario", "ReminderPlan", "TodayView", "ClashPlan",
-           "NotifParser", "DiagLog", "HealthCheck", "ChangeDiff", "SectionTimes", "TodayPlan", "StateFormat", "StateStore", "TaskChanges", "ChatTime", "SecretCodec", "AiBudgetCore", "TaskTrace", "ShowcaseScenario", "LocalLlmCore")
+           "NotifParser", "DiagLog", "HealthCheck", "ChangeDiff", "SectionTimes", "TodayPlan", "StateFormat", "StateStore", "TaskChanges", "ChatTime", "SecretCodec", "AiBudgetCore", "TaskTrace", "ShowcaseScenario", "LocalLlmCore", "NewCardSession")
 
 
 def main():
