@@ -213,6 +213,13 @@ public class AiActivity extends Activity {
             say("已开始处理，联网后几秒内完成。\n" + AiConfig.summary(this));
         }), CourseUi.row(dp(48)));
         CourseUi.gap(advanced, 10);
+        advanced.addView(CourseUi.action(this, "补审已有的待确认事项", false, () -> {
+            if (!AiConfig.ready(this)) { say("先完成设置并打开「开启 AI 复核」"); return; }
+            int n = backfill();
+            say(n > 0 ? "已把 " + n + " 件时间待确认的事项交给 AI 补审，处理完卡片上会出现「AI 已复核」。\n" + AiConfig.summary(this)
+                    : "没有需要补审的事项：待确认的群消息卡都已复核过，教务系统和学习平台的事项不走 AI。");
+        }), CourseUi.row(dp(48)));
+        CourseUi.gap(advanced, 10);
         advanced.addView(CourseUi.action(this, "重试失败的请求", false, () -> {
             try {
                 int count = AiQueue.retryFailed(this);
@@ -553,8 +560,26 @@ public class AiActivity extends Activity {
         runOnUiThread(() -> {
             if (isDestroyed()) return;
             renderSteps();
-            say(msg);
+            // 测试通过且已开启：顺手把之前漏审的待确认事项补上。
+            int n = ok ? backfill() : 0;
+            say(n > 0 ? msg + "\n已把之前 " + n + " 件时间待确认的事项交给 AI 补审。" : msg);
         });
+    }
+
+    // ---------- 补审 ----------
+
+    /** 把 AI 开启前就已出的、时间待确认的群消息卡送去复核；AI 没就绪时什么也不做。返回送出的张数。 */
+    private int backfill() {
+        try {
+            if (!AiConfig.ready(this)) return 0;
+            Engine engine = EngineHolder.get(this);
+            if (engine == null) return 0;
+            int n = engine.backfillReviews();
+            if (n > 0) AiJob.schedule(this);
+            return n;
+        } catch (RuntimeException e) {
+            return 0;
+        }
     }
 
     // ---------- 开启后的反馈 ----------
@@ -581,8 +606,10 @@ public class AiActivity extends Activity {
         String how = cfg.local ? "本机小模型 " + LocalModelStore.name(this) + "，消息不出手机"
                 : "云端接口 " + cfg.model;
         String when = AiConfig.MODE_CHARGING.equals(cfg.mode) ? "充电时批量复核" : "有网就复核，约 20 秒攒一批";
+        int backfilled = ready ? backfill() : 0;
+        String backfillLine = backfilled > 0 ? "已把之前 " + backfilled + " 件时间待确认的事项交给 AI 补审。" : "";
         if (guide != null && guide.isShowing()) {
-            say(ready ? "✓ AI 复核已开启：" + how + "，" + when + "。" : "已开启，还差一步：" + missing);
+            say(ready ? "✓ AI 复核已开启：" + how + "，" + when + "。" + backfillLine : "已开启，还差一步：" + missing);
             return;
         }
         LinearLayout body = CourseUi.column(this);
@@ -600,7 +627,8 @@ public class AiActivity extends Activity {
         TextView title = CourseUi.text(this, ready ? "AI 复核已开启" : "已开启，还差一步", 20, Ui.TEXT, true);
         title.setGravity(Gravity.CENTER);
         body.addView(title, topMargin(14));
-        TextView sub = CourseUi.text(this, ready ? "正在使用" + how + "。\n" + when + "。" : missing, 13, Ui.SUB, false);
+        TextView sub = CourseUi.text(this, ready ? "正在使用" + how + "。\n" + when + "。"
+                + (backfillLine.isEmpty() ? "" : "\n" + backfillLine) : missing, 13, Ui.SUB, false);
         sub.setGravity(Gravity.CENTER);
         sub.setLineSpacing(dp(3), 1);
         body.addView(sub, topMargin(6));

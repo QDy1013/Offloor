@@ -1984,6 +1984,28 @@ public class Engine {
         try { escalator.escalate(e); } catch (RuntimeException ignored) { }
     }
 
+    /**
+     * 补审：AI 开启前就已经出的、时间还待确认的群消息卡，重新交给上一级复核一次。
+     * 只在消息到达时复核会漏掉这些卡（当时 AI 还没开）。教务系统和学习平台的卡（platformKey 非空）、
+     * 接龙、已完成 / 已移除 / 用户亲手改过时间 / 已复核过的卡都不送；去重交给宿主的队列。
+     * 返回送出的张数。
+     */
+    public int backfillReviews() {
+        if (escalator == null) return 0;
+        int sent = 0;
+        for (Card c : new ArrayList<>(cards)) {
+            if (c.done || c.cancelled || c.removedAt > 0 || c.aiChecked || c.deadlineUserSet) continue;
+            if (!(c.needsConfirm || c.deadline == 0)) continue;
+            if (c.platformKey != null || "jielong".equals(c.kind) || blank(c.sourceText) || blank(c.groupId)) continue;
+            Msg m = new Msg(blank(c.sourceId) ? "card:" + c.id : c.sourceId, c.groupId, c.groupName,
+                    c.sender == null ? "" : c.sender, c.sourceText, c.sourcePackageName(), c.sourceTs);
+            m.timeUncertain = c.sourceTimeUncertain;
+            escalateCard(c, m, c.deadline == 0 ? "extract" : "exam".equals(c.kind) ? "exam_time" : "extract");
+            sent++;
+        }
+        return sent;
+    }
+
     Card cardById(String id) {
         if (id == null) return null;
         for (Card c : cards) if (id.equals(c.id)) return c;

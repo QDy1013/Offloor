@@ -87,6 +87,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView notifStatus;
     /** 顶栏的 AI 复核状态胶囊；没开 AI 时隐藏。 */
     TextView aiPill;
+    /** 本进程是否已经做过一次 AI 补审。 */
+    private static boolean aiBackfilled;
     TextView empty;
     boolean accessChecked;
     private boolean retryNotifOnResume;
@@ -369,7 +371,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         boolean on = demo == null && EngineHolder.listenerConnected;
         if (on) {
             long last = EngineHolder.lastReceivedAt;
-            notifStatus.setText(statusText("服务已连接", Ui.GREEN));
+            notifStatus.setText(statusText("已连接", Ui.GREEN));
             notifStatus.setTextColor(Ui.SUB);
             notifStatus.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 15), Ui.press(), 15));
             notifStatus.setContentDescription(last == 0 ? "自动读取已连接，等待新消息"
@@ -393,6 +395,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         AiConfig cfg = AiConfig.load(this);
         if (!cfg.enabled || demo != null) { aiPill.setVisibility(View.GONE); return; }
         boolean ready = cfg.ready();
+        if (ready && !aiBackfilled && engine != null) {
+            // 每次启动补审一次：AI 开启前就出的、时间待确认的群消息卡也交给 AI 看一眼（队列按卡去重）。
+            aiBackfilled = true;
+            try { if (engine.backfillReviews() > 0) AiJob.schedule(this); }
+            catch (RuntimeException e) { EngineHolder.diag(this, "出错", "AI 补审排队失败"); }
+        }
         aiPill.setText(statusText(ready ? "AI 复核中" : "AI 待设置", ready ? Ui.ACCENT : Ui.AMBER_TX));
         aiPill.setTextColor(ready ? Ui.ACCENT : Ui.AMBER_TX);
         aiPill.setBackground(Ui.ripple(this, Ui.round(this, ready ? Ui.ACCENT_BG : Ui.AMBER_BG, 15), Ui.press(), 15));
@@ -496,15 +504,21 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         brand.setText(word);
         brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         brand.setLetterSpacing(-0.02f);
-        top.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        // 字标永远一行、不参与挤压：右边胶囊多了也只压缩中间的空白，不会把 Offloor. 折成两行。
+        brand.setSingleLine(true);
+        brand.setEllipsize(null);
+        top.addView(brand, new LinearLayout.LayoutParams(-2, -2));
+        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
         CampusSyncBanner.add(this,top);
         notifStatus = uiText("", 12, Ui.SUB, true);
         notifStatus.setGravity(Gravity.CENTER);
+        notifStatus.setSingleLine(true);
         notifStatus.setPadding(dp(this, 10), 0, dp(this, 10), 0);
         notifStatus.setOnClickListener(v -> showHealthCheck());
         top.addView(notifStatus, lp(-2, dp(this, 32)));
         aiPill = uiText("", 12, Ui.ACCENT, true);
         aiPill.setGravity(Gravity.CENTER);
+        aiPill.setSingleLine(true);
         aiPill.setPadding(dp(this, 10), 0, dp(this, 10), 0);
         aiPill.setVisibility(View.GONE);
         aiPill.setOnClickListener(v -> startActivity(new Intent(this, AiActivity.class)));
@@ -1850,14 +1864,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             exLp.topMargin = dp(this, 4);
             body.addView(ex, exLp);
         }
-        if (!c.done && !TextUtils.isEmpty(c.reason) && c.deadlineHint() == null) {
+        // 「来自教务系统的考试安排」和来源行的「教务系统」重复，不再单独占一行；时间不确定的原因照常显示。
+        boolean redundantReason = "来自教务系统的考试安排".equals(c.reason);
+        if (!c.done && !TextUtils.isEmpty(c.reason) && c.deadlineHint() == null && !redundantReason) {
             TextView reason = uiText(c.reason, 12, Ui.AMBER_TX, false);
             reason.setMaxLines(2);
             reason.setEllipsize(TextUtils.TruncateAt.END);
-            reason.setPadding(dp(this, 10), dp(this, 5), dp(this, 10), dp(this, 5));
+            reason.setPadding(dp(this, 10), dp(this, 3), dp(this, 10), dp(this, 3));
             reason.setBackground(Ui.round(this, Ui.AMBER_BG, 10));
             LinearLayout.LayoutParams rLp = lp(-2, -2);
-            rLp.topMargin = dp(this, 6);
+            rLp.topMargin = dp(this, 4);
             body.addView(reason, rLp);
         }
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
