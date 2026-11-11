@@ -64,19 +64,54 @@ final class AppNavigation {
         a.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
+    /**
+     * 把导航胶囊浮在页面上：page 放进一个 FrameLayout，导航贴底悬浮，背后没有底色，内容可以滚到它下面。
+     * reserve 里的可滚动视图会自动在底部让出导航的高度，滚到最后一行也不会被挡住。
+     */
+    static FrameLayout host(Activity a, View page, int current, View... reserve) {
+        FrameLayout frame = new FrameLayout(a);
+        frame.setBackgroundColor(Ui.BG);
+        frame.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        View nav = bar(a, current);
+        frame.addView(nav, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        reserve(nav, reserve);
+        return frame;
+    }
+
+    /** 让 targets 的底部留白始终等于原留白 + dock 的高度；dock 隐藏时只留原留白。 */
+    static void reserve(View dock, View... targets) {
+        final int[] base = new int[targets.length];
+        for (int i = 0; i < targets.length; i++) {
+            if (targets[i] == null) continue;
+            base[i] = targets[i].getPaddingBottom();
+            if (targets[i] instanceof android.view.ViewGroup) ((android.view.ViewGroup) targets[i]).setClipToPadding(false);
+        }
+        dock.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int h = v.getVisibility() == View.GONE ? 0 : b - t;
+            for (int i = 0; i < targets.length; i++) {
+                View x = targets[i];
+                if (x == null) continue;
+                int want = base[i] + h;
+                if (x.getPaddingBottom() != want) {
+                    x.post(() -> x.setPadding(x.getPaddingLeft(), x.getPaddingTop(), x.getPaddingRight(), want));
+                }
+            }
+        });
+    }
+
     static View bar(Activity from, int current) {
-        // 外层和页面同色，里面是一枚悬浮的胶囊：圆角、柔和投影，和内容之间留出呼吸感。
+        // 外层透明，只有一枚悬浮的胶囊：圆角、柔和投影，离屏幕底边留一点距离，背后不铺白底。
         FrameLayout shell = new FrameLayout(from);
-        shell.setBackgroundColor(Ui.BG);
+        shell.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         shell.setClipToPadding(false);
         shell.setClipChildren(false);
-        shell.setPadding(Ui.dp(from,16),Ui.dp(from,2),Ui.dp(from,16),Ui.dp(from,2));
+        shell.setPadding(Ui.dp(from,16),Ui.dp(from,6),Ui.dp(from,16),Ui.dp(from,12));
         LinearLayout row = new LinearLayout(from);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Ui.dp(from,8),0,Ui.dp(from,8),0);
-        android.graphics.drawable.GradientDrawable capsule = Ui.roundStroke(from, Ui.CARD, Ui.LINE, 20, 0.75f);
+        row.setPadding(Ui.dp(from,8),Ui.dp(from,4),Ui.dp(from,8),Ui.dp(from,4));
+        android.graphics.drawable.GradientDrawable capsule = Ui.roundStroke(from, Ui.CARD, Ui.LINE, 24, 0.75f);
         row.setBackground(capsule);
-        Ui.lift(row, 2f);
+        Ui.lift(row, 8f);
         // Let font scaling increase the bar instead of clipping the longer label.
         row.setMinimumHeight(Ui.dp(from,48));
         shell.addView(row, new FrameLayout.LayoutParams(-1, -2));

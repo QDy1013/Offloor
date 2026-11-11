@@ -110,7 +110,14 @@ public class AiActivity extends Activity {
         state.addView(Ui.hairline(this));
         CourseUi.gap(state, 4);
         enabled = Ui.toggle(state, "开启 AI 复核", "打开后拿不准的消息自动排队复核；关掉立刻回到只用本机规则。", cfg.enabled);
-        enabled.setOnCheckedChangeListener((v, on) -> { if (!binding) { save(); renderSteps(); } });
+        enabled.setOnCheckedChangeListener((v, on) -> {
+            if (binding) return;
+            boolean saved = save();
+            renderSteps();
+            if (!saved) return;
+            if (on) showEnabledFeedback();
+            else android.widget.Toast.makeText(this, "AI 复核已关闭，回到只用本机规则识别", android.widget.Toast.LENGTH_SHORT).show();
+        });
 
         // ---------- 用哪个模型 ----------
         which = Ui.card(root);
@@ -550,6 +557,82 @@ public class AiActivity extends Activity {
         });
     }
 
+    // ---------- 开启后的反馈 ----------
+
+    /** 还差什么才能真正开始复核；已就绪时返回 null。 */
+    private String missingStep(AiConfig cfg) {
+        if (cfg.ready()) return null;
+        if (cfg.local) {
+            if (!LocalLlm.supported()) return "这台手机用不了本机模型，请改选云端接口。";
+            return LocalModelStore.downloading(this) ? "本机模型还在下载，下完会自动开始复核。" : "还需要下载或导入本机模型。";
+        }
+        if (cfg.key.isEmpty()) return "还需要填写 API Key。";
+        return "接口地址必须是 https:// 开头。";
+    }
+
+    /**
+     * 打开开关后明确告诉用户：已经开了、用的是哪种方式、接下来在哪里能看到它在工作。
+     * 向导里开启时不另弹面板，结果直接写在向导上。
+     */
+    private void showEnabledFeedback() {
+        AiConfig cfg = AiConfig.load(this);
+        String missing = missingStep(cfg);
+        boolean ready = missing == null;
+        String how = cfg.local ? "本机小模型 " + LocalModelStore.name(this) + "，消息不出手机"
+                : "云端接口 " + cfg.model;
+        String when = AiConfig.MODE_CHARGING.equals(cfg.mode) ? "充电时批量复核" : "有网就复核，约 20 秒攒一批";
+        if (guide != null && guide.isShowing()) {
+            say(ready ? "✓ AI 复核已开启：" + how + "，" + when + "。" : "已开启，还差一步：" + missing);
+            return;
+        }
+        LinearLayout body = CourseUi.column(this);
+        body.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageView mark = new ImageView(this);
+        int tone = ready ? Ui.GREEN : Ui.AMBER_TX;
+        mark.setImageDrawable(new Ui.CheckCircle(this, tone, tone, 56, true));
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(dp(56), dp(56));
+        mp.topMargin = dp(8);
+        body.addView(mark, mp);
+        mark.setScaleX(0.6f);
+        mark.setScaleY(0.6f);
+        mark.animate().scaleX(1f).scaleY(1f).setDuration(320)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+        TextView title = CourseUi.text(this, ready ? "AI 复核已开启" : "已开启，还差一步", 20, Ui.TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        body.addView(title, topMargin(14));
+        TextView sub = CourseUi.text(this, ready ? "正在使用" + how + "。\n" + when + "。" : missing, 13, Ui.SUB, false);
+        sub.setGravity(Gravity.CENTER);
+        sub.setLineSpacing(dp(3), 1);
+        body.addView(sub, topMargin(6));
+        LinearLayout list = CourseUi.column(this);
+        body.addView(list, topMargin(10));
+        if (ready) {
+            Ui.point(list, "1", Ui.ACCENT, Ui.ACCENT_BG, "拿不准的消息自动排队",
+                    "新消息先按本机规则出卡，拿不准的会交给 AI 再看一眼，不用你做任何操作。");
+            Ui.point(list, "2", Ui.ACCENT, Ui.ACCENT_BG, "复核过的卡带「AI 已复核」",
+                    "首页卡片上能直接看到哪些被 AI 看过、补全过。");
+            Ui.point(list, "3", Ui.ACCENT, Ui.ACCENT_BG, "首页顶部显示「AI 复核中」",
+                    "随时点它回到这里调整或关闭。");
+        }
+        LinearLayout footer = CourseUi.column(this);
+        footer.setPadding(0, dp(14), 0, 0);
+        Dialog[] holder = new Dialog[1];
+        int queued = AiQueue.size(this);
+        if (ready && queued > 0) {
+            footer.addView(CourseUi.action(this, "立即复核排队中的 " + queued + " 条", false, () -> {
+                AiJob.runNow(this);
+                say("已开始处理，联网后几秒内完成。\n" + AiConfig.summary(this));
+                if (holder[0] != null) holder[0].dismiss();
+            }), CourseUi.row(dp(48)));
+            CourseUi.gap(footer, 10);
+        }
+        footer.addView(CourseUi.action(this, ready ? "知道了" : "去完成设置", true, () -> {
+            if (holder[0] != null) holder[0].dismiss();
+            if (!ready) showGuide(2);
+        }), CourseUi.row(dp(48)));
+        holder[0] = Ui.sheet(this, body, footer);
+    }
+
     // ---------- 设置向导 ----------
 
     private void showGuide(int page) {
@@ -566,7 +649,11 @@ public class AiActivity extends Activity {
         });
         guideNext = CourseUi.action(this, "", true, () -> {
             leaveGuidePage();
-            if (guidePage >= 3) { if (guide != null) guide.dismiss(); }
+            if (guidePage >= 3) {
+                if (guide != null) guide.dismiss();
+                // 走完向导且已开启：用同一张「已开启」面板收尾，让用户确切知道 AI 已经在工作。
+                if (enabled.isChecked()) ui.post(this::showEnabledFeedback);
+            }
             else { guidePage++; fillGuide(); }
         });
         footer.addView(guideBack, weight(1, 0));

@@ -81,7 +81,10 @@ public class CampusActivity extends Activity {
     private void toast(String s) { Toast.makeText(this,s,Toast.LENGTH_LONG).show(); }
     private void render() {
         if (isFinishing() || isDestroyed()) return;
-        LinearLayout root=CourseUi.column(this); root.setBackgroundColor(Ui.BG); setContentView(root); Ui.systemBars(this,root);
+        LinearLayout root=CourseUi.column(this); root.setBackgroundColor(Ui.BG);
+        android.widget.FrameLayout frame=new android.widget.FrameLayout(this); frame.setBackgroundColor(Ui.BG);
+        frame.addView(root,new android.widget.FrameLayout.LayoutParams(-1,-1));
+        setContentView(frame); Ui.systemBars(this,frame);
         CampusServices.Service service=CampusServices.selectedService(detail);
         LinearLayout head=new LinearLayout(this); head.setBaselineAligned(false); head.setGravity(Gravity.CENTER_VERTICAL); head.setPadding(dp(20),dp(8),dp(8),dp(8)); root.addView(head);
         if (service!=null) head.addView(CourseUi.icon(this,"prev","返回校园",this::finish));
@@ -93,7 +96,12 @@ public class CampusActivity extends Activity {
         if (!loaded) note("正在读取本机数据…");
         else if (service!=null) renderDetail(service);
         else renderOverview();
-        if (service==null) root.addView(AppNavigation.bar(this,AppNavigation.CAMPUS),new LinearLayout.LayoutParams(-1,-2));
+        if (service==null) {
+            // 导航悬浮在页面上、背后没有底色；列表底部自动让出导航高度。
+            View nav=AppNavigation.bar(this,AppNavigation.CAMPUS);
+            frame.addView(nav,new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
+            AppNavigation.reserve(nav,scroll);
+        }
     }
     private LinearLayout card() {
         LinearLayout c=CourseUi.column(this); c.setPadding(dp(18),dp(18),dp(18),dp(18)); Ui.cardSurface(c,18);

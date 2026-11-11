@@ -85,6 +85,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
     }
     TextView notifStatus;
+    /** 顶栏的 AI 复核状态胶囊；没开 AI 时隐藏。 */
+    TextView aiPill;
     TextView empty;
     boolean accessChecked;
     private boolean retryNotifOnResume;
@@ -99,9 +101,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private LinearLayout liveFilters;
     private TextView stateFilter;
     /** 顶部日期筛选：默认「今天起」，直接看到今天及以后还没做的事。 */
-    private static final String[] WINDOW_LABELS = {"今天起", "今天", "明天", "待确认", "全部"};
-    private static final Engine.CardWindow[] WINDOW_TABS = {Engine.CardWindow.UPCOMING, Engine.CardWindow.TODAY,
-            Engine.CardWindow.TOMORROW, Engine.CardWindow.NEEDS_CONFIRM, Engine.CardWindow.ANY};
+    // 「全部」放第一个并作为默认：没写日期、规则判断不了时间的事项也在首页直接看得到。
+    private static final String[] WINDOW_LABELS = {"全部", "今天起", "今天", "明天", "待确认"};
+    private static final Engine.CardWindow[] WINDOW_TABS = {Engine.CardWindow.ANY, Engine.CardWindow.UPCOMING,
+            Engine.CardWindow.TODAY, Engine.CardWindow.TOMORROW, Engine.CardWindow.NEEDS_CONFIRM};
+    /** 「待确认」在 WINDOW_TABS 里的位置：有待确认事项时这枚筛选用琥珀色提醒。 */
+    private static final int CONFIRM_TAB = 4;
     private final TextView[] windowTabs = new TextView[WINDOW_TABS.length];
     private TextView scanChip;
     /** 已经提示过的自动扫描时间，避免每次回到前台都重复提示。 */
@@ -127,7 +132,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private static final java.util.Set<String> sourceIconMiss = new java.util.HashSet<>();
     private String keywords = "";
     private Engine.CardScope scope = Engine.CardScope.ALL;
-    private Engine.CardWindow window = Engine.CardWindow.UPCOMING;
+    private Engine.CardWindow window = Engine.CardWindow.ANY;
     private int visibleLimit = PAGE_SIZE;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private boolean resumed;
@@ -198,7 +203,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             int selected = b.getInt("scope", 0);
             scope = scopes[Math.max(0, Math.min(selected, scopes.length - 1))];
             visibleLimit = Math.max(PAGE_SIZE, b.getInt("visibleLimit", PAGE_SIZE));
-            int savedWindow = b.getInt("window", Engine.CardWindow.UPCOMING.ordinal());
+            int savedWindow = b.getInt("window", Engine.CardWindow.ANY.ordinal());
             window = Engine.CardWindow.values()[Math.max(0, Math.min(savedWindow, Engine.CardWindow.values().length - 1))];
             restoreScrollY = b.getInt("scrollY", 0);
         }
@@ -221,6 +226,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
+        updateAiPill();
         showUpdateNotice();
         UpdateNotice.check(this, updateNoticeChanged);
         if (EngineHolder.storageIssue != null && !EngineHolder.storageIssue.equals(storageIssueShown)) {
@@ -378,6 +384,22 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
     }
 
+    /**
+     * 顶栏的 AI 胶囊：开了 AI 复核才出现。就绪是蓝色「AI 复核中」，开了但没设置好是琥珀「AI 待设置」。
+     * 只在回到首页时读一次配置（要解密密钥），不跟着每次刷新重读。
+     */
+    void updateAiPill() {
+        if (aiPill == null) return;
+        AiConfig cfg = AiConfig.load(this);
+        if (!cfg.enabled || demo != null) { aiPill.setVisibility(View.GONE); return; }
+        boolean ready = cfg.ready();
+        aiPill.setText(statusText(ready ? "AI 复核中" : "AI 待设置", ready ? Ui.ACCENT : Ui.AMBER_TX));
+        aiPill.setTextColor(ready ? Ui.ACCENT : Ui.AMBER_TX);
+        aiPill.setBackground(Ui.ripple(this, Ui.round(this, ready ? Ui.ACCENT_BG : Ui.AMBER_BG, 15), Ui.press(), 15));
+        aiPill.setContentDescription(ready ? "AI 复核已开启，点按查看设置" : "AI 复核已开启但还没设置好，点按继续设置");
+        aiPill.setVisibility(View.VISIBLE);
+    }
+
     /** 「● 文字」：圆点单独上色并缩小一点，比整行彩字更克制。 */
     CharSequence statusText(String label, int dotColor) {
         SpannableString s = new SpannableString("● " + label);
@@ -462,7 +484,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         listScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(this, 18), dp(this, 4), dp(this, 18), dp(this, 80));
+        page.setPadding(dp(this, 18), dp(this, 4), dp(this, 18), dp(this, 20));
         listScroll.addView(page, new ViewGroup.LayoutParams(-1, -2));
 
         // 顶栏：品牌字标 · 读取状态 · 更多
@@ -481,6 +503,14 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         notifStatus.setPadding(dp(this, 10), 0, dp(this, 10), 0);
         notifStatus.setOnClickListener(v -> showHealthCheck());
         top.addView(notifStatus, lp(-2, dp(this, 32)));
+        aiPill = uiText("", 12, Ui.ACCENT, true);
+        aiPill.setGravity(Gravity.CENTER);
+        aiPill.setPadding(dp(this, 10), 0, dp(this, 10), 0);
+        aiPill.setVisibility(View.GONE);
+        aiPill.setOnClickListener(v -> startActivity(new Intent(this, AiActivity.class)));
+        LinearLayout.LayoutParams aiLp = lp(-2, dp(this, 32));
+        aiLp.leftMargin = dp(this, 6);
+        top.addView(aiPill, aiLp);
         ImageView more = new ImageView(this);
         more.setImageDrawable(CourseUi.glyph(this, "more"));
         int morePad = dp(this, 9);
@@ -624,14 +654,20 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         // 底部主按钮：只在没开读取时出现
         liveTools = new LinearLayout(this);
         liveTools.setPadding(dp(this, 20), dp(this, 10), dp(this, 20), dp(this, 4));
-        liveTools.setBackgroundColor(Ui.BG);
         autoReadButton = stylePrimary(button("开启自动读取", v -> {
             if (WatchdogJob.accessEnabled(this)) showHealthCheck();
             else showSetupGuide();
         }));
         liveTools.addView(autoReadButton, new LinearLayout.LayoutParams(-1, dp(this, 52)));
-        root.addView(liveTools);
-        root.addView(AppNavigation.bar(this, AppNavigation.TODO));
+        // 底部按钮和导航一起悬浮在列表上，背后不铺底色；列表底部自动让出它们的高度。
+        LinearLayout dock = new LinearLayout(this);
+        dock.setOrientation(LinearLayout.VERTICAL);
+        dock.setClipChildren(false);
+        dock.setClipToPadding(false);
+        dock.addView(liveTools);
+        dock.addView(AppNavigation.bar(this, AppNavigation.TODO));
+        frame.addView(dock, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        AppNavigation.reserve(dock, listScroll);
 
         // 撤销提示条
         undoBar = new LinearLayout(this);
@@ -808,21 +844,28 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void styleChip(TextView chip, CharSequence label, String count, boolean selected) {
+        styleChip(chip, label, count, selected, false);
+    }
+
+    /** warn：未选中时用琥珀色，提示这里有需要你看一眼的事项（目前只给「待确认」用）。 */
+    private void styleChip(TextView chip, CharSequence label, String count, boolean selected, boolean warn) {
         SpannableString s = new SpannableString(count == null ? label : label + "  " + count);
         if (count != null) {
             int start = s.length() - count.length();
-            s.setSpan(new ForegroundColorSpan(selected ? Ui.withAlpha(Ui.ON_ACCENT, 210) : Ui.SUB),
+            s.setSpan(new ForegroundColorSpan(selected ? Ui.withAlpha(Ui.ON_ACCENT, 210) : warn ? Ui.AMBER_TX : Ui.SUB),
                     start, s.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         // 文字和选中态没变就不重设背景：每次刷新都换 Drawable 会让涟漪中途被打断。
-        String key = s.toString() + (selected ? "#1" : "#0") + (Ui.dark ? "d" : "l");
+        String key = s.toString() + (selected ? "#1" : "#0") + (warn ? "w" : "") + (Ui.dark ? "d" : "l");
         if (key.equals(chip.getTag())) return;
         boolean wasSelected = chip.isSelected();
         chip.setTag(key);
         chip.setText(s);
         chip.setTextColor(selected ? Ui.ON_ACCENT : Ui.SUB);
+        if (warn && !selected) chip.setTextColor(Ui.AMBER_TX);
         // Brand color connects the active filter to navigation; quiet outlined chips stay secondary.
         GradientDrawable bg = selected ? Ui.round(this, Ui.ACCENT, 12)
+                : warn ? Ui.roundStroke(this, Ui.AMBER_BG, Ui.withAlpha(Ui.AMBER_TX, 70), 12, 0.75f)
                 : Ui.roundStroke(this, Ui.CARD, Ui.LINE, 12, 0.75f);
         chip.setBackground(Ui.ripple(this, bg, Ui.press(), 12));
         chip.setSelected(selected);
@@ -847,19 +890,20 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void updateWindowTabs(Engine shown, long now) {
-        // 与 WINDOW_TABS 同序：今天起、今天、明天、待确认、全部。
+        // 与 WINDOW_TABS 同序：全部、今天起、今天、明天、待确认。
         int[] counts = new int[WINDOW_TABS.length];
         for (Engine.Card c : shown.all()) {
-            counts[4]++;
+            counts[0]++;
             String bucket = TodayView.bucket(c.deadline, c.needsConfirm, c.done, now);
-            if ("今天".equals(bucket)) counts[1]++;
-            else if ("明天".equals(bucket)) counts[2]++;
-            else if ("待确认".equals(bucket)) counts[3]++;
-            if (Engine.isUpcoming(c, now)) counts[0]++;
+            if ("今天".equals(bucket)) counts[2]++;
+            else if ("明天".equals(bucket)) counts[3]++;
+            else if ("待确认".equals(bucket)) counts[4]++;
+            if (Engine.isUpcoming(c, now)) counts[1]++;
         }
         for (int i = 0; i < windowTabs.length; i++) {
             boolean selected = scope == Engine.CardScope.ALL && window == WINDOW_TABS[i];
-            styleChip(windowTabs[i], WINDOW_LABELS[i], String.valueOf(counts[i]), selected);
+            styleChip(windowTabs[i], WINDOW_LABELS[i], String.valueOf(counts[i]), selected,
+                    i == CONFIRM_TAB && counts[i] > 0);
         }
         if (scanChip != null) {
             scanChip.setVisibility(demo == null ? View.VISIBLE : View.GONE);
@@ -914,6 +958,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             head = "明天有 " + num + " 件要截止";
             numColor = soon > 0 ? Ui.ORANGE : Ui.ACCENT;
             lead = "tomorrow";
+        } else if (confirm > 0) {
+            // 规则判断不了时间的事项不能悄悄躲在筛选里：没有更急的事时直接放到大标题上。
+            num = String.valueOf(confirm);
+            head = "有 " + num + " 件时间待确认";
+            numColor = Ui.AMBER_TX;
+            lead = "confirm";
         } else {
             head = "今天没有截止";
         }
@@ -923,7 +973,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             int i = head.indexOf(num);
             s.setSpan(new ForegroundColorSpan(numColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             // 深墨卡上同一种含义换成提亮的那一档，保证对比度。
-            int heroColor = numColor == Ui.RED ? HERO_RED : numColor == Ui.ORANGE ? HERO_ORANGE : HERO_ACCENT;
+            int heroColor = numColor == Ui.RED ? HERO_RED : numColor == Ui.ORANGE || numColor == Ui.AMBER_TX ? HERO_ORANGE : HERO_ACCENT;
             onHero.setSpan(new ForegroundColorSpan(heroColor), i, i + num.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         headline.setText(onHero);
@@ -932,7 +982,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         List<String> parts = new ArrayList<>();
         if (tomorrow > 0 && !"tomorrow".equals(lead)) parts.add("明天 " + tomorrow + " 件");
         if (overdue > 0 && !"overdue".equals(lead)) parts.add("已过期 " + overdue + " 件");
-        if (confirm > 0) parts.add("待确认 " + confirm + " 件");
+        if (confirm > 0 && !"confirm".equals(lead)) parts.add("待确认 " + confirm + " 件");
         if (open > 0) parts.add("共 " + open + " 件未完成");
         else if (total > 0) parts.add("已完成 " + total + " 件");
         else parts.add(demo == null && !EngineHolder.listenerConnected
@@ -1701,7 +1751,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(this, 6), dp(this, 12), dp(this, 16), dp(this, 12));
+        // 上下留白压到 8dp、行距收紧，一屏能多看到一两张卡。
+        card.setPadding(dp(this, 6), dp(this, 8), dp(this, 16), dp(this, 8));
         if (c.done) {
             // 已完成的卡退到背景里：不浮起、不投影，只留一层淡底。
             GradientDrawable face = Ui.round(this, Ui.withAlpha(Ui.CARD, Ui.dark ? 140 : 150), 20);
@@ -1732,7 +1783,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TextView title = uiText(c.displayTitle(), 16, c.done ? Ui.SUB : Ui.TEXT, true);
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        title.setLineSpacing(dp(this, 2), 1f);
+        title.setLineSpacing(dp(this, 1), 1f);
         title.setLetterSpacing(0.005f);
         if (c.done) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         body.addView(title);
@@ -1760,8 +1811,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 uLp.leftMargin = dp(this, 6);
                 dueRow.addView(upd, uLp);
             }
+            if (c.aiChecked) {
+                // 让用户看得到 AI 确实在干活：复核过的卡带一个小标。
+                TextView ai = Ui.tag(this, "AI 已复核", Ui.ACCENT, Ui.ACCENT_BG);
+                ai.setContentDescription("这张卡已经过 AI 复核");
+                LinearLayout.LayoutParams aLp = lp(-2, -2);
+                aLp.leftMargin = dp(this, 6);
+                dueRow.addView(ai, aLp);
+            }
             LinearLayout.LayoutParams dueLp = lp(-1, -2);
-            dueLp.topMargin = dp(this, 6);
+            dueLp.topMargin = dp(this, 3);
             body.addView(dueRow, dueLp);
         }
 
@@ -1775,7 +1834,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         mtLp.leftMargin = dp(this, 6);
         meta.addView(metaLine, mtLp);
         LinearLayout.LayoutParams metaLp = lp(-1, -2);
-        metaLp.topMargin = dp(this, 8);
+        metaLp.topMargin = dp(this, 4);
         body.addView(meta, metaLp);
 
         List<String> extra = new ArrayList<>();

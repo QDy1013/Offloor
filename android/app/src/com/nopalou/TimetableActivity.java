@@ -104,8 +104,11 @@ public class TimetableActivity extends Activity {
         if (isFinishing() || isDestroyed()) return;
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG);
         root.setPadding(dp(12), dp(4), dp(12), dp(4));
-        setContentView(root);
-        Ui.systemBars(this, root);
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Ui.BG);
+        frame.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(frame);
+        Ui.systemBars(this, frame);
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(toolbar, CourseUi.row(dp(46)));
@@ -119,7 +122,7 @@ public class TimetableActivity extends Activity {
         CampusSyncBanner.add(this,toolbar);
         if (table != null) toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
         toolbar.addView(icon("more", "课表设置", this::settings));
-        if (table == null) { empty(root); addNavigation(root); return; }
+        if (table == null) { empty(root); addNavigation(root, null); return; }
 
         TextView school = text(table.school.name + "  /  " + table.termName, 11, Ui.SUB, false);
         school.setPadding(dp(8),0,dp(8),dp(6)); school.setSingleLine(true); school.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(school);
@@ -168,18 +171,15 @@ public class TimetableActivity extends Activity {
                 scroll.scrollTo(0, restoreY);
             }
         });
-        int meetings = 0; for (TimetableLayout.Block b : blocks) meetings += b.lessons.size();
-        TextView foot = text(meetings == 0 ? "本周没有已排课课程 · 左右滑动换周" : "左右滑动换周  ·  本周 " + meetings + " 次课程  ·  点课程看详情", 10, Ui.SUB, false);
-        foot.setGravity(Gravity.CENTER); foot.setPadding(0, dp(9), 0, dp(8)); root.addView(foot);
-        addNavigation(root);
+        addNavigation(root, scroll);
     }
-    void addNavigation(LinearLayout root) {
+    /** 导航悬浮在课表上、背后没有底色；课表网格底部自动让出导航高度，最后一节课也能滚出来。 */
+    void addNavigation(LinearLayout root, View scroll) {
         if (getPackageName().equals("com.nopalou.timetabletest")) return;
-        // 页面有 12dp 左右留白；导航栏用负边距铺满整屏宽、贴住底边，和待办页完全一致。
-        root.setClipToPadding(false);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-        p.leftMargin = -dp(12); p.rightMargin = -dp(12); p.bottomMargin = -dp(4);
-        root.addView(AppNavigation.bar(this, AppNavigation.TIMETABLE), p);
+        FrameLayout frame = (FrameLayout) root.getParent();
+        View nav = AppNavigation.bar(this, AppNavigation.TIMETABLE);
+        frame.addView(nav, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        AppNavigation.reserve(nav, scroll != null ? scroll : root);
     }
     void weekdayHeader(LinearLayout root) {
         FrameLayout days = new FrameLayout(this);

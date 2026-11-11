@@ -83,7 +83,9 @@ public class AcademicActivity extends Activity {
     private void render() {
         if (isFinishing() || isDestroyed()) return;
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG);
-        setContentView(root); Ui.systemBars(this, root);
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this); frame.setBackgroundColor(Ui.BG);
+        frame.addView(root, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        setContentView(frame); Ui.systemBars(this, frame);
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
 
         LinearLayout head = new LinearLayout(this); head.setBaselineAligned(false); head.setGravity(Gravity.CENTER_VERTICAL);
@@ -95,8 +97,8 @@ public class AcademicActivity extends Activity {
         if (sub != null) { TextView s = text(sub, 12, Ui.MUTE, false); s.setPadding(0, dp(4), 0, 0); titles.addView(s); }
 
         CampusSyncBanner.add(this,head);
-        if (!loaded) { root.addView(new View(this), new LinearLayout.LayoutParams(-1, 0, 1)); addNavigation(root); return; }
-        if (data == null) { empty(root); addNavigation(root); return; }
+        if (!loaded) { root.addView(new View(this), new LinearLayout.LayoutParams(-1, 0, 1)); addNavigation(root, null); return; }
+        if (data == null) { empty(root); addNavigation(root, null); return; }
 
         root.addView(segmented(), segmentParams());
         scroll = new ScrollView(this); scroll.setVerticalScrollBarEnabled(false); scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -106,7 +108,7 @@ public class AcademicActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         if (showGrades) grades(list); else exams(list);
         if (keepScroll >= 0) { int y = keepScroll; keepScroll = -1; scroll.post(() -> scroll.scrollTo(0, y)); }
-        addNavigation(root);
+        addNavigation(root, scroll);
     }
     /** 局部展开 / 收起后重绘，保持滚动位置。 */
     private void rerender() { keepScroll = scroll == null ? -1 : scroll.getScrollY(); render(); }
@@ -116,7 +118,13 @@ public class AcademicActivity extends Activity {
         long t = Math.max(data.updated("exams"), Math.max(data.updated("grades"), data.updated("gpa")));
         return t == 0 ? "西北工业大学" : "西北工业大学 · " + new SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(new Date(t)) + " 同步";
     }
-    private void addNavigation(LinearLayout root) { root.addView(AppNavigation.bar(this, AppNavigation.ACADEMIC), new LinearLayout.LayoutParams(-1, -2)); }
+    /** 导航悬浮在页面上、背后没有底色；列表底部自动让出导航高度。 */
+    private void addNavigation(LinearLayout root, View list) {
+        android.widget.FrameLayout frame = (android.widget.FrameLayout) root.getParent();
+        View nav = AppNavigation.bar(this, AppNavigation.ACADEMIC);
+        frame.addView(nav, new android.widget.FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        AppNavigation.reserve(nav, list != null ? list : root);
+    }
 
     private LinearLayout.LayoutParams segmentParams() {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(42));
