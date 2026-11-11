@@ -24,12 +24,18 @@ public class AiJob extends JobService {
     static final int JOB_ID = 7311;
     /** 攒批：第一条进队后等这么久再发，同一波群消息合成一次请求。 */
     static final long BATCH_DELAY_MS = 20_000L;
-    static final int BATCH = 8;
+    static final int BATCH = AiConfig.CLOUD_BATCH;
     /** 单次 Job 最多发多少次请求，剩下的下次继续，避免一次占用太久。 */
     static final int MAX_CALLS = 8;
 
     private static final class Run {
         volatile boolean stopped, halted, budgetWait;
+        volatile AiClient client;
+    }
+
+    /** 本机模型只连回环推理库，不需要联网。 */
+    private static int network(AiConfig cfg) {
+        return cfg.local ? JobInfo.NETWORK_TYPE_NONE : JobInfo.NETWORK_TYPE_ANY;
     }
     private volatile Run active;
 
@@ -63,14 +69,14 @@ public class AiJob extends JobService {
         if (js == null) return;
         js.cancel(JOB_ID);
         js.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(app, AiJob.class))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setRequiredNetworkType(network(cfg))
                 .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .build());
     }
 
     private static JobInfo build(Context app, AiConfig cfg, long delay) {
         JobInfo.Builder b = new JobInfo.Builder(JOB_ID, new ComponentName(app, AiJob.class))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setRequiredNetworkType(network(cfg))
                 .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .setPersisted(true);
         b.setMinimumLatency(delay);
@@ -106,7 +112,11 @@ public class AiJob extends JobService {
     @Override
     public boolean onStopJob(JobParameters params) {
         Run run = active;
-        if (run != null) run.stopped = true;
+        if (run != null) {
+            run.stopped = true;
+            AiClient c = run.client;
+            if (c != null) c.cancel();
+        }
         return true;     // 被系统打断（断网、拔电）：保留队列，稍后重试
     }
 
@@ -114,9 +124,18 @@ public class AiJob extends JobService {
     private boolean work(Run run) throws Exception {
         Context app = getApplicationContext();
         AiQueue.cleanupImages(app);
+        LocalModelStore.pollDownload(app);
         AiConfig cfg = AiConfig.load(app);
         if (!cfg.ready()) return false;
-        AiClient client = new AiClient(cfg);
+        try (AiClient client = new AiClient(cfg)) {
+            run.client = client;
+            return work(run, app, cfg, client);
+        } finally {
+            run.client = null;
+        }
+    }
+
+    private boolean work(Run run, Context app, AiConfig cfg, AiClient client) throws Exception {
         int calls = 0, applied = 0;
         if (!cfg.visionReady()) {
             // 图片模型被清空了：排着的图片做不了，丢掉，别挡住文字复核
@@ -166,7 +185,7 @@ public class AiJob extends JobService {
                 }
                 continue;
             }
-            List<JSONObject> batch = AiQueue.peek(app, "esc", BATCH);
+            List<JSONObject> batch = AiQueue.peek(app, "esc", cfg.batchSize());
             if (batch.isEmpty()) break;
             List<JSONObject> staleRequests = new ArrayList<>();
             List<Engine.Escalation> items = AiImages.onMain(() -> {
@@ -201,6 +220,7 @@ public class AiJob extends JobService {
                 AiQueue.park(app,batch,"请求被接口拒绝，请检查模型和输入后重试");
                 continue;
             } catch (IOException e) {
+                if (run.stopped) return true;      // 被系统叫停：保留队列，不算失败
                 AiQueue.failed(app, batch);
                 return true;
             }
