@@ -6,7 +6,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -22,7 +21,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.CalendarContract;
 import android.provider.Settings;
-import android.service.notification.NotificationListenerService;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
@@ -89,6 +87,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView notifStatus;
     TextView empty;
     boolean accessChecked;
+    private boolean retryNotifOnResume;
     private static String storageIssueShown;
     private DemoScenario demo;
     private Button demoButton;
@@ -113,6 +112,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView headline;
     /** Compact daily overview; task content remains the main focus. */
     private LinearLayout hero;
+    private AlertDialog usageNoticeDialog;
+    private boolean restoreUsageNotice;
+    private boolean startupNoticeHandled;
     private LinearLayout emptyBox;
     private View emptyIcon;
     private TextView emptyTitle;
@@ -190,6 +192,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         firstRender = b == null;
         if (b != null) {
             accessChecked = b.getBoolean("accessChecked", false);
+            restoreUsageNotice = b.getBoolean("usageNoticeShowing", false);
             keywords = b.getString("keywords", "");
             Engine.CardScope[] scopes = Engine.CardScope.values();
             int selected = b.getInt("scope", 0);
@@ -224,12 +227,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             storageIssueShown = EngineHolder.storageIssue;
             uiHandler.post(this::showStorageState);
         }
-        // 真机问题：授权后监听服务有时没真正绑上，回前台时主动请求重绑一次。
-        try {
-            android.service.notification.NotificationListenerService.requestRebind(
-                    new android.content.ComponentName(this, NotifListener.class));
-        } catch (Exception ignored) {
-        }
+        // Only recover an authorized, disconnected listener; returning to the UI must not reset an active recovery.
+        NotifRecovery.request(this, retryNotifOnResume);
+        retryNotifOnResume = false;
         if (engine != null) {
             engine.listener = this;
             ReminderReceiver.refresh(this, engine);
@@ -252,18 +252,43 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 }
             });
         }
-        // 档案填完回到主界面再来提示权限，避免两个弹窗叠在一起。
+        // 使用须知优先于自动权限引导，避免首次打开时两个弹窗叠在一起。
+        showStartupDialogs();
+    }
+
+    private void showStartupDialogs() {
         if (setupDialog != null && setupDialog.isShowing()) {
-            // 从系统设置页回来：刷新每一步的完成状态。
             fillSetup();
-        } else if (!accessChecked) {
+            return;
+        }
+        if (usageNoticeDialog != null && usageNoticeDialog.isShowing()) return;
+        if (demo == null && (restoreUsageNotice || (!startupNoticeHandled && HomeUsageNotice.shouldAutoShow(this)))) {
+            uiHandler.postDelayed(() -> {
+                if (resumed && !isFinishing() && !isDestroyed() && demo == null
+                        && (setupDialog == null || !setupDialog.isShowing())) showUsageNotice();
+            }, 350);
+            return;
+        }
+        if (!accessChecked) {
             accessChecked = true;
             if (SetupGuide.shouldAutoShow(this)) {
                 uiHandler.postDelayed(() -> {
-                    if (resumed) showSetupGuide();
+                    if (resumed && !isFinishing() && !isDestroyed()
+                            && (usageNoticeDialog == null || !usageNoticeDialog.isShowing())
+                            && (setupDialog == null || !setupDialog.isShowing())) showSetupGuide();
                 }, 350);
             }
         }
+    }
+
+    void showUsageNotice() {
+        if (isFinishing() || isDestroyed()) return;
+        if (usageNoticeDialog != null && usageNoticeDialog.isShowing()) return;
+        startupNoticeHandled = true;
+        restoreUsageNotice = false;
+        usageNoticeDialog = HomeUsageNotice.create(this, this::showSetupGuide, this::showHealthCheck);
+        usageNoticeDialog.setOnDismissListener(dialog -> usageNoticeDialog = null);
+        usageNoticeDialog.show();
     }
 
     @Override
@@ -289,6 +314,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     @Override
     protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("accessChecked", accessChecked);
+        state.putBoolean("usageNoticeShowing", usageNoticeDialog != null && usageNoticeDialog.isShowing());
         state.putString("keywords", keywords);
         state.putInt("scope", scope.ordinal());
         state.putInt("window", window.ordinal());
@@ -301,6 +327,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     protected void onDestroy() {
         CampusSilentRefresh.hostDestroyed(this);
         uiHandler.removeCallbacksAndMessages(null);
+        if (usageNoticeDialog != null) {
+            usageNoticeDialog.setOnDismissListener(null);
+            usageNoticeDialog.dismiss();
+            usageNoticeDialog = null;
+        }
         if (engine != null && engine.listener == this) engine.listener = null;
         super.onDestroy();
     }
@@ -338,11 +369,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             notifStatus.setContentDescription(last == 0 ? "自动读取已连接，等待新消息"
                     : "自动读取已连接，最近收到 " + relativeTime(last));
         } else {
-            boolean reconnecting = WatchdogJob.accessEnabled(this);
-            notifStatus.setText(statusText(reconnecting ? "正在重连" : "未开启读取", Ui.AMBER_TX));
+            boolean access = WatchdogJob.accessEnabled(this);
+            boolean reconnecting = access && NotifRecovery.running();
+            notifStatus.setText(statusText(!access ? "未开启读取" : reconnecting ? "正在重连" : "读取未连接", Ui.AMBER_TX));
             notifStatus.setTextColor(Ui.AMBER_TX);
             notifStatus.setBackground(Ui.ripple(this, Ui.round(this, Ui.AMBER_BG, 15), Ui.press(), 15));
-            notifStatus.setContentDescription(reconnecting ? "通知读取正在重连，点按查看" : "通知读取未连接，点按查看");
+            notifStatus.setContentDescription(reconnecting ? "通知读取正在重连，点按查看" : "通知读取未连接，点按查看恢复方法");
         }
     }
 
@@ -446,7 +478,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         CampusSyncBanner.add(this,top);
         notifStatus = uiText("", 12, Ui.SUB, true);
         notifStatus.setGravity(Gravity.CENTER);
-        notifStatus.setPadding(dp(this, 12), 0, dp(this, 13), 0);
+        notifStatus.setPadding(dp(this, 10), 0, dp(this, 10), 0);
         notifStatus.setOnClickListener(v -> showHealthCheck());
         top.addView(notifStatus, lp(-2, dp(this, 32)));
         ImageView more = new ImageView(this);
@@ -454,9 +486,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         int morePad = dp(this, 9);
         more.setPadding(morePad, morePad, morePad, morePad);
         more.setContentDescription("更多");
-        more.setBackground(Ui.ripple(this, Ui.disc(this, Ui.CARD), Ui.press(), 20));
+        more.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.CARD, Ui.LINE, 14, 0.75f), Ui.press(), 14));
         more.setOnClickListener(v -> showMoreMenu());
-        LinearLayout.LayoutParams moreLp = lp(dp(this, 38), dp(this, 38));
+        LinearLayout.LayoutParams moreLp = lp(dp(this, 48), dp(this, 48));
         moreLp.leftMargin = dp(this, 8);
         top.addView(more, moreLp);
         page.addView(top, lp(-1, dp(this, 60)));
@@ -471,16 +503,24 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         page.addView(updateBanner,updateLp);
         showUpdateNotice();
 
-        // Compact overview: current date, deadline status and pending count.
+        // Compact overview with a date masthead and a separate, quieter stats band.
         hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(this,20),dp(this,14),dp(this,20),dp(this,14));
-        hero.setBackground(Ui.heroSurface(this, 26));
-        Ui.lift(hero, 8f);
-        sub = uiText(subLine(), 13, Ui.HERO_SUB, true);
+        hero.setPadding(dp(this,20),dp(this,10),dp(this,20),dp(this,10));
+        hero.setBackground(Ui.heroSurface(this, 20));
+        Ui.lift(hero, 3f);
+        LinearLayout heroMasthead = new LinearLayout(this);
+        heroMasthead.setGravity(Gravity.CENTER_VERTICAL);
+        sub = uiText(subLine(), 12, Ui.HERO_SUB, true);
         sub.setSingleLine(true);
+        sub.setEllipsize(TextUtils.TruncateAt.END);
         sub.setLetterSpacing(0.02f);
-        hero.addView(sub);
+        heroMasthead.addView(sub, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView todayLabel = Ui.tag(this, "今日概览", Ui.ON_HERO, Ui.withAlpha(Ui.HERO_GLOW, 38));
+        LinearLayout.LayoutParams todayLp = lp(-2, -2);
+        todayLp.leftMargin = dp(this, 10);
+        heroMasthead.addView(todayLabel, todayLp);
+        hero.addView(heroMasthead, lp(-1, -2));
         headline = uiText("",22,Ui.ON_HERO,false);
         headline.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         headline.setLineSpacing(dp(this, 2), 1f);
@@ -490,8 +530,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         hero.addView(headline, hlLp);
         stats = uiText("", 13, Ui.HERO_SUB, false);
         stats.setLineSpacing(dp(this, 3), 1f);
+        stats.setPadding(dp(this, 10), dp(this, 6), dp(this, 10), dp(this, 6));
+        stats.setBackground(Ui.round(this, Ui.withAlpha(Ui.ON_HERO, 12), 10));
         LinearLayout.LayoutParams stLp = lp(-1, -2);
-        stLp.topMargin = dp(this,5);
+        stLp.topMargin = dp(this,7);
         hero.addView(stats, stLp);
         LinearLayout.LayoutParams heroLp = lp(-1, -2);
         heroLp.topMargin = dp(this, 6);
@@ -684,8 +726,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         wrap.setOrientation(LinearLayout.VERTICAL);
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        GradientDrawable searchBg = Ui.round(this, Ui.dark ? Ui.FILL : Ui.CARD, 16);
-        if (!Ui.dark) searchBg.setStroke(1, Ui.withAlpha(Ui.LINE, 200));
+        GradientDrawable searchBg = Ui.roundStroke(this, Ui.CARD, Ui.LINE, 14, 0.75f);
         searchRow.setBackground(searchBg);
         searchField = new EditText(this);
         searchField.setSingleLine(true);
@@ -695,7 +736,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         searchField.setContentDescription("搜索待办卡片");
         searchField.setBackground(null);
         searchField.setTextColor(Ui.TEXT);
-        searchField.setHintTextColor(Ui.MUTE);
+        searchField.setHintTextColor(Ui.SUB);
         searchField.setPadding(dp(this, 14), 0, dp(this, 4), 0);
         searchField.setCompoundDrawablesWithIntrinsicBounds(Ui.searchGlyph(this, Ui.MUTE, 17), null, null, null);
         searchField.setCompoundDrawablePadding(dp(this, 10));
@@ -709,7 +750,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         searchClear.setOnClickListener(v -> searchField.setText(""));
         searchRow.addView(searchClear, lp(dp(this, 44), dp(this, 44)));
         LinearLayout.LayoutParams searchLp = lp(-1, -2);
-        searchLp.topMargin = dp(this, 20);
+        searchLp.topMargin = dp(this, 14);
         wrap.addView(searchRow, searchLp);
         searchField.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -770,7 +811,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         SpannableString s = new SpannableString(count == null ? label : label + "  " + count);
         if (count != null) {
             int start = s.length() - count.length();
-            s.setSpan(new ForegroundColorSpan(selected ? Ui.withAlpha(Ui.CARD, 170) : Ui.MUTE),
+            s.setSpan(new ForegroundColorSpan(selected ? Ui.withAlpha(Ui.ON_ACCENT, 210) : Ui.SUB),
                     start, s.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         // 文字和选中态没变就不重设背景：每次刷新都换 Drawable 会让涟漪中途被打断。
@@ -779,11 +820,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         boolean wasSelected = chip.isSelected();
         chip.setTag(key);
         chip.setText(s);
-        chip.setTextColor(selected ? Ui.CARD : Ui.SUB);
-        // 选中：墨色实心胶囊；未选中：没有描边，只在纸面上留一块很浅的底。
-        GradientDrawable bg = selected ? Ui.round(this, Ui.TEXT, 18)
-                : Ui.round(this, Ui.dark ? Ui.FILL : Ui.withAlpha(Ui.TEXT, 10), 18);
-        chip.setBackground(Ui.ripple(this, bg, Ui.press(), 18));
+        chip.setTextColor(selected ? Ui.ON_ACCENT : Ui.SUB);
+        // Brand color connects the active filter to navigation; quiet outlined chips stay secondary.
+        GradientDrawable bg = selected ? Ui.round(this, Ui.ACCENT, 12)
+                : Ui.roundStroke(this, Ui.CARD, Ui.LINE, 12, 0.75f);
+        chip.setBackground(Ui.ripple(this, bg, Ui.press(), 12));
         chip.setSelected(selected);
         if (selected && !wasSelected && chip.isAttachedToWindow()) {
             // 选中时轻轻弹一下，确认点到了。
@@ -1085,6 +1126,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         body.setOrientation(LinearLayout.VERTICAL);
         body.addView(sheetTitle("更多"));
         menuSection(body, "自动读取");
+        menuRow(body, holder, "使用须知", "查看通知读取、后台运行和识别限制", Ui.TEXT, this::showUsageNotice);
         menuRow(body, holder, "后台保活设置", SetupGuide.allRecommendedDone(this) ? "已完成 · 通知、后台运行、自启动"
                 : "还有步骤没完成，可能收不到群消息", SetupGuide.allRecommendedDone(this) ? Ui.TEXT : Ui.AMBER_TX, this::showSetupGuide);
         menuRow(body, holder, "自动读取自检", "检查权限、连接和后台限制", Ui.TEXT, this::showHealthCheck);
@@ -1291,6 +1333,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 .append("3. 在最近任务里不要上滑清掉它；可以长按卡片锁定。\n")
                 .append("4. 重启手机后打开一次 App，确认状态是「已连接」。");
 
+        if (!EngineHolder.listenerConnected && WatchdogJob.accessEnabled(this)) {
+            if (NotifRecovery.failed()) {
+                body.append("\n\n自动恢复尚未成功。请在系统「通知使用权」里关闭再开启 Offloor，然后返回应用；无需清空数据或重新安装。");
+            } else if (NotifRecovery.running()) {
+                body.append("\n\n正在检查系统连接结果，请稍等；发出请求不代表已经连接。");
+            }
+        }
         // 三个问题标记先取出来，再决定两个按钮分别放哪个动作。
         boolean needAccess = hasFix(r, "NOTIF_ACCESS");
         boolean needRebind = hasFix(r, "REBIND");
@@ -1317,19 +1366,20 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 }
             });
         } else if (needRebind) {
-            builder.setPositiveButton("重新连接", (d, w) -> {
-                try {
-                    // 请求系统重新绑定通知监听服务，和看门狗用的是同一个动作。
-                    NotificationListenerService.requestRebind(
-                            new ComponentName(this, NotifListener.class));
-                } catch (Exception ignored) {
-                    // 重绑失败不崩溃，用户还可以再点一次。
-                }
-                // 留一条诊断痕迹，之后在「诊断日志」里能看到这次手动重连。
-                EngineHolder.diag(this, "重连", "用户在自检里点了重新连接");
-                // 绑定是异步的，明确告诉用户几秒后再看。
-                Toast.makeText(this, "已请求重新连接，几秒后再看状态", Toast.LENGTH_SHORT).show();
-            });
+            if (NotifRecovery.failed()) {
+                builder.setPositiveButton("重开通知权限", (d, w) -> {
+                    retryNotifOnResume = true;
+                    try { startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); }
+                    catch (Exception e) {
+                        Toast.makeText(this, "请到系统设置的通知使用权中，关闭再开启 Offloor", Toast.LENGTH_LONG).show();
+                    }
+                });
+            } else {
+                builder.setPositiveButton("重新连接", (d, w) -> {
+                    NotifRecovery.request(this, true);
+                    Toast.makeText(this, "正在恢复通知读取，将检查连接结果", Toast.LENGTH_SHORT).show();
+                });
+            }
         } else if (needBattery) {
             builder.setPositiveButton("去电池设置", (d, w) -> openBatterySettings());
         }
@@ -1666,11 +1716,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         FrameLayout checkZone = new FrameLayout(this);
         View check = new View(this);
         check.setBackground(circle);
-        checkZone.addView(check, new FrameLayout.LayoutParams(dp(this, 22), dp(this, 22), Gravity.CENTER));
+        checkZone.addView(check, new FrameLayout.LayoutParams(dp(this, 22), dp(this, 22), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
         checkZone.setBackground(Ui.rippleCircle(this, Ui.press()));
         checkZone.setContentDescription((c.done ? "恢复待办：" : "标记完成：") + c.displayTitle());
         LinearLayout.LayoutParams checkLp = lp(dp(this, 48), dp(this, 48));
-        checkLp.topMargin = -dp(this, 13);
+        // Align the circle with the title without drawing the touch target outside the card.
+        checkLp.topMargin = 0;
         card.addView(checkZone, checkLp);
 
         LinearLayout body = new LinearLayout(this);

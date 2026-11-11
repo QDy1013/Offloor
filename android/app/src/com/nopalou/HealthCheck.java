@@ -78,11 +78,11 @@ public final class HealthCheck {
                     "通知读取权限没开，App 收不到群消息", "NOTIF_ACCESS"));
         }
 
-        // 规则 2：权限已开但服务没连上，说明系统还没绑定，正在自动重连。
+        // 规则 2：授权不等于服务已绑定；恢复进度由界面单独显示。
         if (accessEnabled && !connected) {
             // 加入重连问题。
             issues.add(new Issue(LEVEL_SEVERE,
-                    "权限已开，但系统还没有连上通知服务（正在自动重连）", "REBIND"));
+                    "权限已开，但系统还没有连上通知服务", "REBIND"));
         }
 
         // 规则 3：电池没设成不限制，后台可能被系统杀掉。

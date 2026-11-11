@@ -405,6 +405,7 @@ public class NotifListener extends NotificationListenerService {
         super.onListenerConnected();
         instance = this;
         EngineHolder.listenerConnected = true;
+        NotifRecovery.connected(this);
         EngineHolder.refreshCards();
         EngineHolder.diag(this, "连接", "通知服务已连接");
         // 连上后把通知栏里已有的消息扫一遍：App 被杀、重启、刚授权期间到达的消息都能补上。
@@ -426,17 +427,13 @@ public class NotifListener extends NotificationListenerService {
     @Override
     public void onListenerDisconnected() {
         super.onListenerDisconnected();
+        // Ignore a late callback from an instance that has already been replaced.
+        if (instance != null && instance != this) return;
         if (instance == this) instance = null;
         EngineHolder.listenerConnected = false;
         EngineHolder.refreshCards();
         EngineHolder.diag(this, "断开", "通知服务已断开");
-        // 系统解绑后不会自己回来，这里主动请求重新绑定。
-        try {
-            requestRebind(new ComponentName(this, NotifListener.class));
-            EngineHolder.diag(this, "重连", "断开后自动请求重新绑定");
-        } catch (Throwable t) {
-            EngineHolder.diag(this, "出错", t.getClass().getSimpleName() + ": " + t.getMessage());
-        }
+        NotifRecovery.request(this, false);
     }
 
     @Override

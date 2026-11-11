@@ -1,10 +1,8 @@
 package com.nopalou;
 
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.service.notification.NotificationListenerService;
 
 /**
  * 开机自启：vivo 等系统重启后会悄悄把通知监听解绑，
@@ -21,8 +19,8 @@ public class BootReceiver extends BroadcastReceiver {
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) return;
 
         try {
-            NotificationListenerService.requestRebind(new ComponentName(context, NotifListener.class));
-        } catch (Exception ignored) {
+            NotifRecovery.request(context, false);
+        } catch (RuntimeException ignored) {
         }
 
         // 顺便登记看门狗：只在还没有这个任务时才会真正登记，不会重置已有周期。

@@ -7,16 +7,13 @@ import android.app.job.JobService;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.os.PowerManager;
-import android.provider.Settings;
-import android.service.notification.NotificationListenerService;
 
 /**
  * 看门狗：系统（尤其 vivo 这类 ROM）会在后台悄悄把通知监听解绑，
  * 用户完全看不出来，界面只显示"未连接"，之后一条群消息都收不到。
  * 这里用 JobScheduler 每 15 分钟醒一次，发现"权限还在但服务没连上"就请求重新绑定；
- * 连续两轮都连不上，就把通知服务组件先停用再启用，逼系统重新走一遍绑定流程。
+ * 与首页共用限次恢复，不停用通知服务组件；超时后保留真实的未连接状态。
  */
 public class WatchdogJob extends JobService {
 
@@ -65,20 +62,7 @@ public class WatchdogJob extends JobService {
      * 这里只判断里面有没有"本包名/"，有就说明授权还在，服务没连上是系统解绑而不是用户关权限。
      */
     static boolean accessEnabled(Context ctx) {
-        try {
-            // 没有上下文读不到设置。
-            if (ctx == null) return false;
-            // 读出系统的通知使用权列表；没开过任何应用时是 null。
-            String flat = Settings.Secure.getString(ctx.getContentResolver(),
-                    "enabled_notification_listeners");
-            // null 当没开权限处理。
-            if (flat == null) return false;
-            // 列表里出现"本包名/"就说明本 App 的通知监听是被启用的。
-            return flat.contains(ctx.getPackageName() + "/");
-        } catch (Throwable t) {
-            // 读设置可能被系统拒绝，按没权限处理，看门狗就不会乱重启组件。
-            return false;
-        }
+        return NotifRecovery.accessEnabled(ctx);
     }
 
     /**
@@ -115,29 +99,9 @@ public class WatchdogJob extends JobService {
                 // 先自增再存回，保证进程中途被杀也能接着累计。
                 miss = miss + 1;
                 sp.edit().putInt(KEY_MISS, miss).apply();
-                // 请求系统重新绑定通知监听服务，这是最轻的一步。
-                NotificationListenerService.requestRebind(new ComponentName(this, NotifListener.class));
-                // 记进诊断日志，界面的自检和"最近发生了什么"能看出来。
-                EngineHolder.diag(this, "重连", "看门狗发现服务未连接，请求重新绑定（第" + miss + "次）");
-                // 连续两轮都没连上：说明单纯 requestRebind 已经无效，用停用再启用组件来强制系统重绑。
-                if (miss >= 2) {
-                    // 取组件管理器，拿不到就跳过强制重启这一步（异常会被外层接住）。
-                    PackageManager pm = getPackageManager();
-                    // 组件名指向通知监听服务本身。
-                    ComponentName listener = new ComponentName(this, NotifListener.class);
-                    // 先停用组件；DONT_KILL_APP 保证不连带杀掉本进程。
-                    pm.setComponentEnabledSetting(listener,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP);
-                    // 紧接着重新启用，系统会当成一个"新组件"重新绑定。
-                    pm.setComponentEnabledSetting(listener,
-                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                            PackageManager.DONT_KILL_APP);
-                    // 这一步比较重，必须留诊断痕迹。
-                    EngineHolder.diag(this, "重连", "连续未连接，已重启通知服务组件");
-                    // 计数清零，避免下一轮又立刻走一次强制重启。
-                    sp.edit().putInt(KEY_MISS, 0).apply();
-                }
+                // Share the bounded recovery path; never disable the listener component to force a bind.
+                EngineHolder.diag(this, "重连", "看门狗检查通知服务（第" + miss + "次）");
+                NotifRecovery.request(this, true);
             } else {
                 // 已经连上、或用户根本没开权限：把计数清零，下次出问题从第 1 次重新算。
                 getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_MISS, 0).apply();

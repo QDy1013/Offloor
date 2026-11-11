@@ -20,7 +20,7 @@ import android.widget.TextView;
 
 /**
  * 待办 / 课表 / 考试成绩 / 校园四个主页面之间的底部导航。
- * 悬浮圆角底座，图标与文字上下排列；选中项整体衬浅靛蓝圆角背景，
+ * 悬浮圆角底座，图标与文字上下排列；选中图标衬浅靛蓝小胶囊，
  * 四项等宽，长标签与大字体也有独立空间；
  * 切换用 150ms 淡入淡出，不再整页横滑，像同一个 App 里换页而不是开新窗口。
  */
@@ -70,16 +70,15 @@ final class AppNavigation {
         shell.setBackgroundColor(Ui.BG);
         shell.setClipToPadding(false);
         shell.setClipChildren(false);
-        shell.setPadding(Ui.dp(from,16),Ui.dp(from,6),Ui.dp(from,16),Ui.dp(from,6));
+        shell.setPadding(Ui.dp(from,16),Ui.dp(from,2),Ui.dp(from,16),Ui.dp(from,2));
         LinearLayout row = new LinearLayout(from);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(Ui.dp(from,8),Ui.dp(from,5),Ui.dp(from,8),Ui.dp(from,5));
-        android.graphics.drawable.GradientDrawable capsule = Ui.round(from, Ui.CARD, 28);
-        capsule.setStroke(Ui.dp(from, 1), Ui.withAlpha(Ui.LINE, Ui.dark ? 160 : 100));
+        row.setPadding(Ui.dp(from,8),0,Ui.dp(from,8),0);
+        android.graphics.drawable.GradientDrawable capsule = Ui.roundStroke(from, Ui.CARD, Ui.LINE, 20, 0.75f);
         row.setBackground(capsule);
-        Ui.lift(row, 4f);
+        Ui.lift(row, 2f);
         // Let font scaling increase the bar instead of clipping the longer label.
-        row.setMinimumHeight(Ui.dp(from,60));
+        row.setMinimumHeight(Ui.dp(from,48));
         shell.addView(row, new FrameLayout.LayoutParams(-1, -2));
         for (int i = 0; i < TITLES.length; i++) {
             final int target = i;
@@ -89,15 +88,16 @@ final class AppNavigation {
             LinearLayout tab = new LinearLayout(from);
             tab.setGravity(Gravity.CENTER);
             tab.setOrientation(LinearLayout.VERTICAL);
-            tab.setPadding(0, Ui.dp(from, 2), 0, Ui.dp(from, 2));
+            tab.setPadding(0, 0, 0, 0);
             tab.setMinimumHeight(Ui.dp(from,48));
             tab.setContentDescription(title + (selected ? "，当前页面" : ""));
             tab.setSelected(selected);
             tab.setFocusable(true);
-            tab.setBackground(Ui.ripple(from, selected ? Ui.round(from, Ui.ACCENT_BG, 20) : null, Ui.press(), 20));
+            tab.setBackground(Ui.ripple(from, null, Ui.press(), 14));
             Ui.pressScale(tab, .96f);
             FrameLayout iconWell = new FrameLayout(from);
-            tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from,52),Ui.dp(from,26)));
+            if (selected) iconWell.setBackground(Ui.round(from, Ui.ACCENT_BG, 11));
+            tab.addView(iconWell, new LinearLayout.LayoutParams(Ui.dp(from,44),Ui.dp(from,24)));
 
             ImageView icon = new ImageView(from);
             icon.setImageDrawable(new TabIcon(from, target, selected ? Ui.ACCENT : Ui.SUB));
@@ -111,7 +111,7 @@ final class AppNavigation {
             label.setIncludeFontPadding(false);
             label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
-            labelLp.topMargin=Ui.dp(from,2);
+            labelLp.topMargin=Ui.dp(from,1);
             tab.addView(label, labelLp);
 
             LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(0, -2, 1);
