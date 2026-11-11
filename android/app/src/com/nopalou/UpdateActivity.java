@@ -55,7 +55,11 @@ public class UpdateActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b); Ui.apply(this); prefs=getSharedPreferences("app-update",MODE_PRIVATE); manager=(DownloadManager)getSystemService(DOWNLOAD_SERVICE); build();
         id=prefs.getLong("download_id",-1);
-        try { target=new UpdateCatalog(prefs.getString("target",""),getPackageName(),installedVersion()); } catch (Exception ignored) { target=null; id=-1; }
+        try {
+            target=new UpdateCatalog(prefs.getString("target",""),getPackageName(),installedVersion());
+            // 上次下载的包不比当前安装的新（例如已经装过），不再当作“可安装的更新”，重新查线上版本。
+            if (target.versionCode<=installedVersion()) { target=null; id=-1; }
+        } catch (Exception ignored) { target=null; id=-1; }
         if (id>0 && target!=null && (b!=null || activeDownload(id))) poll(); else fetchAndDownload();
     }
     private int dp(float n) { return Ui.dp(this,n); }
@@ -112,6 +116,7 @@ public class UpdateActivity extends Activity {
                 UpdateCatalog next=new UpdateCatalog(metadata(),getPackageName(),installedVersion());
                 String currentCertificate=certificate(getPackageManager().getPackageInfo(getPackageName(),signatureFlags()));
                 if (!next.certificate.equals(currentCertificate)) throw new IOException("此更新包无法覆盖当前安装签名，请联系开发者发布同签名版本");
+                if (next.versionCode<=installedVersion()) { upToDate(next); return; }
                 long nextId;
                 synchronized (DOWNLOAD_LOCK) {
                     long old=prefs.getLong("download_id",-1); String oldHash=prefs.getString("sha256","");
@@ -132,6 +137,18 @@ public class UpdateActivity extends Activity {
                 }
                 runOnUiThread(() -> { if (isDestroyed()) return; busy=false; target=next; id=nextId; version.setText("当前 "+version(this)+"  ·  最新 "+next.versionName); poll(); });
             } catch (Exception e) { fail(e); }
+        });
+    }
+    /** 线上没有比当前更新的版本：不下载，也不拿旧安装包提示“安装更新”。 */
+    private void upToDate(UpdateCatalog latest) {
+        runOnUiThread(() -> {
+            if (isDestroyed()) return;
+            busy=false; verified=false; target=null; id=-1;
+            version.setText("当前 "+version(this)+"  ·  最新 "+latest.versionName);
+            headline.setText("已是最新版本");
+            detail.setText("刚发布的新版本可能要等几分钟才能检测到，稍后可以再查一次。");
+            progress.setIndeterminate(false); progress.setProgress(100);
+            button.setText("重新检查"); button.setEnabled(true);
         });
     }
     private boolean completed(long value) {
