@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 36,
-      "versionName": "0.36",
-      "size": 2471836,
-      "sha256": "d73b44a76ebccb1cc41fefedf9adb17d36e5a9d91ef8483987343b7a62574a70",
+      "versionCode": 37,
+      "versionName": "0.37",
+      "size": 2475932,
+      "sha256": "80356b8cc6ded502ee328f45524da44d102bf137ab6f33ad7667fe1ef79d57fc",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/d73b44a76ebccb1cc41fefedf9adb17d36e5a9d91ef8483987343b7a62574a70/offloor.apk",
-      "notes": "feat: 首页卡片变薄、默认显示全部、悬浮导航与 AI 开启反馈（v0.36）"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/80356b8cc6ded502ee328f45524da44d102bf137ab6f33ad7667fe1ef79d57fc/offloor.apk",
+      "notes": "feat: AI 补审已有待确认事项，修复字标换行（v0.37）"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
