@@ -196,7 +196,11 @@ async function main() {
     });
     check('new slot logic is part of the release checks', () => {
         assert.ok(fs.existsSync(path.join(app, '..', 'test', 'Step59Test.java')));
-        assert.match(fs.readFileSync(path.join(__dirname, 'run_checks.py'), 'utf8'), /"StudyRoomPlan"\)/);
+        // 只看类名是否在编译清单里，不盯着后面的括号：以后往清单追加类不该把这条断言弄挂。
+        const registry = fs.readFileSync(path.join(__dirname, 'run_checks.py'), 'utf8');
+        for (const name of ['StudyRoomPlan', 'CampusBalance', 'CampusPay']) {
+            assert.match(registry, new RegExp(`"${name}"`), 'release checks miss ' + name);
+        }
     });
     // ---------- 回归：空占用导致的崩溃、24:00 边界、翻页与改时间的死路 ----------
     check('room card checks for a missing occupancy list before reading it', () => {
