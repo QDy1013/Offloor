@@ -122,6 +122,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     /** Compact daily overview; task content remains the main focus. */
     private LinearLayout hero;
     private AlertDialog usageNoticeDialog;
+    private AlertDialog manualCardDialog;
+    private java.util.function.Supplier<Bundle> manualDraftState;
+    private Bundle restoreManualDraft;
     private boolean restoreUsageNotice;
     private boolean startupNoticeHandled;
     private LinearLayout emptyBox;
@@ -202,6 +205,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if (b != null) {
             accessChecked = b.getBoolean("accessChecked", false);
             restoreUsageNotice = b.getBoolean("usageNoticeShowing", false);
+            restoreManualDraft = b.getBundle("manualCardDraft");
             keywords = b.getString("keywords", "");
             newCardsOnly = b.getBoolean("newCardsOnly", false);
             Engine.CardScope[] scopes = Engine.CardScope.values();
@@ -265,7 +269,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             });
         }
         // 使用须知优先于自动权限引导，避免首次打开时两个弹窗叠在一起。
-        showStartupDialogs();
+        if (restoreManualDraft != null) {
+            Bundle draft = restoreManualDraft; restoreManualDraft = null;
+            String id = draft.getString("cardId", "");
+            Engine.Card card = id.isEmpty() ? null : engine.cardById(id);
+            if (!id.isEmpty() && card == null) Toast.makeText(this, "草稿对应的卡片已移除", Toast.LENGTH_LONG).show();
+            else showManualCardForm(card, draft);
+        } else if (manualCardDialog == null) showStartupDialogs();
     }
 
     private void showStartupDialogs() {
@@ -333,6 +343,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         state.putInt("window", window.ordinal());
         state.putInt("visibleLimit", visibleLimit);
         state.putInt("scrollY", listScroll == null ? 0 : listScroll.getScrollY());
+        if (manualDraftState != null && demo == null) state.putBundle("manualCardDraft", manualDraftState.get());
         super.onSaveInstanceState(state);
     }
 
@@ -340,6 +351,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     protected void onDestroy() {
         CampusSilentRefresh.hostDestroyed(this);
         uiHandler.removeCallbacksAndMessages(null);
+        if (manualCardDialog != null) { manualCardDialog.dismiss(); manualCardDialog = null; manualDraftState = null; }
         if (usageNoticeDialog != null) {
             usageNoticeDialog.setOnDismissListener(null);
             usageNoticeDialog.dismiss();
@@ -779,6 +791,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private LinearLayout buildFilters() {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
+        TextView addTask = CourseUi.action(this, "＋ 新建任务", false, () -> showManualCardForm(null));
+        addTask.setContentDescription("手动填写并添加任务卡片");
+        LinearLayout.LayoutParams addLp = lp(-1, dp(this, 46)); addLp.topMargin = dp(this, 10);
+        wrap.addView(addTask, addLp);
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable searchBg = Ui.roundStroke(this, Ui.CARD, Ui.LINE, 14, 0.75f);
@@ -2319,6 +2335,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         info.setOrientation(LinearLayout.VERTICAL);
         infoRow(info, "提交到", c.channel);
         infoRow(info, "地点", c.place);
+        if ("manual".equals(c.sourcePackageName())) infoRow(info, "备注", c.manualNotes);
         infoRow(info, "携带", c.bring);
         infoRow(info, "发送者", TextUtils.isEmpty(c.sender) ? "未知" : c.sender);
         LinearLayout.LayoutParams infoLp = lp(-1, -2);
@@ -2894,6 +2911,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     void showCardEdit(Engine.Card card) {
+        if ("manual".equals(card.sourcePackageName())) { showManualCardForm(card); return; }
         LinearLayout form = dialogForm();
         EditText title = input(form, "事项标题", false);
         title.setText(card.displayTitle());
@@ -2932,6 +2950,63 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 Toast.makeText(this, "这张卡片已移除", Toast.LENGTH_SHORT).show();
             }
             dialog.dismiss();
+        });
+    }
+
+    private void showManualCardForm(Engine.Card card) { showManualCardForm(card, null); }
+
+    private void showManualCardForm(Engine.Card card, Bundle draft) {
+        if (manualCardDialog != null) return;
+        Engine shown = demo == null ? engine : demo.engine;
+        LinearLayout form = dialogForm();
+        form.addView(uiText(demo == null ? "手动填写的卡片保存在本机；填写具体时间后沿用到期提醒设置。" : "当前为离线演示，新建卡片仅加入演示列表。", 13, Ui.SUB, false));
+        EditText title = input(form, "事项标题（必填）", false);
+        title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
+        if (card != null) title.setText(card.displayTitle());
+        long[] deadline = {card == null ? 0L : card.deadline};
+        Button time = button("时间：" + dateTimeLabel(deadline[0]), v -> chooseDateTime(deadline[0], value -> {
+            deadline[0] = value; ((Button) v).setText("时间：" + dateTimeLabel(value));
+        }));
+        form.addView(time);
+        form.addView(button("暂不设置时间", v -> { deadline[0] = 0L; time.setText("时间：待确认"); }));
+        EditText place = input(form, "地点（可选）", false);
+        place.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
+        EditText notes = input(form, "备注（可选）", true);
+        notes.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});
+        if (card != null) { place.setText(card.place); notes.setText(card.manualNotes); }
+        if (draft != null) {
+            title.setText(draft.getString("title", "")); place.setText(draft.getString("place", ""));
+            notes.setText(draft.getString("notes", "")); deadline[0] = draft.getLong("deadline", 0);
+            time.setText("时间：" + dateTimeLabel(deadline[0]));
+        }
+        manualDraftState = () -> {
+            Bundle saved = new Bundle(); saved.putString("cardId", card == null ? "" : card.id);
+            saved.putString("title", title.getText().toString()); saved.putString("place", place.getText().toString());
+            saved.putString("notes", notes.getText().toString()); saved.putLong("deadline", deadline[0]); return saved;
+        };
+        AlertDialog dialog = alert().setTitle(card == null ? "新建任务卡片" : "编辑任务卡片")
+                .setView(scrollForm(form)).setNegativeButton("取消", null)
+                .setPositiveButton(card == null ? "加入任务" : "保存", null).create();
+        manualCardDialog = dialog;
+        dialog.setOnDismissListener(d -> { manualCardDialog = null; manualDraftState = null; });
+        dialog.show();
+        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (title.getText().toString().trim().isEmpty()) { title.setError("请输入事项标题"); return; }
+            String label = title.getText().toString(), location = place.getText().toString(), detail = notes.getText().toString();
+            long now = System.currentTimeMillis();
+            if (card == null) shown.addManualCard(label, deadline[0], location, detail, now);
+            else if (!shown.editManualCard(card, label, deadline[0], location, detail, now)) {
+                Toast.makeText(this, "这张卡片已移除", Toast.LENGTH_SHORT).show(); dialog.dismiss(); return;
+            }
+            if (demo == null) EngineHolder.saveAsync(this);
+            if (card == null) {
+                keywords = ""; searchField.setText(""); newCardsOnly = false;
+                scope = Engine.CardScope.ALL; window = Engine.CardWindow.ANY; visibleLimit = PAGE_SIZE;
+            }
+            dialog.dismiss(); render();
+            if (card == null) listScroll.smoothScrollTo(0, 0);
+            Toast.makeText(this, card == null ? "已加入任务卡片" : "任务卡片已保存", Toast.LENGTH_SHORT).show();
         });
     }
 

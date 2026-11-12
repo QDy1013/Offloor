@@ -32,6 +32,7 @@ final class CampusServices {
         new Service("network", "校园网", "余额、流量与套餐", "https://zizhu.nwpu.edu.cn/", false),
         new Service("library", "我的借阅", "借阅书目与应还日期", "https://tushuguan.nwpu.edu.cn/", false),
         new Service("seats", "座位预约", "个人预约与签到状态 · 需要校园网", "https://ic.nwpu.edu.cn/", false),
+        new Service("study", "研修室", "查询空闲、预约与管理本人预约", "https://ic.nwpu.edu.cn/", false),
         new Service("classroom", "空闲教室", "按日期和节次查询自习教室", "https://jwxt.nwpu.edu.cn/student/for-std/room-free", false),
         new Service("sports", "体育场馆", "场地信息与本人预约", PORTAL, false),
         new Service("notices", "校园公告", "学校最新通知与公告", NOTICES, false),

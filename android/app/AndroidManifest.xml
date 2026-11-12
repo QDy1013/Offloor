@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nopalou"
-    android:versionCode="38"
-    android:versionName="0.38">
+    android:versionCode="39"
+    android:versionName="0.39">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
@@ -51,6 +51,8 @@
         <activity android:name=".NwpuImportActivity" android:exported="false" android:label="课表导入" />
         <activity android:name=".AcademicActivity" android:exported="false" android:label="考试与成绩" />
         <activity android:name=".CampusActivity" android:exported="false" android:label="我的校园" />
+        <activity android:name=".StudyRoomActivity" android:exported="false" android:label="研修室"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".CampusWebActivity" android:exported="false" android:label="校园服务同步" />
         <activity android:name=".UpdateActivity" android:exported="false" android:label="应用更新" />
         <activity android:name=".ShowcaseActivity" android:exported="false" android:label="情境演示" />

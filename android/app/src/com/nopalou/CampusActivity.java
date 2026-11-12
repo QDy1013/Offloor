@@ -128,6 +128,7 @@ public class CampusActivity extends Activity {
         accountOverview();
         section("校园服务");
         moduleCard(CampusServices.byId("classroom"));
+        moduleCard(CampusServices.byId("study"));
         moduleCard(CampusServices.byId("bus"));
         TextView foot=text("数据来自校方系统 · 点开查看详情与更新时间",11,Ui.MUTE,false);
         foot.setPadding(dp(4),dp(6),dp(4),dp(10)); list.addView(foot);
@@ -154,10 +155,12 @@ public class CampusActivity extends Activity {
             values.addView(item,new LinearLayout.LayoutParams(0,-2,1));
         }
     }
-    private void openModule(String id) { startActivity(new Intent(this,CampusActivity.class).putExtra("module",id)); }
+    private void openModule(String id) {
+        startActivity("study".equals(id)?new Intent(this,StudyRoomActivity.class):new Intent(this,CampusActivity.class).putExtra("module",id));
+    }
     private void moduleCard(CampusServices.Service s) {
         JSONObject module=data==null?null:data.module(s.id);
-        CampusSummary summary="classroom".equals(s.id)?new CampusSummary("选择时间和教学楼后点击查询","点击教室查看今天各节占用"):CampusSummary.of(s.id,module,System.currentTimeMillis());
+        CampusSummary summary="study".equals(s.id)?new CampusSummary("查空闲、选时段与真实同行人","查看或取消本人预约 · 按需连接校方系统"):"classroom".equals(s.id)?new CampusSummary("选择时间和教学楼后点击查询","点击教室查看今天各节占用"):CampusSummary.of(s.id,module,System.currentTimeMillis());
         LinearLayout c=card(); c.setPadding(dp(14),dp(16),dp(14),dp(16));
         c.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,20),Ui.press(),20)); c.setFocusable(true); Ui.pressScale(c,.985f);
         LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); c.addView(row);

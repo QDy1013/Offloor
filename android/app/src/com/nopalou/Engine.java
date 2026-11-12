@@ -163,6 +163,7 @@ public class Engine {
     public static class Card {
         public String id, kind, title, channel, place, groupId, groupName, sender, sourceId, sourceText;
         public String sourcePackage;
+        public String manualNotes;    // 手动卡的可编辑备注；原始来源仍保留创建时内容。
         public boolean deadlineUserSet;
 
         public String deadlineHint() {
@@ -220,6 +221,7 @@ public class Engine {
                 case "screenshot": return "截图识别";
                 case "share": return "分享";
                 case "jwxt": return "教务系统";
+                case "manual": return "手动添加";
                 default: return "来源待确认";
             }
         }
@@ -1838,6 +1840,42 @@ public class Engine {
         notifyChanged();
     }
 
+    /** 用户亲自填写的事项，不经过通知识别，也不送 AI 复核。 */
+    public Card addManualCard(String title, long deadline, String place, String notes, long actedAt) {
+        String label = manualValue(title, 200), location = manualValue(place, 200), detail = manualValue(notes, 4000);
+        if (label.isEmpty() || deadline < 0 || actedAt <= 0) throw new IllegalArgumentException("事项标题或时间无效");
+        Card card = new Card();
+        card.id = newCardId(); card.kind = "todo"; card.title = label;
+        card.deadline = deadline; card.deadlineUserSet = true; card.deadlineText = humanDeadline(deadline);
+        card.needsConfirm = deadline == 0; card.place = location; card.manualNotes = detail;
+        card.sourcePackage = "manual"; card.groupName = "个人任务"; card.sender = "本人";
+        card.sourceId = "manual:" + card.id; card.sourceTs = actedAt;
+        card.sourceText = label + (location.isEmpty() ? "" : "\n地点：" + location) + (detail.isEmpty() ? "" : "\n备注：" + detail);
+        card.confidence = 1; card.reason = "本人手动添加";
+        card.changes.action(actedAt, "本人", "手动创建任务", card.sourceText);
+        cards.add(card); notifyChanged(); return card;
+    }
+
+    public boolean editManualCard(Card card, String title, long deadline, String place, String notes, long actedAt) {
+        String label = manualValue(title, 200), location = manualValue(place, 200), detail = manualValue(notes, 4000);
+        if (card == null || !"manual".equals(card.sourcePackageName()) || !cards.contains(card)
+                || label.isEmpty() || deadline < 0 || actedAt <= 0) return false;
+        boolean fieldsChanged = !Objects.equals(card.place, location) || !Objects.equals(card.manualNotes, detail);
+        editCard(card, label, deadline, actedAt);
+        if (fieldsChanged) {
+            card.place = location; card.manualNotes = detail;
+            card.changes.action(actedAt, "本人", "编辑任务地点和备注", "地点：" + location + "\n备注：" + detail);
+            notifyChanged();
+        }
+        return true;
+    }
+
+    private static String manualValue(String value, int limit) {
+        String clean = value == null ? "" : value.trim();
+        if (clean.length() > limit) throw new IllegalArgumentException("内容超过长度限制");
+        return clean;
+    }
+
     /** null 保留当前时间，0 将时间标记为待确认。原始标题仍用于匹配群更正。 */
     public boolean editCard(Card card, String title, Long deadline) {
         return editCard(card,title,deadline,System.currentTimeMillis());
@@ -2350,6 +2388,7 @@ public class Engine {
             w.write("title\t" + esc(c.title) + "\n");
             w.write("channel\t" + esc(c.channel) + "\n");
             w.write("place\t" + esc(c.place) + "\n");
+            if (c.manualNotes != null) w.write("manualNotes\t" + esc(c.manualNotes) + "\n");
             w.write("bring\t" + esc(c.bring) + "\n");
             w.write("groupId\t" + esc(c.groupId) + "\n");
             w.write("sourcePackage\t" + esc(c.sourcePackageName()) + "\n");
@@ -2449,6 +2488,7 @@ public class Engine {
             else if ("title".equals(key)) cur.title = unesc(val);
             else if ("channel".equals(key)) cur.channel = unesc(val);
             else if ("place".equals(key)) cur.place = unesc(val);
+            else if ("manualNotes".equals(key)) cur.manualNotes = unesc(val);
             else if ("bring".equals(key)) cur.bring = unesc(val);
             else if ("groupId".equals(key)) cur.groupId = unesc(val);
             else if ("sourcePackage".equals(key)) cur.sourcePackage = unesc(val);
@@ -2491,7 +2531,7 @@ public class Engine {
         boolean repairedTitle = false;
         for (Card c : loaded) {                  // 兜底：老数据里的编号也不能被撞
             if (!blank(c.sourceId)) markNotification(c.sourceId); // 旧存档只迁移确实有卡片的来源。
-            if ("todo".equals(c.kind) && deliveryOnly(c.title) && !blank(c.sourceText)) {
+            if (!"manual".equals(c.sourcePackageName()) && "todo".equals(c.kind) && deliveryOnly(c.title) && !blank(c.sourceText)) {
                 String[] corrected = findAction(c.sourceText);
                 c.title = corrected[0] == null ? "待确认：提交事项" : corrected[0];
                 if (blank(c.channel)) c.channel = findChannel(c.sourceText);
@@ -2660,7 +2700,7 @@ public class Engine {
     private static boolean matchesTerms(Card card, String[] terms) {
         if (terms.length == 0) return true;
         String[] fields = {card.displayTitle(), card.titleOverride == null ? null : card.title,
-                card.groupName, card.sender, card.channel, card.place, card.sourceAppName()};
+                card.groupName, card.sender, card.channel, card.place, card.manualNotes, card.sourceAppName()};
         for (int i = 0; i < fields.length; i++) {
             if (fields[i] != null) fields[i] = fields[i].toLowerCase(Locale.ROOT);
         }
