@@ -793,8 +793,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         wrap.setOrientation(LinearLayout.VERTICAL);
         TextView addTask = CourseUi.action(this, "＋ 新建任务", false, () -> showManualCardForm(null));
         addTask.setContentDescription("手动填写并添加任务卡片");
-        LinearLayout.LayoutParams addLp = lp(-1, dp(this, 46)); addLp.topMargin = dp(this, 10);
-        wrap.addView(addTask, addLp);
+        addTask.setSingleLine(true);
+        addTask.setTextSize(13);
+        addTask.setPadding(dp(this, 12), 0, dp(this, 12), 0);
+        LinearLayout searchActions = new LinearLayout(this);
+        searchActions.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable searchBg = Ui.roundStroke(this, Ui.CARD, Ui.LINE, 14, 0.75f);
@@ -820,9 +823,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         searchClear.setVisibility(keywords.isEmpty() ? View.GONE : View.VISIBLE);
         searchClear.setOnClickListener(v -> searchField.setText(""));
         searchRow.addView(searchClear, lp(dp(this, 44), dp(this, 44)));
+        searchActions.addView(searchRow, new LinearLayout.LayoutParams(0, dp(this, 48), 1));
+        LinearLayout.LayoutParams addLp = lp(-2, dp(this, 48));
+        addLp.leftMargin = dp(this, 10);
+        searchActions.addView(addTask, addLp);
         LinearLayout.LayoutParams searchLp = lp(-1, -2);
         searchLp.topMargin = dp(this, 14);
-        wrap.addView(searchRow, searchLp);
+        wrap.addView(searchActions, searchLp);
         searchField.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             public void onTextChanged(CharSequence s, int start, int before, int count) {
