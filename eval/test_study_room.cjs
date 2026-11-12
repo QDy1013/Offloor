@@ -140,6 +140,65 @@ async function main() {
         assert.match(mainActivity, /deadline\[0\] = draft\.getLong\("deadline", 0\)/);
         assert.match(mainActivity, /if \(!id\.isEmpty\(\) && card == null\)/);
     });
+    // ---------- 体验改进：不可约原因、状态码、时段计算与冲突提示 ----------
+    for (const [name, room, pattern] of [
+        ['rules missing', {resvRule: null}, /规则/],
+        ['opening hours missing', {openTimes: []}, /开放时段/],
+        ['view only room', {onlyView: true}, /仅可查看/],
+        ['participant limit missing', {minUser: undefined}, /人数/],
+        ['occupancy missing', {resvInfo: undefined}, /占用/],
+        ['class schedule missing', {cls: undefined}, /课表/]]) {
+        h = harness({room}); result = await h.api.run('query', {date: DATE}, 'owner');
+        const row = result.rooms[0];
+        check('unavailable room explains why: ' + name, () => { assert.equal(row.available, false); assert.match(row.reason, pattern); });
+    }
+    h = harness(); result = await h.api.run('query', {date: DATE}, 'owner');
+    check('bookable room has no reason and reports the school count', () => {
+        assert.equal(result.rooms[0].reason, ''); assert.equal(result.count, 1); assert.equal(result.page, 1);
+    });
+    h = harness({bookings: [booking]}); result = await h.api.run('mine', {}, 'owner');
+    check('my bookings carry the numeric school state', () => assert.equal(result.bookings[0].state, 0));
+    h = harness({bookings: [{...booking, resvStatus: 'unknown'}]}); result = await h.api.run('mine', {}, 'owner');
+    check('unreadable booking state stays null instead of guessing', () => assert.equal(result.bookings[0].state, null));
+
+    check('room cards use computed slots rather than hand-picked times', () => {
+        assert.match(activity, /StudyRoomPlan\.slots\(plan, date, busySlots/);
+        assert.match(activity, /slotChip\(line, slot\.label\(\), \(\) -> booking\(row, slot\.start, slot\.end\)\)/);
+    });
+    const guard = activity.slice(activity.indexOf('private String check('), activity.indexOf('private void searchMember('));
+    check('booking panel rejects impossible times before dispatch', () => {
+        for (const reason of ['结束时间要晚于开始时间', '开始时间已经过去', '开放时间', '预约时长须为', '位参与者', '已被占用']) {
+            assert.ok(guard.includes(reason), 'missing guard: ' + reason);
+        }
+    });
+    check('class and personal clashes are surfaced but never block booking', () => {
+        assert.match(activity, /classesOn\(date\)/);
+        assert.match(activity, /reservedOn\(date\)/);
+        assert.match(activity, /时间冲突：/);
+        assert.doesNotMatch(activity, /if \(!clashes\.isEmpty\(\)\) return/);
+    });
+    check('home reminder is optional and only after an explicit confirmation', () => {
+        const submit = activity.slice(activity.indexOf('private void submit('), activity.indexOf('private void confirmCancel('));
+        assert.ok(submit.indexOf('remind.isChecked()') < submit.indexOf('write("submit", payload)'));
+        assert.match(activity, /remind\.setChecked\(true\)/);
+    });
+    check('a write that never left releases the duplicate-operation guard', () => {
+        const write = activity.slice(activity.indexOf('private void write('));
+        assert.match(write, /if \(!sent\) \{ markWrite\(false\)/);
+    });
+    check('date picker is bounded to the bookable horizon', () => {
+        assert.match(activity, /setMinDate\(StudyRoomPlan\.at\(StudyRoomPlan\.day\(now\), 0\)\)/);
+        assert.match(activity, /setMaxDate\(/);
+    });
+    check('captcha image is decoded within a size limit and fails closed', () => {
+        assert.match(activity, /encoded\.length\(\) > 700000/);
+        assert.match(activity, /验证码图片无法读取，请关闭后重新选择房间/);
+    });
+    check('new slot logic is part of the release checks', () => {
+        assert.ok(fs.existsSync(path.join(app, '..', 'test', 'Step59Test.java')));
+        assert.match(fs.readFileSync(path.join(__dirname, 'run_checks.py'), 'utf8'), /"StudyRoomPlan"\)/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

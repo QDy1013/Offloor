@@ -65,11 +65,21 @@
         const min = numeric(raw.minUser), max = numeric(raw.maxUser);
         const rules = rule && typeof rule === 'object' ? {minMinutes: numeric(rule.minResvTime), maxMinutes: numeric(rule.maxResvTime), interval: numeric(rule.timeInterval), earliest: numeric(rule.earliestResvTime), latest: numeric(rule.latestResvTime), freezing: numeric(rule.freezingTime), release: numeric(rule.laterLineTime)} : null;
         const completeRules = rules && rules.minMinutes > 0 && rules.maxMinutes >= rules.minMinutes && rules.interval > 0 && rules.earliest >= rules.latest && rules.latest >= 0 && rules.freezing >= 0;
-        const usable = !!completeRules && periods.length > 0 && reservations !== null && classes !== null && !raw.onlyView && Number.isInteger(min) && min > 0 && Number.isInteger(max) && max >= min;
+        // 不可预约时把原因说清楚；界面直接显示，不让人对着“暂不可约”猜。
+        const reasons = [];
+        if (raw.onlyView) reasons.push('校方标注为仅可查看，不能预约');
+        if (!rule || typeof rule !== 'object') reasons.push('校方没有返回预约规则');
+        else if (!completeRules) reasons.push('预约时长或可约范围规则没读全');
+        if (!periods.length) reasons.push('这一天没有读到开放时段');
+        if (reservations === null) reasons.push('占用信息没读全');
+        if (classes === null) reasons.push('课表占用没读全');
+        if (!(Number.isInteger(min) && min > 0)) reasons.push('房间人数下限没读全');
+        else if (!(Number.isInteger(max) && max >= min)) reasons.push('房间人数上限没读全');
+        const usable = reasons.length === 0;
         const occupied = reservations === null || classes === null ? null : reservations.filter(x => !x || !(Number(x.resvStatus) & 128)).map(x => ({start: clean(x && x.startTime), end: clean(x && x.endTime), buffer: rules ? rules.freezing : NaN}))
             .concat(classes.map(x => ({start: clean(x && (x.start || x.startTime)), end: clean(x && (x.end || x.endTime)), buffer: 0})));
         return {id: raw.devId, name: clean(raw.devName), location: clean(raw.labName), kind: clean(raw.kindName), min: Number.isInteger(min) && min > 0 ? min : null, max: Number.isInteger(max) && max > 0 ? max : null,
-            periods, occupied, rules, available: usable, date};
+            periods, occupied, rules, available: usable, reason: usable ? '' : reasons.slice(0, 2).join('；'), date};
     }
     function validate(room, date, start, end, count, now) {
         dateKey(date);
@@ -130,7 +140,7 @@
         dateKey(begin); dateKey(end);
         const result = await request('reserve/resvInfo', {beginDate: begin, endDate: end, needStatus: 0, page: args.page || 1, pageNum: 40, orderKey: 'gmt_create', orderModel: 'desc'});
         const items = array(result.data).filter(x => x && Number(x.classKind) === 1 && (same(x.appAccNo, user.accNo) || (Array.isArray(x.resvMemberInfoList) && x.resvMemberInfoList.some(m => same(m.accNo, user.accNo) || same(m.logonName, account)))));
-        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: clean(x.resvBeginTime), end: clean(x.resvEndTime), status: status(Number(x.resvStatus)), canCancel: cancellable(x, user)}; }), count: result.count, page: args.page || 1};
+        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); const state = Number.isSafeInteger(Number(x.resvStatus)) && x.resvStatus !== null && x.resvStatus !== '' ? Number(x.resvStatus) : null; return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: clean(x.resvBeginTime), end: clean(x.resvEndTime), status: status(Number(x.resvStatus)), state, canCancel: cancellable(x, user)}; }), count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
     }
     async function findMembers(args, account) {
         const user = await identity(account), key = clean(args.key, 60);
