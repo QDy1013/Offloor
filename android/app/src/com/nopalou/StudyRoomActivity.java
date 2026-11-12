@@ -120,6 +120,18 @@ public class StudyRoomActivity extends Activity {
         return c;
     }
 
+    /** 面板内的浅色分组，沿用应用的深浅色主题。 */
+    private LinearLayout formSection(LinearLayout parent, String label) {
+        LinearLayout section = CourseUi.column(this);
+        section.setPadding(dp(16), dp(14), dp(16), dp(16));
+        section.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.withAlpha(Ui.SUB, 24), 18, 1f));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(14);
+        parent.addView(section, p);
+        section.addView(text(label, 14, Ui.TEXT, true));
+        CourseUi.gap(section, 8);
+        return section;
+    }
+
     private TextView action(LinearLayout target, String label, Runnable run) {
         TextView button = CourseUi.action(this, label, false, run); button.setEnabled(!busy);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(48)); p.topMargin = dp(8);
@@ -131,7 +143,7 @@ public class StudyRoomActivity extends Activity {
         TextView view = text(label, 14, selected ? Ui.ON_ACCENT : Ui.TEXT, true);
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(14), dp(9), dp(14), dp(9));
-        view.setMinHeight(dp(38));
+        view.setMinHeight(dp(48));
         view.setBackground(Ui.ripple(this, Ui.round(this, selected ? Ui.ACCENT : Ui.FILL, 99), Ui.press(), 99));
         view.setContentDescription(label + (selected ? "，已选" : ""));
         view.setOnClickListener(v -> run.run());
@@ -150,6 +162,7 @@ public class StudyRoomActivity extends Activity {
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(12), dp(8), dp(12), dp(8));
         view.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.ACCENT_BG, Ui.withAlpha(Ui.ACCENT, 40), 99, 1f), Ui.press(), 99));
+        view.setMinHeight(dp(48));
         view.setContentDescription("更多时段".equals(label) ? "查看并选择更多时段" : "预约 " + label);
         view.setOnClickListener(v -> run.run());
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
@@ -688,18 +701,18 @@ public class StudyRoomActivity extends Activity {
         final String mode = config.optString("mode"), image = config.optString("image");
 
         LinearLayout content = CourseUi.column(this);
-        content.addView(text("预约研修室", 12, Ui.MUTE, false));
-        content.addView(text(row.optString("name", "研修室"), 20, Ui.TEXT, true));
+        content.addView(tag("研修室预约", Ui.ACCENT, Ui.ACCENT_BG));
+        CourseUi.gap(content, 10);
+        content.addView(text(row.optString("name", "研修室"), 24, Ui.TEXT, true));
         CourseUi.gap(content, 4);
         content.addView(text(date + " " + StudyRoomPlan.weekday(date)
                 + (row.optString("location").isEmpty() ? "" : " · " + row.optString("location")), 13, Ui.SUB, false));
 
         // ---- 时段 ----
-        CourseUi.gap(content, 16);
-        content.addView(text("时段", 12, Ui.SUB, false));
+        LinearLayout schedule = formSection(content, "01  选择时段");
         LinearLayout times = new LinearLayout(this); times.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams timeRow = new LinearLayout.LayoutParams(-1, -2); timeRow.topMargin = dp(6);
-        content.addView(times, timeRow);
+        schedule.addView(times, timeRow);
         final TextView startView = chip(times, "", true, () -> { });
         final TextView endView = chip(times, "", true, () -> { });
         times.addView(startView, new LinearLayout.LayoutParams(0, -2, 1));
@@ -707,28 +720,28 @@ public class StudyRoomActivity extends Activity {
         times.addView(endView, endParams);
         final TextView summary = text("", 12, Ui.SUB, false);
         summary.setPadding(0, dp(8), 0, 0); summary.setLineSpacing(dp(3), 1);
-        content.addView(summary);
+        schedule.addView(summary);
         final TextView clash = text("", 12, Ui.AMBER_TX, false);
         clash.setPadding(0, dp(6), 0, 0); clash.setLineSpacing(dp(3), 1);
-        content.addView(clash);
+        schedule.addView(clash);
 
         // ---- 参与者 ----
-        CourseUi.gap(content, 16);
+        LinearLayout participants = formSection(content, "02  参与者");
         LinearLayout peopleHead = new LinearLayout(this); peopleHead.setGravity(Gravity.CENTER_VERTICAL);
-        peopleHead.addView(text("参与者", 12, Ui.SUB, false), new LinearLayout.LayoutParams(0, -2, 1));
+        peopleHead.addView(text("本人已计入人数", 12, Ui.SUB, false), new LinearLayout.LayoutParams(0, -2, 1));
         final TextView peopleCount = text("", 12, Ui.MUTE, false);
         peopleHead.addView(peopleCount);
-        content.addView(peopleHead);
-        final LinearLayout people = CourseUi.column(this); content.addView(people);
+        participants.addView(peopleHead);
+        final LinearLayout people = CourseUi.column(this); participants.addView(people);
         final LinkedHashMap<String, JSONObject> selected = new LinkedHashMap<>();
         final String[] problem = {""};
         final Runnable[] repaint = new Runnable[1];
 
         // ---- 主题与备注 ----
-        CourseUi.gap(content, 12);
-        final EditText title = Ui.field(content, "研修主题", "如：小组讨论、论文写作", null, InputType.TYPE_CLASS_TEXT);
-        CourseUi.gap(content, 4);
-        content.addView(text("备注（可选）", 12, Ui.SUB, false));
+        LinearLayout details = formSection(content, "03  研修内容");
+        final EditText title = Ui.field(details, "研修主题", "如：小组讨论、论文写作", null, InputType.TYPE_CLASS_TEXT);
+        CourseUi.gap(details, 10);
+        details.addView(text("备注（可选）", 12, Ui.SUB, false));
         final EditText memo = new EditText(this);
         memo.setHint("需要的设备、联系人等"); memo.setHintTextColor(Ui.MUTE); memo.setTextColor(Ui.TEXT); memo.setTextSize(15);
         memo.setBackground(Ui.round(this, Ui.FILL, 14));
@@ -736,7 +749,7 @@ public class StudyRoomActivity extends Activity {
         memo.setGravity(Gravity.TOP | Gravity.START);
         memo.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         LinearLayout.LayoutParams memoParams = new LinearLayout.LayoutParams(-1, -2); memoParams.topMargin = dp(6);
-        content.addView(memo, memoParams);
+        details.addView(memo, memoParams);
 
         // ---- 验证码 ----
         final EditText[] captcha = {null};
@@ -754,24 +767,25 @@ public class StudyRoomActivity extends Activity {
         }
 
         // ---- 须知与提醒 ----
-        CourseUi.gap(content, 14);
+        LinearLayout consent = formSection(content, "04  须知与提醒");
         final CheckBox agreement = new CheckBox(this);
         agreement.setText("我已阅读预约须知，并确认参与者真实有效");
         agreement.setTextColor(Ui.TEXT); agreement.setTextSize(13);
-        content.addView(agreement);
+        consent.addView(agreement);
         final CheckBox remind = new CheckBox(this);
         remind.setText("预约成功后，在首页加一条开始前 2 小时的提醒");
         remind.setTextColor(Ui.SUB); remind.setTextSize(13); remind.setChecked(true);
-        content.addView(remind);
+        consent.addView(remind);
         TextView notice = text(config.optString("notice"), 12, Ui.MUTE, false);
         notice.setLineSpacing(dp(3), 1); notice.setPadding(0, dp(8), 0, 0);
+        consent.addView(text("校方预约须知 · 点按正文展开或收起", 12, Ui.SUB, true));
         notice.setMaxLines(4); notice.setEllipsize(android.text.TextUtils.TruncateAt.END);
         notice.setOnClickListener(v -> {
             boolean expanded = notice.getMaxLines() != Integer.MAX_VALUE;
             notice.setMaxLines(expanded ? Integer.MAX_VALUE : 4);
             notice.setEllipsize(expanded ? null : android.text.TextUtils.TruncateAt.END);
         });
-        content.addView(notice);
+        consent.addView(notice);
 
         // ---- 实时校验 ----
         repaint[0] = () -> {
@@ -817,7 +831,7 @@ public class StudyRoomActivity extends Activity {
         };
         repaint[0].run();
         showMembers[0].run();
-        action(content, "添加同行人（校方通讯录）", () -> searchMember(selected, showMembers[0]));
+        action(participants, "＋ 添加同行人（校方通讯录）", () -> searchMember(selected, showMembers[0]));
 
         startView.setOnClickListener(v -> pickStart(plan, busySlots, slots, chosen, repaint[0]));
         endView.setOnClickListener(v -> pickEnd(plan, busySlots, chosen, repaint[0]));
@@ -832,6 +846,8 @@ public class StudyRoomActivity extends Activity {
         footer.addView(confirm, confirmParams);
 
         form = Ui.sheet(this, content, footer);
+        if (form.getWindow() != null) form.getWindow().setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         final Dialog opened = form;
         form.setOnDismissListener(d -> { if (form == opened) form = null; });
     }

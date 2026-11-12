@@ -122,7 +122,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     /** Compact daily overview; task content remains the main focus. */
     private LinearLayout hero;
     private AlertDialog usageNoticeDialog;
-    private AlertDialog manualCardDialog;
+    private android.app.Dialog manualCardDialog;
     private java.util.function.Supplier<Bundle> manualDraftState;
     private Bundle restoreManualDraft;
     private boolean restoreUsageNotice;
@@ -2958,20 +2958,53 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private void showManualCardForm(Engine.Card card, Bundle draft) {
         if (manualCardDialog != null) return;
         Engine shown = demo == null ? engine : demo.engine;
-        LinearLayout form = dialogForm();
-        form.addView(uiText(demo == null ? "手动填写的卡片保存在本机；填写具体时间后沿用到期提醒设置。" : "当前为离线演示，新建卡片仅加入演示列表。", 13, Ui.SUB, false));
-        EditText title = input(form, "事项标题（必填）", false);
+        LinearLayout form = CourseUi.column(this);
+        form.setFocusableInTouchMode(true);
+        form.setPadding(0, dp(this, 4), 0, dp(this, 20));
+        form.addView(CourseUi.text(this, card == null ? "新建任务卡片" : "编辑任务卡片", 26, Ui.TEXT, true));
+        TextView description = CourseUi.text(this, demo == null ? "把要做的事记下来，安排时间，留好细节。" : "当前为离线演示，卡片仅保留在演示列表。", 13, Ui.SUB, false);
+        description.setPadding(0, dp(this, 8), 0, 0);
+        description.setLineSpacing(dp(this, 3), 1f);
+        form.addView(description);
+        CourseUi.gap(form, 24);
+        form.addView(Ui.sectionLabel(this, "事项内容"));
+        EditText title = Ui.field(form, "事项标题 · 必填", "例如：完成课程报告", null, InputType.TYPE_CLASS_TEXT);
         title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
         if (card != null) title.setText(card.displayTitle());
+        CourseUi.gap(form, 24);
+        form.addView(Ui.sectionLabel(this, "时间安排 · 可选"));
+        CourseUi.gap(form, 10);
+        LinearLayout timing = Ui.group(this);
+        timing.setPadding(dp(this, 14), dp(this, 14), dp(this, 14), dp(this, 14));
+        timing.addView(CourseUi.text(this, "截止时间", 15, Ui.TEXT, true));
+        TextView timeHint = CourseUi.text(this, "设置具体时间后沿用到期提醒设置；也可以暂不设置。", 12, Ui.SUB, false);
+        timeHint.setPadding(0, dp(this, 4), 0, dp(this, 12));
+        timeHint.setLineSpacing(dp(this, 2), 1f);
+        timing.addView(timeHint);
         long[] deadline = {card == null ? 0L : card.deadline};
-        Button time = button("时间：" + dateTimeLabel(deadline[0]), v -> chooseDateTime(deadline[0], value -> {
-            deadline[0] = value; ((Button) v).setText("时间：" + dateTimeLabel(value));
+        TextView time = CourseUi.action(this, "时间：" + dateTimeLabel(deadline[0]), false, () -> {});
+        time.setTextColor(Ui.ACCENT);
+        time.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 16), Ui.press(), 16));
+        time.setContentDescription("选择截止日期和时间");
+        time.setOnClickListener(v -> chooseDateTime(deadline[0], value -> {
+            deadline[0] = value; time.setText("时间：" + dateTimeLabel(value));
         }));
-        form.addView(time);
-        form.addView(button("暂不设置时间", v -> { deadline[0] = 0L; time.setText("时间：待确认"); }));
-        EditText place = input(form, "地点（可选）", false);
+        timing.addView(time, new LinearLayout.LayoutParams(-1, -2));
+        CourseUi.gap(timing, 8);
+        timing.addView(CourseUi.action(this, "暂不设置时间 / 清除", false, () -> {
+            deadline[0] = 0L; time.setText("时间：待确认");
+        }), new LinearLayout.LayoutParams(-1, -2));
+        form.addView(timing, new LinearLayout.LayoutParams(-1, -2));
+        CourseUi.gap(form, 24);
+        form.addView(Ui.sectionLabel(this, "补充信息 · 可选"));
+        EditText place = Ui.field(form, "地点", "例如：教学楼 A301", null, InputType.TYPE_CLASS_TEXT);
         place.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
-        EditText notes = input(form, "备注（可选）", true);
+        EditText notes = Ui.field(form, "备注", "补充准备事项、材料或其他细节", null,
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        notes.setSingleLine(false);
+        notes.setMinLines(3);
+        notes.setMaxLines(6);
+        notes.setGravity(Gravity.TOP | Gravity.START);
         notes.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});
         if (card != null) { place.setText(card.place); notes.setText(card.manualNotes); }
         if (draft != null) {
@@ -2984,14 +3017,27 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             saved.putString("title", title.getText().toString()); saved.putString("place", place.getText().toString());
             saved.putString("notes", notes.getText().toString()); saved.putLong("deadline", deadline[0]); return saved;
         };
-        AlertDialog dialog = alert().setTitle(card == null ? "新建任务卡片" : "编辑任务卡片")
-                .setView(scrollForm(form)).setNegativeButton("取消", null)
-                .setPositiveButton(card == null ? "加入任务" : "保存", null).create();
+        LinearLayout footer = CourseUi.column(this);
+        footer.addView(Ui.hairline(this));
+        TextView privacy = CourseUi.text(this, demo == null ? "仅保存在本机 · 标题必填，其余可稍后补充" : "仅加入演示列表 · 不影响真实任务", 12, Ui.SUB, false);
+        privacy.setPadding(0, dp(this, 12), 0, dp(this, 12));
+        footer.addView(privacy);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        TextView cancel = CourseUi.action(this, "取消", false, () -> {});
+        actions.addView(cancel, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView save = CourseUi.action(this, card == null ? "加入任务" : "保存", true, () -> {});
+        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(0, -2, 2f);
+        saveLp.leftMargin = dp(this, 12);
+        actions.addView(save, saveLp);
+        footer.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+        form.requestFocus();
+        android.app.Dialog dialog = Ui.sheet(this, form, footer);
         manualCardDialog = dialog;
         dialog.setOnDismissListener(d -> { manualCardDialog = null; manualDraftState = null; });
-        dialog.show();
         dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        save.setOnClickListener(v -> {
             if (title.getText().toString().trim().isEmpty()) { title.setError("请输入事项标题"); return; }
             String label = title.getText().toString(), location = place.getText().toString(), detail = notes.getText().toString();
             long now = System.currentTimeMillis();
