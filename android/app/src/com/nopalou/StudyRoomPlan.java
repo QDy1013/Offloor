@@ -219,11 +219,14 @@ final class StudyRoomPlan {
                 if (from + preferred > free[1]) {
                     // 剩下的空隙不够一个默认时长：够校方最短时长才给一个缩短的时段。
                     int end = align(free[1], period[0], room.interval, false);
-                    if (end - from >= room.minMinutes && out.size() < cap) out.add(new Slot(from, end));
+                    if (end - from >= room.minMinutes && bookable(end) && out.size() < cap) out.add(new Slot(from, end));
                     continue;
                 }
                 for (int start = from; start + preferred <= free[1] && out.size() < cap; start += room.interval) {
-                    out.add(new Slot(start, start + preferred));
+                    int end = start + preferred;
+                    // 结束正好落在 24:00 的时段校方提交接口不收，宁可不给。
+                    if (!bookable(end)) break;
+                    out.add(new Slot(start, end));
                 }
             }
         }
@@ -241,7 +244,9 @@ final class StudyRoomPlan {
             for (int[] free : free(room, period, busy, dayStart)) {
                 if (start < free[0] || start >= free[1]) continue;
                 int last = Math.min(start + room.maxMinutes, free[1]);
-                for (int end = start + room.minMinutes; end <= last; end += room.interval) out.add(end);
+                for (int end = start + room.minMinutes; end <= last; end += room.interval) {
+                    if (bookable(end)) out.add(end);
+                }
             }
         }
         return out;
@@ -295,6 +300,11 @@ final class StudyRoomPlan {
         int aligned = (length / room.interval) * room.interval;
         if (aligned < room.minMinutes) aligned = room.minMinutes;
         return Math.min(aligned, room.maxMinutes);
+    }
+
+    /** 校方提交接口只认 00:00–23:59，结束正好是 24:00 的组合不列出来。 */
+    private static boolean bookable(int end) {
+        return end > 0 && end < 1440;
     }
 
     /** 以 base 为基准把 minute 向上取整到 interval 网格。 */

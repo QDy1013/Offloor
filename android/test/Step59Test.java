@@ -96,9 +96,14 @@ public final class Step59Test {
                         StudyRoomPlan.at(DATE, 0), 0).isEmpty());
         check("a room without opening hours has no slots",
                 StudyRoomPlan.slots(new StudyRoomPlan.Room(1, 3, 30, 180, 30), DATE, busy(), StudyRoomPlan.at(DATE, 0), 0).isEmpty());
-        check("periods ending at 24:00 still produce slots",
-                StudyRoomPlan.slots(new StudyRoomPlan.Room(1, 2, 60, 60, 60).period(1380, 1440), DATE, busy(),
-                        StudyRoomPlan.at(DATE, 0), 0).size() == 1);
+        check("periods ending at 24:00 still produce slots", StudyRoomPlan.slots(
+                new StudyRoomPlan.Room(1, 2, 60, 60, 60).period(1320, 1440), DATE, busy(),
+                StudyRoomPlan.at(DATE, 0), 0).size() == 1);
+        check("a slot never ends exactly at 24:00", "22:00–23:00".equals(StudyRoomPlan.slots(
+                new StudyRoomPlan.Room(1, 2, 60, 60, 60).period(1320, 1440), DATE, busy(),
+                StudyRoomPlan.at(DATE, 0), 0).get(0).label())
+                && StudyRoomPlan.ends(new StudyRoomPlan.Room(1, 2, 60, 60, 60).period(1320, 1440), DATE, busy(), 1320)
+                .equals(Arrays.asList(1380)));
 
         // ---------- 结束时间 ----------
         List<Integer> ends = StudyRoomPlan.ends(room(), DATE, busy(), 540);

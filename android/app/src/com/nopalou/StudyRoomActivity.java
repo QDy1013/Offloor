@@ -78,7 +78,11 @@ public class StudyRoomActivity extends Activity {
     }
 
     @Override public void onStart() {
-        super.onStart(); active=true; render(); int token=++epoch;
+        super.onStart(); active=true;
+        // 页面可能在后台放了一夜，恢复时把日期拉回今天，别停在一个约不到的昨天。
+        String today = CampusClassroomQuery.today(System.currentTimeMillis());
+        if (!StudyRoomPlan.validDate(date) || date.compareTo(today) < 0) date = today;
+        render(); int token=++epoch;
         io.execute(() -> {
             CampusData loaded = null; Timetable table = null;
             try { loaded = CampusStore.load(getApplicationContext()); } catch (Exception ignored) { }
@@ -364,9 +368,11 @@ public class StudyRoomActivity extends Activity {
         }
         if (open.length() > 0) { CourseUi.gap(c, 2); c.addView(text("开放 " + open, 12, Ui.MUTE, false)); }
 
+        // 占用没读全时校方数据里是 null，这里必须先判空再取长度，否则整页直接崩掉。
         JSONArray occupied = row.optJSONArray("occupied");
-        if (occupied == null && available) c.addView(text("占用信息尚未读全，暂不能预约", 12, Ui.AMBER_TX, false));
-        else if (occupied.length() > 0) {
+        if (occupied == null) {
+            if (available) c.addView(text("占用信息尚未读全，暂不能预约", 12, Ui.AMBER_TX, false));
+        } else if (occupied.length() > 0) {
             CourseUi.gap(c, 2);
             c.addView(text("已占用 " + occupied.length() + " 段 · " + occupiedText(occupied), 12, Ui.MUTE, false));
         }
@@ -496,7 +502,8 @@ public class StudyRoomActivity extends Activity {
             TextView prev = chip(actions, "上一页", false, () -> { if (busy) return; --page; rows = null; query(); });
             actions.addView(prev, new LinearLayout.LayoutParams(0, -2, 1));
         }
-        boolean more = count <= 0 || page * PAGE_SIZE < count;
+        // 校方没给总条数时，只有这一页真的排满才认为后面还有，避免一直点“下一页”。
+        boolean more = rows.length() >= PAGE_SIZE && (count <= 0 || page * PAGE_SIZE < count);
         if (more) {
             TextView next = chip(actions, "下一页", false, () -> { if (busy) return; ++page; rows = null; query(); });
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(page > 1 ? 0 : -1, -2, page > 1 ? 1 : 0);
@@ -845,9 +852,13 @@ public class StudyRoomActivity extends Activity {
         String[] labels = new String[values.size()];
         for (int i = 0; i < values.size(); i++) labels[i] = StudyRoomPlan.clock(values.get(i));
         new AlertDialog.Builder(this, Ui.dialogTheme()).setTitle("选择开始时间").setItems(labels, (d, index) -> {
+            int previous = chosen[0];
             chosen[0] = values.get(index);
             List<Integer> ends = StudyRoomPlan.ends(plan, date, busySlots, chosen[0]);
-            if (ends.isEmpty()) return;
+            if (ends.isEmpty()) {
+                // 这个开始时间凑不出合法时长（比如后面紧跟着占用），退回原来的选择并说清楚。
+                chosen[0] = previous; toast("这个时间没有可用时长，请换一个开始时间"); refresh.run(); return;
+            }
             // 尽量保留原来的时长，留不住就取最接近的那个结束时间。
             int wanted = Math.max(plan.minMinutes, chosen[1] - chosen[0]);
             int best = ends.get(0);
@@ -937,10 +948,11 @@ public class StudyRoomActivity extends Activity {
                         + "\n\n以校方最终受理结果为准；提交后请在我的预约核对状态。")
                 .setNegativeButton("返回修改", null)
                 .setPositiveButton("确认提交", (d, w) -> {
-                    if (busy) return;
-                    if (form != null) { form.dismiss(); form = null; }
-                    if (remind.isChecked()) queueReminder(row, theme, chosen[0], chosen[1]);
-                    write("submit", payload);
+                    if (busy) { toast("上一请求尚未完成，请稍候"); return; }
+                    // 只有请求真的发出去了才关掉面板；会话失效时保留填写内容，改完能再提交。
+                    boolean sent = write("submit", payload,
+                            () -> { if (remind.isChecked()) queueReminder(row, theme, chosen[0], chosen[1]); });
+                    if (sent && form != null) { form.dismiss(); form = null; }
                 }).show();
     }
 
@@ -978,31 +990,46 @@ public class StudyRoomActivity extends Activity {
     }
 
     private void confirmCancel(JSONObject row) {
+        long beginsAt = StudyRoomPlan.stamp(row.optString("begin"));
+        String when = beginsAt > 0
+                ? StudyRoomPlan.relative(StudyRoomPlan.day(beginsAt), System.currentTimeMillis())
+                + " " + hhmm(row.optString("begin")) + "–" + hhmm(row.optString("end"))
+                : row.optString("begin") + " — " + row.optString("end");
         new AlertDialog.Builder(this, Ui.dialogTheme()).setTitle("确认取消本人预约？")
-                .setMessage(row.optString("name", "研修室") + "\n" + row.optString("begin") + " — " + row.optString("end")
+                .setMessage(row.optString("name", "研修室") + "\n" + when
                         + "\n\n取消只针对本人发起的预约，最终结果以校方系统为准。")
                 .setNegativeButton("保留预约", null)
                 .setPositiveButton("确认取消", (d, w) -> write("cancel", args("uuid", row.optString("uuid"), "confirmed", true)))
                 .show();
     }
 
-    private void write(String method, JSONObject payload) {
-        if (!active || busy || !ready || session == null) { toast("会话还没就绪，请稍后重试"); return; }
-        if (pendingWrite()) { mine = true; rows = null; page = 1; toast("请先核对上次操作结果，勿重复提交"); query(); return; }
+    private void write(String method, JSONObject payload) { write(method, payload, null); }
+
+    /** 返回请求是否真的发出去了；没发出去时调用的面板要留着，别把用户填的东西一起丢掉。 */
+    private boolean write(String method, JSONObject payload, Runnable staged) {
+        if (!active || busy || !ready || session == null) { toast("会话还没就绪，请稍后重试"); return false; }
+        if (pendingWrite()) { mine = true; rows = null; page = 1; toast("请先核对上次操作结果，勿重复提交"); query(); return false; }
+        final boolean submit = "submit".equals(method);
+        // 只认本次提交暂存的提醒：取消不能把上一次没提交成功的提醒顺手写进首页。
+        if (!submit) reminderRow = null;
         // Persist before dispatch, including process death and activity recreation.
-        if (!markWrite(true)) { toast("无法保存操作保护状态，本次未提交"); return; }
+        if (!markWrite(true)) { toast("无法保存操作保护状态，本次未提交"); return false; }
+        if (staged != null) staged.run();
         reconciled = false;
         boolean sent = call(method,payload,result -> {
             // 只有校方明确受理后才把提醒写进首页；结果未知时宁可少一条提醒。
-            if (result.optBoolean("success")) { markWrite(false); flushReminder(); }
-            else reminderRow = null;
+            if (result.optBoolean("success")) {
+                markWrite(false);
+                if (submit) flushReminder(); else reminderRow = null;
+            } else reminderRow = null;
             myBookings = null;
             message = result.optString("message"); toast(message); mine = true; page = 1; rows = null;
             // Do not retry a write, even if the server outcome is unknown.
             query();
-        });
+        }, () -> reminderRow = null);
         // 请求没发出去（会话刚失效）就把保护标记撤回，否则用户会被永久挡住。
-        if (!sent) { markWrite(false); toast("会话已失效，请重新连接后再提交"); }
+        if (!sent || !ready) { markWrite(false); reminderRow = null; toast("会话已失效，请重新连接后再提交"); return false; }
+        return true;
     }
 
     // ---------- 杂项 ----------

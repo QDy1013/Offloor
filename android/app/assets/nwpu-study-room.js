@@ -45,7 +45,8 @@
         return Number.isFinite(n) ? n : NaN;
     }
     function clock(value) { return /^(?:[01]\d|2[0-3]):[0-5]\d(?::00)?$/.test(String(value || '')); }
-    function at(date, value) { return stamp(date + ' ' + (value.length === 5 ? value + ':00' : value)); }
+    // 校方开放时段会用 24:00 表示当天结束，但它不是一个可提交的钟点，换成次日零点。
+    function at(date, value) { const text = String(value == null ? '' : value); if (text === '24:00' || text === '24:00:00') return stamp(date + ' 00:00:00') + 86400000; return stamp(date + ' ' + (text.length === 5 ? text + ':00' : text)); }
     function array(data) { if (!Array.isArray(data)) fail('校方未返回有效列表，不能判断是否空闲'); return data; }
     const numeric = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : NaN;
     function safeRoom(raw, date) {
@@ -140,7 +141,7 @@
         dateKey(begin); dateKey(end);
         const result = await request('reserve/resvInfo', {beginDate: begin, endDate: end, needStatus: 0, page: args.page || 1, pageNum: 40, orderKey: 'gmt_create', orderModel: 'desc'});
         const items = array(result.data).filter(x => x && Number(x.classKind) === 1 && (same(x.appAccNo, user.accNo) || (Array.isArray(x.resvMemberInfoList) && x.resvMemberInfoList.some(m => same(m.accNo, user.accNo) || same(m.logonName, account)))));
-        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); const state = Number.isSafeInteger(Number(x.resvStatus)) && x.resvStatus !== null && x.resvStatus !== '' ? Number(x.resvStatus) : null; return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: clean(x.resvBeginTime), end: clean(x.resvEndTime), status: status(Number(x.resvStatus)), state, canCancel: cancellable(x, user)}; }), count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
+        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); const state = numeric(x.resvStatus); const code = Number.isInteger(state) ? state : null; return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: clean(x.resvBeginTime), end: clean(x.resvEndTime), status: status(code), state: code, canCancel: cancellable(x, user)}; }), count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
     }
     async function findMembers(args, account) {
         const user = await identity(account), key = clean(args.key, 60);
