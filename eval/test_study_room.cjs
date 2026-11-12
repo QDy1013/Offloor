@@ -140,6 +140,94 @@ async function main() {
         assert.match(mainActivity, /deadline\[0\] = draft\.getLong\("deadline", 0\)/);
         assert.match(mainActivity, /if \(!id\.isEmpty\(\) && card == null\)/);
     });
+    // ---------- 体验改进：不可约原因、状态码、时段计算与冲突提示 ----------
+    for (const [name, room, pattern] of [
+        ['rules missing', {resvRule: null}, /规则/],
+        ['opening hours missing', {openTimes: []}, /开放时段/],
+        ['view only room', {onlyView: true}, /仅可查看/],
+        ['participant limit missing', {minUser: undefined}, /人数/],
+        ['occupancy missing', {resvInfo: undefined}, /占用/],
+        ['class schedule missing', {cls: undefined}, /课表/]]) {
+        h = harness({room}); result = await h.api.run('query', {date: DATE}, 'owner');
+        const row = result.rooms[0];
+        check('unavailable room explains why: ' + name, () => { assert.equal(row.available, false); assert.match(row.reason, pattern); });
+    }
+    h = harness(); result = await h.api.run('query', {date: DATE}, 'owner');
+    check('bookable room has no reason and reports the school count', () => {
+        assert.equal(result.rooms[0].reason, ''); assert.equal(result.count, 1); assert.equal(result.page, 1);
+    });
+    h = harness({bookings: [booking]}); result = await h.api.run('mine', {}, 'owner');
+    check('my bookings carry the numeric school state', () => assert.equal(result.bookings[0].state, 0));
+    h = harness({bookings: [{...booking, resvStatus: 'unknown'}]}); result = await h.api.run('mine', {}, 'owner');
+    check('unreadable booking state stays null instead of guessing', () => assert.equal(result.bookings[0].state, null));
+
+    check('room cards use computed slots rather than hand-picked times', () => {
+        assert.match(activity, /StudyRoomPlan\.slots\(plan, date, busySlots/);
+        assert.match(activity, /slotChip\(line, slot\.label\(\), \(\) -> booking\(row, slot\.start, slot\.end\)\)/);
+    });
+    const guard = activity.slice(activity.indexOf('private String check('), activity.indexOf('private void searchMember('));
+    check('booking panel rejects impossible times before dispatch', () => {
+        for (const reason of ['结束时间要晚于开始时间', '开始时间已经过去', '开放时间', '预约时长须为', '位参与者', '已被占用']) {
+            assert.ok(guard.includes(reason), 'missing guard: ' + reason);
+        }
+    });
+    check('class and personal clashes are surfaced but never block booking', () => {
+        assert.match(activity, /classesOn\(date\)/);
+        assert.match(activity, /reservedOn\(date\)/);
+        assert.match(activity, /时间冲突：/);
+        assert.doesNotMatch(activity, /if \(!clashes\.isEmpty\(\)\) return/);
+    });
+    check('home reminder is optional and only after an explicit confirmation', () => {
+        const submit = activity.slice(activity.indexOf('private void submit('), activity.indexOf('private void confirmCancel('));
+        assert.match(submit, /write\("submit", payload,\s*\(\) -> \{ if \(remind\.isChecked\(\)\) queueReminder\(/);
+        assert.match(activity, /remind\.setChecked\(true\)/);
+    });
+    check('a write that never left releases the duplicate-operation guard', () => {
+        const write = activity.slice(activity.indexOf('private void write('));
+        assert.match(write, /if \(!sent \|\| !ready\) \{ markWrite\(false\)/);
+    });
+    check('date picker is bounded to the bookable horizon', () => {
+        assert.match(activity, /setMinDate\(StudyRoomPlan\.at\(StudyRoomPlan\.day\(now\), 0\)\)/);
+        assert.match(activity, /setMaxDate\(/);
+    });
+    check('captcha image is decoded within a size limit and fails closed', () => {
+        assert.match(activity, /encoded\.length\(\) > 700000/);
+        assert.match(activity, /验证码图片无法读取，请关闭后重新选择房间/);
+    });
+    check('new slot logic is part of the release checks', () => {
+        assert.ok(fs.existsSync(path.join(app, '..', 'test', 'Step59Test.java')));
+        assert.match(fs.readFileSync(path.join(__dirname, 'run_checks.py'), 'utf8'), /"StudyRoomPlan"\)/);
+    });
+    // ---------- 回归：空占用导致的崩溃、24:00 边界、翻页与改时间的死路 ----------
+    check('room card checks for a missing occupancy list before reading it', () => {
+        const card = activity.slice(activity.indexOf('private void roomCard('), activity.indexOf('private String occupiedText('));
+        const nullCheck = card.indexOf('if (occupied == null)');
+        const firstUse = card.indexOf('occupied.length()');
+        assert.ok(nullCheck >= 0 && firstUse > nullCheck, 'occupancy is read before the null check');
+    });
+    h = harness({room: {openTimes: [{openStartTime: '20:00', openEndTime: '24:00', openLimit: 0}]}});
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('opening hours that end at 24:00 stay readable', () => {
+        assert.equal(result.rooms[0].available, true);
+        assert.equal(result.rooms[0].periods[0].end, '24:00');
+    });
+    h = harness({bookings: [{...booking, resvStatus: null}]}); result = await h.api.run('mine', {}, 'owner');
+    check('a missing booking state never falls back to code 0', () => {
+        assert.equal(result.bookings[0].state, null);
+        assert.equal(result.bookings[0].status, '状态待确认');
+    });
+    check('pagination stops on a page that is not full', () => {
+        assert.match(activity, /boolean more = rows\.length\(\) >= PAGE_SIZE/);
+    });
+    check('picking a start time with no legal end keeps the old choice', () => {
+        assert.match(activity, /chosen\[0\] = previous; toast\("这个时间没有可用时长/);
+    });
+    check('an unconfirmed submit never leaves a home reminder behind', () => {
+        const write = activity.slice(activity.indexOf('private void write('));
+        assert.match(write, /\}, \(\) -> reminderRow = null\);/);
+        assert.match(write, /if \(!sent \|\| !ready\) \{ markWrite\(false\); reminderRow = null/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
