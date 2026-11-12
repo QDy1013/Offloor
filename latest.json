@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 38,
-      "versionName": "0.38",
-      "size": 2475932,
-      "sha256": "f448002a0ddd0c68d73d70eccd0a6f3489a28b9ec3f9f4724e63183156851925",
+      "versionCode": 39,
+      "versionName": "0.39",
+      "size": 2500579,
+      "sha256": "7cd06283aa0dec2eed9c79b4699b5c03c0da817c840bcdb7e4d52847a10b9a21",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/f448002a0ddd0c68d73d70eccd0a6f3489a28b9ec3f9f4724e63183156851925/offloor.apk",
-      "notes": "chore: 首页新增栏发布版本升至 0.38（versionCode 38）"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/7cd06283aa0dec2eed9c79b4699b5c03c0da817c840bcdb7e4d52847a10b9a21/offloor.apk",
+      "notes": "feat: add native study room reservations and editable manual tasks (v0.39)"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
