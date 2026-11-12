@@ -24,8 +24,11 @@ import java.util.Locale;
 final class CampusChanges {
     static final String PREFS = "campus-alerts";
     static final String CHANNEL = "campus";
-    static final int ID_GRADES = 8501, ID_EXAMS = 8502, ID_TIMETABLE = 8503, ID_ELECTRIC = 8504;
-    static final float DEFAULT_ELECTRIC = 20f;
+    static final int ID_GRADES = 8501, ID_EXAMS = 8502, ID_TIMETABLE = 8503, ID_ELECTRIC = 8504, ID_NETWORK = 8505;
+    /** 兼容旧版：这里曾经按“度”存阈值，现在统一按“元”，旧值会按电价折算一次。 */
+    static final float DEFAULT_ELECTRIC = (float) CampusBalance.DEFAULT_ELECTRIC;
+    static final String KEY_PRICE = "price_per_kwh", KEY_ELECTRIC_YUAN = "electric_threshold_yuan",
+            KEY_NETWORK_YUAN = "network_threshold_yuan", KEY_MIGRATED = "money_thresholds_migrated";
 
     private CampusChanges() { }
 
@@ -149,18 +152,54 @@ final class CampusChanges {
         try {
             Context c = ctx.getApplicationContext();
             SharedPreferences p = prefs(c);
-            if (!p.getBoolean("electric", true)) return;
-            Double value = ChangeDiff.firstNumber(CampusSummary.field(data.module("electric"), "剩余电量|当前电量|电量余额"));
-            boolean[] r = ChangeDiff.lowAlert(value, p.getFloat("electric_threshold", DEFAULT_ELECTRIC), p.getBoolean("electric_low", false));
-            p.edit().putBoolean("electric_low", r[1]).apply();
-            if (r[0]) {
-                post(c, ID_ELECTRIC, "宿舍电量不足",
-                        "剩余 " + trim(value) + " 度，低于 " + trim((double) p.getFloat("electric_threshold", DEFAULT_ELECTRIC)) + " 度，记得充电费",
-                        CampusActivity.class);
+            migrate(p);
+            double price = price(p);
+            if (p.getBoolean("electric", true)) {
+                Double kwh = ChangeDiff.firstNumber(CampusSummary.field(data.module("electric"), "剩余电量|当前电量|电量余额"));
+                Double yuan = CampusBalance.yuanFromKwh(kwh, price);
+                double threshold = electricThreshold(p);
+                boolean[] r = ChangeDiff.lowAlert(yuan, threshold, p.getBoolean("electric_low", false));
+                p.edit().putBoolean("electric_low", r[1]).apply();
+                if (r[0]) post(c, ID_ELECTRIC, "宿舍电费不足", CampusBalance.electricAlert(kwh, price, threshold), CampusActivity.class);
+            }
+            if (p.getBoolean("network", true)) {
+                Double yuan = ChangeDiff.firstNumber(CampusSummary.field(data.module("network"), "余额|可用金额"));
+                double threshold = networkThreshold(p);
+                boolean[] r = ChangeDiff.lowAlert(yuan, threshold, p.getBoolean("network_low", false));
+                p.edit().putBoolean("network_low", r[1]).apply();
+                if (r[0]) post(c, ID_NETWORK, "校园网余额不足", CampusBalance.networkAlert(yuan, threshold), CampusActivity.class);
             }
         } catch (Throwable t) {
-            EngineHolder.diag(ctx, "出错", "电费提醒：" + t.getClass().getSimpleName());
+            EngineHolder.diag(ctx, "出错", "余额提醒：" + t.getClass().getSimpleName());
         }
+    }
+
+    /** 电价，元/度；填了非法值就退回默认，不拿坏参数算钱。 */
+    static double price(SharedPreferences p) {
+        float value = p.getFloat(KEY_PRICE, (float) CampusBalance.DEFAULT_PRICE);
+        return CampusBalance.validPrice(value) ? value : CampusBalance.DEFAULT_PRICE;
+    }
+
+    static double electricThreshold(SharedPreferences p) {
+        float value = p.getFloat(KEY_ELECTRIC_YUAN, (float) CampusBalance.DEFAULT_ELECTRIC);
+        return CampusBalance.validThreshold(value) ? value : CampusBalance.DEFAULT_ELECTRIC;
+    }
+
+    static double networkThreshold(SharedPreferences p) {
+        float value = p.getFloat(KEY_NETWORK_YUAN, (float) CampusBalance.DEFAULT_NETWORK);
+        return CampusBalance.validThreshold(value) ? value : CampusBalance.DEFAULT_NETWORK;
+    }
+
+    /** 旧版按“度”存过阈值：只在用户确实填过时折算一次，免得默默改掉人家的设置。 */
+    static void migrate(SharedPreferences p) {
+        if (p.getBoolean(KEY_MIGRATED, false)) return;
+        SharedPreferences.Editor e = p.edit().putBoolean(KEY_MIGRATED, true);
+        if (p.contains("electric_threshold") && !p.contains(KEY_ELECTRIC_YUAN)) {
+            double kwh = p.getFloat("electric_threshold", DEFAULT_ELECTRIC);
+            Double yuan = CampusBalance.yuanFromKwh(kwh, price(p));
+            if (yuan != null) e.putFloat(KEY_ELECTRIC_YUAN, (float) CampusBalance.round(yuan));
+        }
+        e.remove("electric_threshold").putBoolean("electric_low", false).apply();
     }
 
     static String trim(Double d) {
@@ -176,7 +215,7 @@ final class CampusChanges {
         if (m == null) return;
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= 26) {
-            m.createNotificationChannel(new NotificationChannel(CHANNEL, "成绩、考试、课表与电费提醒",
+            m.createNotificationChannel(new NotificationChannel(CHANNEL, "成绩、考试、课表与余额提醒",
                     NotificationManager.IMPORTANCE_DEFAULT));
             b = new Notification.Builder(c, CHANNEL);
         } else {

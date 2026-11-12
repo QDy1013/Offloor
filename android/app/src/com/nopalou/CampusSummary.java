@@ -17,14 +17,17 @@ final class CampusSummary {
         for (int i=0;fields!=null && i<fields.length();i++) { JSONObject f=fields.optJSONObject(i); if (f!=null && f.optString("label").matches(".*(?:"+pattern+").*")) return f.optString("value"); }
         return "";
     }
-    static CampusSummary of(String id,JSONObject module,long now) {
+    static CampusSummary of(String id,JSONObject module,long now) { return of(id,module,now,CampusBalance.DEFAULT_PRICE); }
+    /** 电费按电价折成金额显示；其它模块不受影响。 */
+    static CampusSummary of(String id,JSONObject module,long now,double price) {
         if (id.equals("network") || id.equals("card")) {
             String balance=field(module,"余额|可用金额");
             return new CampusSummary(balance.isEmpty()?"余额暂未读到":balance,id.equals("network")?field(module,"套餐|到期|剩余流量"):recent(module));
         }
         if (id.equals("electric")) {
-            String value=field(module,"剩余电量|当前电量|电量余额");
-            return new CampusSummary(value.isEmpty()?"电量暂未读到":value,field(module,"宿舍|房间|寝室"));
+            Double kwh=ChangeDiff.firstNumber(field(module,"剩余电量|当前电量|电量余额"));
+            String note=CampusBalance.electricNote(kwh,price);
+            return new CampusSummary(CampusBalance.electricValue(kwh,price),note.isEmpty()?field(module,"宿舍|房间|寝室"):note);
         }
         if (id.equals("classroom")) {
             java.util.LinkedHashSet<String> rooms=new java.util.LinkedHashSet<>(); JSONArray tables=module==null?null:module.optJSONArray("tables");

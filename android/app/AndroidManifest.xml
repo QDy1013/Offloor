@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nopalou"
-    android:versionCode="40"
-    android:versionName="0.40">
+    android:versionCode="41"
+    android:versionName="0.41">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
@@ -54,6 +54,7 @@
         <activity android:name=".StudyRoomActivity" android:exported="false" android:label="研修室"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
         <activity android:name=".CampusWebActivity" android:exported="false" android:label="校园服务同步" />
+        <activity android:name=".CampusPayActivity" android:exported="false" android:label="缴费" />
         <activity android:name=".UpdateActivity" android:exported="false" android:label="应用更新" />
         <activity android:name=".ShowcaseActivity" android:exported="false" android:label="情境演示" />
         <activity android:name=".AiActivity" android:exported="false" android:label="AI 识别"

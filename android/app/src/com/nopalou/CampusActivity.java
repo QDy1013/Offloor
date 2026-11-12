@@ -141,7 +141,7 @@ public class CampusActivity extends Activity {
         for (String id:ids) {
             JSONObject module=data==null?null:data.module(id); boolean present=CampusData.count(module)>0;
             CampusServices.Service service=CampusServices.byId(id);
-            CampusSummary summary=CampusSummary.of(id,module,System.currentTimeMillis());
+            CampusSummary summary=CampusSummary.of(id,module,System.currentTimeMillis(),CampusChanges.price(CampusChanges.prefs(this)));
             LinearLayout item=CourseUi.column(this); item.setPadding(dp(10),dp(10),dp(6),dp(12));
             item.setBackground(Ui.ripple(this,null,Ui.withAlpha(android.graphics.Color.WHITE,24),16));
             item.addView(text(service.title,12,Ui.HERO_SUB,false)); CourseUi.gap(item,9);
@@ -154,13 +154,29 @@ public class CampusActivity extends Activity {
             item.setOnClickListener(v -> openModule(id));
             values.addView(item,new LinearLayout.LayoutParams(0,-2,1));
         }
+        LinearLayout pay=new LinearLayout(this); pay.setGravity(Gravity.CENTER_VERTICAL);
+        pay.setPadding(dp(10),dp(4),dp(10),0);
+        pay.addView(payPill("去交电费",CampusPay.ELECTRIC),new LinearLayout.LayoutParams(0,dp(40),1));
+        LinearLayout.LayoutParams rightParams=new LinearLayout.LayoutParams(0,dp(40),1); rightParams.leftMargin=dp(10);
+        pay.addView(payPill("去交网费",CampusPay.NETWORK),rightParams);
+        account.addView(pay);
+    }
+
+    /** 账户卡里的缴费入口：只把用户送到校方官方页面，钱不在 App 里扣。 */
+    private TextView payPill(String label,final String id) {
+        TextView view=text(label,13,Ui.ON_HERO,true);
+        view.setGravity(Gravity.CENTER); view.setMinHeight(dp(40));
+        view.setBackground(Ui.ripple(this,Ui.round(this,Ui.withAlpha(android.graphics.Color.WHITE,24),99),Ui.press(),99));
+        view.setContentDescription(label+"，在校方官方页面完成缴纳");
+        view.setOnClickListener(v -> startActivity(new Intent(this,CampusPayActivity.class).putExtra("module",id)));
+        return view;
     }
     private void openModule(String id) {
         startActivity("study".equals(id)?new Intent(this,StudyRoomActivity.class):new Intent(this,CampusActivity.class).putExtra("module",id));
     }
     private void moduleCard(CampusServices.Service s) {
         JSONObject module=data==null?null:data.module(s.id);
-        CampusSummary summary="study".equals(s.id)?new CampusSummary("查空闲、选时段与真实同行人","查看或取消本人预约 · 按需连接校方系统"):"classroom".equals(s.id)?new CampusSummary("选择时间和教学楼后点击查询","点击教室查看今天各节占用"):CampusSummary.of(s.id,module,System.currentTimeMillis());
+        CampusSummary summary="study".equals(s.id)?new CampusSummary("查空闲、选时段与真实同行人","查看或取消本人预约 · 按需连接校方系统"):"classroom".equals(s.id)?new CampusSummary("选择时间和教学楼后点击查询","点击教室查看今天各节占用"):CampusSummary.of(s.id,module,System.currentTimeMillis(),CampusChanges.price(CampusChanges.prefs(this)));
         LinearLayout c=card(); c.setPadding(dp(14),dp(16),dp(14),dp(16));
         c.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,20),Ui.press(),20)); c.setFocusable(true); Ui.pressScale(c,.985f);
         LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); c.addView(row);
@@ -183,6 +199,24 @@ public class CampusActivity extends Activity {
         intro.addView(text(m==null?"尚未同步":CampusServices.status(m.optString("state"))+" · "+time(m.optLong("updated")),12,Ui.SUB,false));
         if (m!=null && m.optBoolean("partial")) { CourseUi.gap(intro,8); intro.addView(text("部分信息已读取，剩余内容会自动重试。",12,Ui.SUB,false)); }
         if (count>0 && !"ok".equals(m.optString("state"))) { CourseUi.gap(intro,8); intro.addView(text("以下为上次成功读取的数据，本次没有覆盖。",12,Ui.SUB,false)); }
+        if ("electric".equals(s.id) && count>0) {
+            double price=CampusChanges.price(CampusChanges.prefs(this));
+            Double kwh=ChangeDiff.firstNumber(CampusSummary.field(m,"剩余电量|当前电量|电量余额"));
+            String note=CampusBalance.electricNote(kwh,price);
+            if (!note.isEmpty()) {
+                CourseUi.gap(intro,12);
+                intro.addView(text(CampusBalance.electricValue(kwh,price),26,Ui.TEXT,true));
+                CourseUi.gap(intro,6);
+                intro.addView(text(note+" · 仅供参考，以校方账单为准",12,Ui.SUB,false));
+            }
+        }
+        if (CampusPay.known(s.id)) {
+            CourseUi.gap(intro,14);
+            intro.addView(CourseUi.action(this,CampusPay.title(s.id),true,
+                    () -> startActivity(new Intent(this,CampusPayActivity.class).putExtra("module",s.id))),CourseUi.row(dp(48)));
+            CourseUi.gap(intro,8);
+            intro.addView(text("缴纳在校方官方页面完成 · 本应用不代收、不保存支付信息",11,Ui.MUTE,false));
+        }
         if (s.id.equals("electric") && m!=null && "binding".equals(m.optString("state"))) {
             CourseUi.gap(intro,16); intro.addView(CourseUi.action(this,"关联本人电表",false,() -> startActivity(new Intent(this,CampusWebActivity.class).putExtra("module","electric").putExtra("bind",true))),CourseUi.row(dp(48)));
         }

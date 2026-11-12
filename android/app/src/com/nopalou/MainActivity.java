@@ -1315,30 +1315,47 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     void showCampusAlerts() {
         android.content.SharedPreferences p = CampusChanges.prefs(this);
-        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric"};
-        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）", "宿舍电量不足"};
+        CampusChanges.migrate(p);
+        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric", "network"};
+        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）",
+                "电费低于阈值时提醒", "网费低于阈值时提醒"};
         boolean[] checked = new boolean[keys.length];
         for (int i = 0; i < keys.length; i++) checked[i] = p.getBoolean(keys[i], true);
-        android.widget.EditText threshold = new android.widget.EditText(this);
-        threshold.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        threshold.setHint("电量提醒阈值（度）");
-        threshold.setText(CampusChanges.trim((double) p.getFloat("electric_threshold", CampusChanges.DEFAULT_ELECTRIC)));
         LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(this, 22), 0, dp(this, 22), 0);
-        box.addView(threshold, lp(-1, -2));
+        TextView hint = uiText("电费按电价折算成金额后再判断；读不到余额时不提醒，也不会显示 0 元。", 12, Ui.SUB, false);
+        hint.setPadding(0, 0, 0, dp(this, 12)); hint.setLineSpacing(dp(this, 3), 1);
+        box.addView(hint, lp(-1, -2));
+        android.widget.EditText price = numberField("电价（元/度）", CampusChanges.price(p));
+        android.widget.EditText electric = numberField("电费提醒阈值（元）", CampusChanges.electricThreshold(p));
+        android.widget.EditText network = numberField("网费提醒阈值（元）", CampusChanges.networkThreshold(p));
+        box.addView(price, lp(-1, -2)); box.addView(electric, lp(-1, -2)); box.addView(network, lp(-1, -2));
         alert()
-                .setTitle("成绩与课表提醒")
+                .setTitle("成绩、课表与余额提醒")
                 .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
-                .setView(box)
+                .setView(new android.widget.ScrollView(this) {{ addView(box); }})
                 .setPositiveButton("保存", (d, w) -> {
                     android.content.SharedPreferences.Editor e = p.edit();
                     for (int i = 0; i < keys.length; i++) e.putBoolean(keys[i], checked[i]);
-                    Double v = ChangeDiff.firstNumber(threshold.getText().toString());
-                    if (v != null && v >= 0 && v < 10000) e.putFloat("electric_threshold", v.floatValue()).putBoolean("electric_low", false);
+                    Double pv = ChangeDiff.firstNumber(price.getText().toString());
+                    if (pv != null && CampusBalance.validPrice(pv)) e.putFloat(CampusChanges.KEY_PRICE, pv.floatValue());
+                    Double ev = ChangeDiff.firstNumber(electric.getText().toString());
+                    if (ev != null && CampusBalance.validThreshold(ev)) e.putFloat(CampusChanges.KEY_ELECTRIC_YUAN, ev.floatValue()).putBoolean("electric_low", false);
+                    Double nv = ChangeDiff.firstNumber(network.getText().toString());
+                    if (nv != null && CampusBalance.validThreshold(nv)) e.putFloat(CampusChanges.KEY_NETWORK_YUAN, nv.floatValue()).putBoolean("network_low", false);
                     e.apply();
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    private android.widget.EditText numberField(String hint, double value) {
+        android.widget.EditText field = new android.widget.EditText(this);
+        field.setHint(hint);
+        field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        field.setText(CampusChanges.trim(value));
+        return field;
     }
 
     TextView sheetTitle(String text) {
