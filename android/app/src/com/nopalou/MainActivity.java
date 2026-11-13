@@ -5,7 +5,6 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
-import android.app.TimePickerDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -3115,11 +3114,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         Calendar value = Calendar.getInstance();
         if (initial > 0) value.setTimeInMillis(initial);
         new DatePickerDialog(this, (date, year, month, day) ->
-                new TimePickerDialog(this, (time, hour, minute) -> {
-                    value.set(year, month, day, hour, minute, 0);
-                    value.set(Calendar.MILLISECOND, 0);
-                    selected.accept(value.getTimeInMillis());
-                }, value.get(Calendar.HOUR_OF_DAY), value.get(Calendar.MINUTE), true).show(),
+                Ui.pickTime(this, "选择时间", value.get(Calendar.HOUR_OF_DAY), value.get(Calendar.MINUTE),
+                        new int[]{9 * 60, 12 * 60, 18 * 60, 20 * 60, 22 * 60, 23 * 60 + 59},
+                        (hour, minute) -> {
+                            value.set(year, month, day, hour, minute, 0);
+                            value.set(Calendar.MILLISECOND, 0);
+                            selected.accept(value.getTimeInMillis());
+                        }),
                 value.get(Calendar.YEAR), value.get(Calendar.MONTH), value.get(Calendar.DAY_OF_MONTH)).show();
     }
 

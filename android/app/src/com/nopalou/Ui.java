@@ -288,6 +288,114 @@ final class Ui {
         return dialog;
     }
 
+    interface TimePicked {
+        void onPicked(int hour, int minute);
+    }
+
+    /** 滚轮 + 快捷时刻选择面板，替代系统时钟圆盘。 */
+    static void pickTime(Context c, String title, int initialHour, int initialMinute, int[] quickMinutes, TimePicked onPicked) {
+        int initH = Math.max(0, Math.min(23, initialHour));
+        int initM = Math.max(0, Math.min(59, initialMinute));
+
+        android.widget.LinearLayout body = CourseUi.column(c);
+        body.setPadding(0, dp(c, 4), 0, dp(c, 16));
+        body.addView(CourseUi.text(c, title, 20, TEXT, true));
+        TextView preview = CourseUi.text(c, String.format(java.util.Locale.US, "当前选择 %02d:%02d", initH, initM), 13, SUB, false);
+        preview.setPadding(0, dp(c, 4), 0, dp(c, 14));
+        body.addView(preview);
+
+        String[] hours = new String[24];
+        for (int i = 0; i < 24; i++) hours[i] = String.format(java.util.Locale.US, "%02d", i);
+        String[] mins = new String[60];
+        for (int i = 0; i < 60; i++) mins[i] = String.format(java.util.Locale.US, "%02d", i);
+
+        Context themed = new android.view.ContextThemeWrapper(c, dialogTheme());
+        android.widget.NumberPicker hourPicker = new android.widget.NumberPicker(themed);
+        hourPicker.setMinValue(0);
+        hourPicker.setMaxValue(23);
+        hourPicker.setDisplayedValues(hours);
+        hourPicker.setWrapSelectorWheel(true);
+        hourPicker.setValue(initH);
+
+        android.widget.NumberPicker minutePicker = new android.widget.NumberPicker(themed);
+        minutePicker.setMinValue(0);
+        minutePicker.setMaxValue(59);
+        minutePicker.setDisplayedValues(mins);
+        minutePicker.setWrapSelectorWheel(true);
+        minutePicker.setValue(initM);
+
+        Runnable syncPreview = () -> preview.setText(String.format(java.util.Locale.US, "当前选择 %02d:%02d",
+                hourPicker.getValue(), minutePicker.getValue()));
+        hourPicker.setOnValueChangedListener((p, oldVal, newVal) -> syncPreview.run());
+        minutePicker.setOnValueChangedListener((p, oldVal, newVal) -> syncPreview.run());
+
+        android.widget.LinearLayout wheels = new android.widget.LinearLayout(c);
+        wheels.setGravity(android.view.Gravity.CENTER);
+        wheels.setPadding(dp(c, 16), dp(c, 8), dp(c, 16), dp(c, 8));
+        wheels.setBackground(round(c, FILL, 18));
+        android.widget.LinearLayout.LayoutParams wheelLp = new android.widget.LinearLayout.LayoutParams(0, -2, 1f);
+        wheels.addView(hourPicker, wheelLp);
+        TextView colon = CourseUi.text(c, ":", 22, TEXT, true);
+        colon.setPadding(dp(c, 8), 0, dp(c, 8), 0);
+        wheels.addView(colon);
+        wheels.addView(minutePicker, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        body.addView(wheels, new android.widget.LinearLayout.LayoutParams(-1, -2));
+
+        if (quickMinutes != null && quickMinutes.length > 0) {
+            CourseUi.gap(body, 14);
+            android.widget.HorizontalScrollView strip = new android.widget.HorizontalScrollView(c);
+            strip.setHorizontalScrollBarEnabled(false);
+            strip.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            android.widget.LinearLayout chips = new android.widget.LinearLayout(c);
+            for (int i = 0; i < quickMinutes.length; i++) {
+                int total = Math.max(0, Math.min(23 * 60 + 59, quickMinutes[i]));
+                int qh = total / 60;
+                int qm = total % 60;
+                TextView chip = CourseUi.text(c, String.format(java.util.Locale.US, "%02d:%02d", qh, qm), 13, TEXT, true);
+                chip.setPadding(dp(c, 14), dp(c, 8), dp(c, 14), dp(c, 8));
+                android.graphics.drawable.GradientDrawable bg = round(c, CARD, 999);
+                bg.setStroke(Math.max(1, dp(c, 1)), LINE);
+                chip.setBackground(ripple(c, bg, press(), 999));
+                chip.setOnClickListener(v -> {
+                    hourPicker.clearFocus();
+                    minutePicker.clearFocus();
+                    hourPicker.setValue(qh);
+                    minutePicker.setValue(qm);
+                    syncPreview.run();
+                });
+                android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
+                if (i > 0) lp.leftMargin = dp(c, 8);
+                chips.addView(chip, lp);
+            }
+            strip.addView(chips);
+            body.addView(strip, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        }
+
+        android.widget.LinearLayout footer = CourseUi.column(c);
+        footer.addView(hairline(c));
+        CourseUi.gap(footer, 12);
+        android.widget.LinearLayout actions = new android.widget.LinearLayout(c);
+        actions.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView cancel = CourseUi.action(c, "取消", false, () -> {});
+        actions.addView(cancel, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        TextView confirm = CourseUi.action(c, "确定", true, () -> {});
+        android.widget.LinearLayout.LayoutParams confirmLp = new android.widget.LinearLayout.LayoutParams(0, -2, 2f);
+        confirmLp.leftMargin = dp(c, 12);
+        actions.addView(confirm, confirmLp);
+        footer.addView(actions, new android.widget.LinearLayout.LayoutParams(-1, -2));
+
+        android.app.Dialog dialog = sheet(c, body, footer);
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        confirm.setOnClickListener(v -> {
+            hourPicker.clearFocus();
+            minutePicker.clearFocus();
+            int h = hourPicker.getValue();
+            int m = minutePicker.getValue();
+            dialog.dismiss();
+            if (onPicked != null) onPicked.onPicked(h, m);
+        });
+    }
+
     /** 系统弹窗主题：跟随深浅色。 */
     static int dialogTheme() {
         return dark ? android.R.style.Theme_DeviceDefault_Dialog_Alert

@@ -265,10 +265,12 @@ public class CampusActivity extends Activity {
     }
     private void chooseRoomTime(boolean start) {
         int minute=start?roomStart:roomEnd;
-        new android.app.TimePickerDialog(this,(view,hour,value) -> {
-            if (start) roomStart=hour*60+value; else roomEnd=hour*60+value;
-            roomOptionsChanged();
-        },minute/60,minute%60,true).show();
+        Ui.pickTime(this,start?"选择开始时间":"选择结束时间",minute/60,minute%60,
+                new int[]{8*60,10*60,12*60,14*60,16*60,18*60,20*60,22*60},
+                (hour,value) -> {
+                    if (start) roomStart=hour*60+value; else roomEnd=hour*60+value;
+                    roomOptionsChanged();
+                });
     }
     private void renderClassroom(JSONObject module) {
         boolean current=CampusClassroomResult.current(module,roomToken,CampusClassroomQuery.today(System.currentTimeMillis()));
