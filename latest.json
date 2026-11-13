@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 41,
-      "versionName": "0.41",
+      "versionCode": 42,
+      "versionName": "0.42",
       "size": 2521059,
-      "sha256": "a9d9feef6fbd285b274c7d39d4241b6b59a141576bf7f1d6a543f7f1e4419762",
+      "sha256": "f37e726c45760f70f1f948b33c1c37eb8f7392b13b82443c877a5d8ef3162c69",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/a9d9feef6fbd285b274c7d39d4241b6b59a141576bf7f1d6a543f7f1e4419762/offloor.apk",
-      "notes": "fix: 研修室回归不再盯死编译清单末尾的括号"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/f37e726c45760f70f1f948b33c1c37eb8f7392b13b82443c877a5d8ef3162c69/offloor.apk",
+      "notes": "chore: bump version to 0.42 (versionCode 42)"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
