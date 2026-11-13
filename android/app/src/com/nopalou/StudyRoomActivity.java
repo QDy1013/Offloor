@@ -242,7 +242,7 @@ public class StudyRoomActivity extends Activity {
         }
         if (!ready) {
             action(intro, busy ? "正在连接…" : "重新连接", this::connect);
-            if (session != null) action(intro, "打开校方页面完成验证", () -> session.openOfficial(this::connect));
+            if (session != null) action(intro, "打开校方页面完成验证", () -> session.openOfficial(this::reconnectFromOfficial));
             action(intro, "连接或更换校园账号",
                     () -> startActivity(new Intent(this, NwpuImportActivity.class).putExtra("school_id", "nwpu")));
             return;
@@ -534,6 +534,17 @@ public class StudyRoomActivity extends Activity {
         ready = false; rows = null; reconciled = false; error = ""; busy = true; int token = ++epoch;
         session = new StudyRoomSession(this); render();
         session.start(campus, (result, problem) -> {
+            if (!active || token != epoch) return;
+            busy = false; error = problem; ready = problem.isEmpty(); render(); if (ready) query();
+        });
+    }
+
+    private void reconnectFromOfficial() {
+        if (busy || !active) return;
+        if (session == null) { connect(); return; }
+        ready = false; rows = null; reconciled = false; error = ""; busy = true; int token = ++epoch;
+        render();
+        session.reconnect(campus, (result, problem) -> {
             if (!active || token != epoch) return;
             busy = false; error = problem; ready = problem.isEmpty(); render(); if (ready) query();
         });

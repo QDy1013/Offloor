@@ -27,7 +27,7 @@ final class StudyRoomSession {
     boolean isReady() { return ready && !stopped; }
     private int generation;
     private Callback pending;
-    private long deadline;
+    private long deadline,spaWaitUntil;
     private android.app.Dialog official;
     StudyRoomSession(Activity host) { this.host=host; }
     static boolean allowed(String value) {
@@ -52,16 +52,22 @@ final class StudyRoomSession {
             stage.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             ((ViewGroup)host.getWindow().getDecorView()).addView(stage,0,new FrameLayout.LayoutParams(-1,-1));
             web=new WebView(host); stage.addView(web,new FrameLayout.LayoutParams(-1,-1));
-            web.getSettings().setJavaScriptEnabled(true); web.getSettings().setDomStorageEnabled(true);
-            web.getSettings().setAllowFileAccess(false); web.getSettings().setAllowContentAccess(false);
-            web.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            android.webkit.WebSettings ws=web.getSettings();
+            ws.setJavaScriptEnabled(true); ws.setDomStorageEnabled(true);
+            ws.setAllowFileAccess(false); ws.setAllowContentAccess(false);
+            ws.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            ws.setUseWideViewPort(true); ws.setLoadWithOverviewMode(true);
+            ws.setSupportZoom(true); ws.setBuiltInZoomControls(true); ws.setDisplayZoomControls(false);
+            android.webkit.CookieManager.getInstance().setAcceptCookie(true);
+            android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
             web.setWebViewClient(new WebViewClient() {
                 @Override public boolean shouldOverrideUrlLoading(WebView v,android.webkit.WebResourceRequest r) { return !allowed(r.getUrl().toString()); }
                 @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !allowed(url); }
+                @Override public void onPageFinished(WebView v,String url) { android.webkit.CookieManager.getInstance().flush(); }
                 @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); fail("校方连接证书校验失败"); }
                 @Override public void onReceivedError(WebView v,android.webkit.WebResourceRequest r,android.webkit.WebResourceError e) { if (r.isForMainFrame()) fail("校方系统连接失败，请重新连接"); }
             });
-            deadline=SystemClock.elapsedRealtime()+75_000;
+            deadline=SystemClock.elapsedRealtime()+75_000; spaWaitUntil=0;
             web.loadUrl(LOGIN); handler.postDelayed(connect,800);
         } catch (Exception e) { fail("研修室会话暂时无法启动"); }
     }
@@ -87,13 +93,22 @@ final class StudyRoomSession {
                 handler.postDelayed(connect,800);
             });
         } else {
-            web.evaluateJavascript(script+";if(!window.__louStudyReady && !window.__louStudyConnecting){window.__louStudyConnecting=true;NwpuStudyRoom.run('ready',{},"+JSONObject.quote(account)+").then(function(r){window.__louStudyReady=r;window.__louStudyConnecting=false;});}JSON.stringify(window.__louStudyReady)",value -> {
+            String path=Uri.parse(url).getPath();
+            if (path!=null && path.startsWith("/authcenter/")) { spaWaitUntil=0; handler.postDelayed(connect,800); return; }
+            if (spaWaitUntil==0) spaWaitUntil=SystemClock.elapsedRealtime()+6_000;
+            web.evaluateJavascript("(function(){try{var u=JSON.parse(sessionStorage.getItem('userInfo')||'{}');return u&&u.token?'ready':'wait';}catch(e){return 'wait';}})()",tokenState -> {
                 if (stopped) return;
-                if (!url.equals(web.getUrl())) { handler.postDelayed(connect,800); return; }
-                JSONObject result=parse(value);
-                if (result.optBoolean("ready")) { ready=true; resolve(new JSONObject(),""); }
-                else if (!result.optString("error").isEmpty()) fail(result.optString("error"));
-                else handler.postDelayed(connect,800);
+                if (!url.equals(web.getUrl())) { spaWaitUntil=0; handler.postDelayed(connect,800); return; }
+                String state=parseString(tokenState);
+                if (!"ready".equals(state) && SystemClock.elapsedRealtime()<spaWaitUntil) { handler.postDelayed(connect,800); return; }
+                web.evaluateJavascript(script+";if(!window.__louStudyReady && !window.__louStudyConnecting){window.__louStudyConnecting=true;NwpuStudyRoom.run('ready',{},"+JSONObject.quote(account)+").then(function(r){window.__louStudyReady=r;window.__louStudyConnecting=false;});}JSON.stringify(window.__louStudyReady)",value -> {
+                    if (stopped) return;
+                    if (!url.equals(web.getUrl())) { handler.postDelayed(connect,800); return; }
+                    JSONObject result=parse(value);
+                    if (result.optBoolean("ready")) { ready=true; resolve(new JSONObject(),""); }
+                    else if (!result.optString("error").isEmpty()) fail(result.optString("error"));
+                    else handler.postDelayed(connect,800);
+                });
             });
         }
     }};
@@ -124,6 +139,10 @@ final class StudyRoomSession {
         handler.postDelayed(poll,300);
     }
     private static String origin(String url) { try { Uri u=Uri.parse(url); return u.getScheme()+"://"+u.getAuthority()+"/"; } catch (Exception e) { return ""; } }
+    private static String parseString(String value) {
+        try { Object raw=new JSONTokener(value).nextValue(); return raw instanceof String?(String)raw:""; }
+        catch (Exception e) { return ""; }
+    }
     private static JSONObject parse(String value) {
         try { Object raw=new JSONTokener(value).nextValue(); return raw instanceof String?new JSONObject((String)raw):new JSONObject(); }
         catch (Exception e) { return new JSONObject(); }
@@ -136,15 +155,36 @@ final class StudyRoomSession {
         if (writing) error="请求结果未确认，请重新连接并先查询我的预约，勿重复操作";
         ready=false; ++generation; handler.removeCallbacksAndMessages(null); resolve(null,error);
     }
+    void reconnect(CampusData data,Callback callback) {
+        if (stopped || web==null) { start(data,callback); return; }
+        CampusCredentials.Login login=CampusCredentials.load(host);
+        if (login==null || data==null || !data.owner.equals(login.owner)) { callback.finished(null,"请先在校园页连接校园账号"); return; }
+        account=login.account; owner=login.owner; pending=callback; busy=true; ready=false; submitted=false; writing=false;
+        handler.removeCallbacksAndMessages(null);
+        deadline=SystemClock.elapsedRealtime()+75_000; spaWaitUntil=0;
+        web.evaluateJavascript("window.__louStudyReady=null;window.__louStudyConnecting=false;",null);
+        String url=web.getUrl();
+        if (!allowed(url)) web.loadUrl(LOGIN);
+        handler.postDelayed(connect,400);
+    }
     void openOfficial(Runnable returned) {
         if (web==null || busy || official!=null || stopped) return;
         ready=false; handler.removeCallbacksAndMessages(null);
-        ((ViewGroup)web.getParent()).removeView(web);
-        android.app.Dialog dialog=new android.app.Dialog(host,Ui.dialogTheme());
+        if (web.getParent() instanceof ViewGroup) ((ViewGroup)web.getParent()).removeView(web);
+        if (!allowed(web.getUrl())) web.loadUrl(LOGIN);
+        int theme=Ui.dark?android.R.style.Theme_DeviceDefault_NoActionBar:android.R.style.Theme_DeviceDefault_Light_NoActionBar;
+        android.app.Dialog dialog=new android.app.Dialog(host,theme);
         android.widget.LinearLayout root=CourseUi.column(host);
-        root.addView(CourseUi.action(host,"返回研修室并重新连接",false,dialog::dismiss));
+        root.setBackgroundColor(Ui.BG);
+        root.setFitsSystemWindows(true);
+        android.widget.LinearLayout bar=new android.widget.LinearLayout(host);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(host,12),Ui.dp(host,8),Ui.dp(host,12),Ui.dp(host,8));
+        bar.addView(CourseUi.action(host,"返回研修室并重新连接",true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-1,Ui.dp(host,44)));
+        root.addView(bar,new android.widget.LinearLayout.LayoutParams(-1,-2));
+        root.addView(Ui.hairline(host),new android.widget.LinearLayout.LayoutParams(-1,1));
         root.addView(web,new android.widget.LinearLayout.LayoutParams(-1,0,1));
-        dialog.setContentView(root); official=dialog;
+        dialog.setContentView(root,new ViewGroup.LayoutParams(-1,-1)); official=dialog;
         dialog.setOnDismissListener(d -> {
             official=null;
             if (web!=null) { if (web.getParent() instanceof ViewGroup) ((ViewGroup)web.getParent()).removeView(web); stage.addView(web,new FrameLayout.LayoutParams(-1,-1)); }
