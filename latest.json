@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 49,
-      "versionName": "0.49",
+      "versionCode": 50,
+      "versionName": "0.50",
       "size": 2525155,
-      "sha256": "3c4559d7f8620edb8bc5b9f33904803a4b78d6981eb40ac91c2dcaa7643f1dbb",
+      "sha256": "7cd6470143c27724f31f581b9f4bfeb389a0dbcc7e176bea4b8817a5e1b454bc",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/3c4559d7f8620edb8bc5b9f33904803a4b78d6981eb40ac91c2dcaa7643f1dbb/offloor.apk",
-      "notes": "fix: wait for IC token exchange and fix official verification dialog (v0.49)"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/7cd6470143c27724f31f581b9f4bfeb389a0dbcc7e176bea4b8817a5e1b454bc/offloor.apk",
+      "notes": "perf: speed up study room session connection and polling (v0.50)"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
