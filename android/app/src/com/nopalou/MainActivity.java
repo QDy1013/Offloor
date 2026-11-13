@@ -2950,7 +2950,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         form.addView(time);
         form.addView(button("标为时间待确认", v -> {
             deadline[0] = 0L;
-            time.setText("时间：待确认");
+            time.setText("时间：待设置");
         }));
         AlertDialog dialog = alert()
                 .setTitle("修正卡片")
@@ -3103,7 +3103,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private String dateTimeLabel(long value) {
-        return value == 0 ? "待确认" : android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", value).toString();
+        return value == 0 ? "待设置" : android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", value).toString();
     }
 
     private void chooseDateTime(long initial, LongConsumer selected) {
