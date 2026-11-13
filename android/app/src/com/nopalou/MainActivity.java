@@ -567,7 +567,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
         hero.setPadding(dp(this,20),dp(this,10),dp(this,20),dp(this,10));
-        hero.setBackground(Ui.heroSurface(this, 20));
+        hero.setBackground(Ui.ripple(this, Ui.heroSurface(this, 20), Ui.withAlpha(Ui.ON_HERO, 28), 20));
         Ui.lift(hero, 3f);
         LinearLayout heroMasthead = new LinearLayout(this);
         heroMasthead.setGravity(Gravity.CENTER_VERTICAL);
@@ -1046,12 +1046,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         else parts.add(demo == null && !EngineHolder.listenerConnected
                 ? "开启自动读取后，群里的作业、考试、接龙会自动整理到这里"
                 : "群里出现作业、考试、接龙时，会自动整理到这里");
-        stats.setText(TextUtils.join(" · ", parts));
+        String statsText = TextUtils.join(" · ", parts);
+        if (open > 0) statsText = statsText.isEmpty() ? "点按查看 ›" : statsText + " · 点按查看 ›";
+        stats.setText(statsText);
         final String targetLead = lead;
         final int confirmCount = confirm;
         final int openCount = open;
         final int totalCount = total;
         hero.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             newCardsOnly = false;
             if ("confirm".equals(targetLead) || (targetLead.isEmpty() && confirmCount > 0)) {
                 scope = Engine.CardScope.ALL;

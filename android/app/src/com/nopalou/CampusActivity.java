@@ -264,6 +264,95 @@ public class CampusActivity extends Activity {
     private void renderRoomPage() {
         int y=scroll==null?0:scroll.getScrollY(); render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y));
     }
+    private void showLocationPicker(java.util.List<String> locations) {
+        if (locations.isEmpty()) return;
+        java.util.Set<String> draft=new java.util.LinkedHashSet<>(selectedRoomLocations);
+        LinearLayout body=CourseUi.column(this);
+        body.setPadding(0,dp(4),0,dp(16));
+        LinearLayout header=new LinearLayout(this);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        LinearLayout titleCol=CourseUi.column(this);
+        titleCol.addView(text("选择教学楼",20,Ui.TEXT,true));
+        TextView countHint=text("",13,Ui.SUB,false);
+        countHint.setPadding(0,dp(4),0,0);
+        titleCol.addView(countHint);
+        header.addView(titleCol,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView selectAll=text("全选",13,Ui.ACCENT,true);
+        selectAll.setPadding(dp(12),dp(6),dp(12),dp(6));
+        selectAll.setBackground(Ui.ripple(this,Ui.round(this,Ui.ACCENT_BG,999),Ui.press(),999));
+        header.addView(selectAll,new LinearLayout.LayoutParams(-2,-2));
+        body.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        CourseUi.gap(body,16);
+
+        java.util.List<LinearLayout> rows=new java.util.ArrayList<>();
+        java.util.List<TextView> labels=new java.util.ArrayList<>();
+        java.util.List<Ui.CheckCircle> checks=new java.util.ArrayList<>();
+        Runnable sync=() -> {
+            countHint.setText(draft.isEmpty()?"请至少选择 1 处教学楼":"可多选 · 已选 "+draft.size()+" 处");
+            countHint.setTextColor(draft.isEmpty()?Ui.RED:Ui.SUB);
+            boolean all=draft.size()==locations.size();
+            selectAll.setAlpha(all?0.45f:1f);
+            selectAll.setEnabled(!all);
+            for (int i=0;i<locations.size();i++) {
+                boolean on=draft.contains(locations.get(i));
+                LinearLayout row=rows.get(i);
+                android.graphics.drawable.GradientDrawable bg=Ui.round(this,on?Ui.ACCENT_BG:Ui.FILL,14);
+                if (on) bg.setStroke(Math.max(1,dp(1)),Ui.ACCENT);
+                row.setBackground(Ui.ripple(this,bg,Ui.press(),14));
+                labels.get(i).setTextColor(on?Ui.ACCENT:Ui.TEXT);
+                checks.get(i).setProgress(on?1f:0f);
+            }
+        };
+
+        for (int i=0;i<locations.size();i++) {
+            String place=locations.get(i);
+            LinearLayout row=new LinearLayout(this);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(16),dp(13),dp(14),dp(13));
+            TextView label=text(place,15,Ui.TEXT,true);
+            row.addView(label,new LinearLayout.LayoutParams(0,-2,1f));
+            Ui.CheckCircle circle=new Ui.CheckCircle(this,Ui.RING,Ui.ACCENT,20f,draft.contains(place));
+            android.widget.ImageView icon=new android.widget.ImageView(this);
+            icon.setImageDrawable(circle);
+            row.addView(icon,new LinearLayout.LayoutParams(dp(22),dp(22)));
+            row.setOnClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                if (draft.contains(place)) draft.remove(place); else draft.add(place);
+                sync.run();
+            });
+            rows.add(row); labels.add(label); checks.add(circle);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
+            if (i>0) lp.topMargin=dp(8);
+            body.addView(row,lp);
+        }
+        selectAll.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            draft.addAll(locations); sync.run();
+        });
+        sync.run();
+
+        LinearLayout footer=CourseUi.column(this);
+        footer.addView(Ui.hairline(this));
+        CourseUi.gap(footer,12);
+        LinearLayout actions=new LinearLayout(this);
+        actions.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView cancel=CourseUi.action(this,"取消",false,() -> {});
+        actions.addView(cancel,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView confirm=CourseUi.action(this,"确定",true,() -> {});
+        LinearLayout.LayoutParams confirmLp=new LinearLayout.LayoutParams(0,-2,2f);
+        confirmLp.leftMargin=dp(12);
+        actions.addView(confirm,confirmLp);
+        footer.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+
+        android.app.Dialog dialog=Ui.sheet(this,body,footer);
+        cancel.setOnClickListener(v -> dialog.dismiss());
+        confirm.setOnClickListener(v -> {
+            if (draft.isEmpty()) { toast("请至少选择一个教学楼"); return; }
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            selectedRoomLocations.clear(); selectedRoomLocations.addAll(draft);
+            dialog.dismiss(); roomOptionsChanged();
+        });
+    }
     private void chooseRoomTime(boolean start) {
         int minute=start?roomStart:roomEnd;
         Ui.pickTime(this,start?"选择开始时间":"选择结束时间",minute/60,minute%60,
@@ -294,21 +383,7 @@ public class CampusActivity extends Activity {
         }).show());
         LinearLayout places=new LinearLayout(this); query.addView(places);
         campus.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); places.addView(campus,new LinearLayout.LayoutParams(0,dp(44),1));
-        TextView location=CourseUi.action(this,locationLabel+"  ▾",false,() -> {
-            String[] choices=locations.toArray(new String[0]);
-            boolean[] checked=new boolean[choices.length];
-            for (int i=0;i<choices.length;i++) checked[i]=selectedRoomLocations.contains(choices[i]);
-            new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择教学楼（可多选）")
-                    .setMultiChoiceItems(choices,checked,(dialog,which,isChecked) -> checked[which]=isChecked)
-                    .setNegativeButton("取消",null)
-                    .setPositiveButton("确定",(dialog,which) -> {
-                        java.util.Set<String> next=new java.util.LinkedHashSet<>();
-                        for (int i=0;i<choices.length;i++) if (checked[i]) next.add(choices[i]);
-                        if (next.isEmpty()) { toast("请至少选择一个教学楼"); return; }
-                        selectedRoomLocations.clear(); selectedRoomLocations.addAll(next);
-                        roomOptionsChanged();
-                    }).show();
-        });
+        TextView location=CourseUi.action(this,locationLabel+"  ▾",false,() -> showLocationPicker(locations));
         location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END); location.setContentDescription("教学楼筛选，"+locationLabel);
         location.setEnabled(!locations.isEmpty()); location.setAlpha(locations.isEmpty()?.5f:1f);
         location.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));

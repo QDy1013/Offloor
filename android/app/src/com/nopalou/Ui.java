@@ -299,10 +299,18 @@ final class Ui {
 
         android.widget.LinearLayout body = CourseUi.column(c);
         body.setPadding(0, dp(c, 4), 0, dp(c, 16));
-        body.addView(CourseUi.text(c, title, 20, TEXT, true));
-        TextView preview = CourseUi.text(c, String.format(java.util.Locale.US, "当前选择 %02d:%02d", initH, initM), 13, SUB, false);
-        preview.setPadding(0, dp(c, 4), 0, dp(c, 14));
-        body.addView(preview);
+
+        android.widget.LinearLayout header = new android.widget.LinearLayout(c);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView titleView = CourseUi.text(c, title, 20, TEXT, true);
+        header.addView(titleView, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        TextView badge = CourseUi.text(c, String.format(java.util.Locale.US, "%02d:%02d", initH, initM), 15, ACCENT, true);
+        badge.setFontFeatureSettings("tnum");
+        badge.setPadding(dp(c, 14), dp(c, 6), dp(c, 14), dp(c, 6));
+        badge.setBackground(round(c, ACCENT_BG, 999));
+        header.addView(badge, new android.widget.LinearLayout.LayoutParams(-2, -2));
+        body.addView(header, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        CourseUi.gap(body, 16);
 
         String[] hours = new String[24];
         for (int i = 0; i < 24; i++) hours[i] = String.format(java.util.Locale.US, "%02d", i);
@@ -324,25 +332,63 @@ final class Ui {
         minutePicker.setWrapSelectorWheel(true);
         minutePicker.setValue(initM);
 
-        Runnable syncPreview = () -> preview.setText(String.format(java.util.Locale.US, "当前选择 %02d:%02d",
-                hourPicker.getValue(), minutePicker.getValue()));
-        hourPicker.setOnValueChangedListener((p, oldVal, newVal) -> syncPreview.run());
-        minutePicker.setOnValueChangedListener((p, oldVal, newVal) -> syncPreview.run());
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            hourPicker.setTextColor(TEXT);
+            minutePicker.setTextColor(TEXT);
+        }
+
+        android.widget.LinearLayout wheelCard = CourseUi.column(c);
+        wheelCard.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 10));
+        android.graphics.drawable.GradientDrawable wheelBg = round(c, FILL, 20);
+        wheelBg.setStroke(Math.max(1, dp(c, 1)), LINE);
+        wheelCard.setBackground(wheelBg);
+
+        android.widget.LinearLayout colLabels = new android.widget.LinearLayout(c);
+        colLabels.setGravity(android.view.Gravity.CENTER);
+        TextView hLabel = CourseUi.text(c, "时", 11, SUB, true);
+        hLabel.setGravity(android.view.Gravity.CENTER);
+        TextView mLabel = CourseUi.text(c, "分", 11, SUB, true);
+        mLabel.setGravity(android.view.Gravity.CENTER);
+        colLabels.addView(hLabel, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        android.view.View spacer = new android.view.View(c);
+        colLabels.addView(spacer, new android.widget.LinearLayout.LayoutParams(dp(c, 28), 1));
+        colLabels.addView(mLabel, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        wheelCard.addView(colLabels, new android.widget.LinearLayout.LayoutParams(-1, -2));
 
         android.widget.LinearLayout wheels = new android.widget.LinearLayout(c);
         wheels.setGravity(android.view.Gravity.CENTER);
-        wheels.setPadding(dp(c, 16), dp(c, 8), dp(c, 16), dp(c, 8));
-        wheels.setBackground(round(c, FILL, 18));
-        android.widget.LinearLayout.LayoutParams wheelLp = new android.widget.LinearLayout.LayoutParams(0, -2, 1f);
-        wheels.addView(hourPicker, wheelLp);
-        TextView colon = CourseUi.text(c, ":", 22, TEXT, true);
-        colon.setPadding(dp(c, 8), 0, dp(c, 8), 0);
+        wheels.addView(hourPicker, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        TextView colon = CourseUi.text(c, ":", 24, TEXT, true);
+        colon.setPadding(dp(c, 10), 0, dp(c, 10), 0);
         wheels.addView(colon);
         wheels.addView(minutePicker, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
-        body.addView(wheels, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        wheelCard.addView(wheels, new android.widget.LinearLayout.LayoutParams(-1, -2));
+        body.addView(wheelCard, new android.widget.LinearLayout.LayoutParams(-1, -2));
+
+        java.util.List<TextView> chipViews = new java.util.ArrayList<>();
+        java.util.List<Integer> chipTimes = new java.util.ArrayList<>();
+
+        Runnable syncState = () -> {
+            int ch = hourPicker.getValue();
+            int cm = minutePicker.getValue();
+            badge.setText(String.format(java.util.Locale.US, "%02d:%02d", ch, cm));
+            int curTotal = ch * 60 + cm;
+            for (int i = 0; i < chipViews.size(); i++) {
+                boolean active = chipTimes.get(i) == curTotal;
+                TextView chip = chipViews.get(i);
+                chip.setTextColor(active ? ACCENT : TEXT);
+                android.graphics.drawable.GradientDrawable bg = round(c, active ? ACCENT_BG : CARD, 999);
+                bg.setStroke(Math.max(1, dp(c, 1)), active ? ACCENT : LINE);
+                chip.setBackground(ripple(c, bg, press(), 999));
+            }
+        };
+        hourPicker.setOnValueChangedListener((p, oldVal, newVal) -> syncState.run());
+        minutePicker.setOnValueChangedListener((p, oldVal, newVal) -> syncState.run());
 
         if (quickMinutes != null && quickMinutes.length > 0) {
-            CourseUi.gap(body, 14);
+            CourseUi.gap(body, 16);
+            body.addView(sectionLabel(c, "常用时刻"));
+            CourseUi.gap(body, 8);
             android.widget.HorizontalScrollView strip = new android.widget.HorizontalScrollView(c);
             strip.setHorizontalScrollBarEnabled(false);
             strip.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -352,17 +398,18 @@ final class Ui {
                 int qh = total / 60;
                 int qm = total % 60;
                 TextView chip = CourseUi.text(c, String.format(java.util.Locale.US, "%02d:%02d", qh, qm), 13, TEXT, true);
-                chip.setPadding(dp(c, 14), dp(c, 8), dp(c, 14), dp(c, 8));
-                android.graphics.drawable.GradientDrawable bg = round(c, CARD, 999);
-                bg.setStroke(Math.max(1, dp(c, 1)), LINE);
-                chip.setBackground(ripple(c, bg, press(), 999));
+                chip.setFontFeatureSettings("tnum");
+                chip.setPadding(dp(c, 15), dp(c, 9), dp(c, 15), dp(c, 9));
                 chip.setOnClickListener(v -> {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                     hourPicker.clearFocus();
                     minutePicker.clearFocus();
                     hourPicker.setValue(qh);
                     minutePicker.setValue(qm);
-                    syncPreview.run();
+                    syncState.run();
                 });
+                chipViews.add(chip);
+                chipTimes.add(total);
                 android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
                 if (i > 0) lp.leftMargin = dp(c, 8);
                 chips.addView(chip, lp);
@@ -370,6 +417,7 @@ final class Ui {
             strip.addView(chips);
             body.addView(strip, new android.widget.LinearLayout.LayoutParams(-1, -2));
         }
+        syncState.run();
 
         android.widget.LinearLayout footer = CourseUi.column(c);
         footer.addView(hairline(c));
@@ -387,6 +435,7 @@ final class Ui {
         android.app.Dialog dialog = sheet(c, body, footer);
         cancel.setOnClickListener(v -> dialog.dismiss());
         confirm.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             hourPicker.clearFocus();
             minutePicker.clearFocus();
             int h = hourPicker.getValue();
