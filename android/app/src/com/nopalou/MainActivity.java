@@ -566,6 +566,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         // Compact overview with a date masthead and a separate, quieter stats band.
         hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
+        hero.setClickable(true);
+        hero.setFocusable(true);
         hero.setPadding(dp(this,20),dp(this,10),dp(this,20),dp(this,10));
         hero.setBackground(Ui.ripple(this, Ui.heroSurface(this, 20), Ui.withAlpha(Ui.ON_HERO, 28), 20));
         Ui.lift(hero, 3f);
@@ -754,7 +756,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         compactBar.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
         if (Ui.dark) compactBar.addView(Ui.hairline(this));
         compactBar.setOnClickListener(v -> listScroll.smoothScrollTo(0, 0));
-        compactBar.setVisibility(View.INVISIBLE);
+        compactBar.setVisibility(View.GONE);
         compactBar.setAlpha(0f);
         frame.addView(compactBar, new FrameLayout.LayoutParams(-1, dp(this, 52), Gravity.TOP));
     }
@@ -772,7 +774,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                     .setInterpolator(new DecelerateInterpolator()).start();
         } else {
             compactBar.animate().alpha(0f).translationY(-dp(this, 8)).setDuration(120)
-                    .withEndAction(() -> { if (!compactShown) compactBar.setVisibility(View.INVISIBLE); }).start();
+                    .withEndAction(() -> { if (!compactShown) compactBar.setVisibility(View.GONE); }).start();
         }
     }
 
@@ -1054,26 +1056,35 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         final int totalCount = total;
         hero.setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
-            newCardsOnly = false;
+            Engine.CardScope nextScope;
+            Engine.CardWindow nextWindow;
             if ("confirm".equals(targetLead) || (targetLead.isEmpty() && confirmCount > 0)) {
-                scope = Engine.CardScope.ALL;
-                window = Engine.CardWindow.NEEDS_CONFIRM;
+                nextScope = Engine.CardScope.ALL;
+                nextWindow = Engine.CardWindow.NEEDS_CONFIRM;
             } else if ("today".equals(targetLead)) {
-                scope = Engine.CardScope.ALL;
-                window = Engine.CardWindow.TODAY;
+                nextScope = Engine.CardScope.ALL;
+                nextWindow = Engine.CardWindow.TODAY;
             } else if ("overdue".equals(targetLead)) {
-                scope = Engine.CardScope.OVERDUE;
-                window = Engine.CardWindow.ANY;
+                nextScope = Engine.CardScope.OVERDUE;
+                nextWindow = Engine.CardWindow.ANY;
             } else if ("tomorrow".equals(targetLead)) {
-                scope = Engine.CardScope.ALL;
-                window = Engine.CardWindow.TOMORROW;
+                nextScope = Engine.CardScope.ALL;
+                nextWindow = Engine.CardWindow.TOMORROW;
             } else if (openCount == 0 && totalCount > 0) {
-                scope = Engine.CardScope.COMPLETED;
+                nextScope = Engine.CardScope.COMPLETED;
+                nextWindow = Engine.CardWindow.ANY;
+            } else {
+                nextScope = Engine.CardScope.ALL;
+                nextWindow = Engine.CardWindow.ANY;
+            }
+            if (!newCardsOnly && scope == nextScope && window == nextWindow) {
+                scope = Engine.CardScope.ALL;
                 window = Engine.CardWindow.ANY;
             } else {
-                scope = Engine.CardScope.ALL;
-                window = Engine.CardWindow.ANY;
+                scope = nextScope;
+                window = nextWindow;
             }
+            newCardsOnly = false;
             resetCardPage();
         });
     }
