@@ -1046,9 +1046,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         else parts.add(demo == null && !EngineHolder.listenerConnected
                 ? "开启自动读取后，群里的作业、考试、接龙会自动整理到这里"
                 : "群里出现作业、考试、接龙时，会自动整理到这里");
-        String statsText = TextUtils.join(" · ", parts);
-        if (open > 0) statsText = statsText.isEmpty() ? "点按查看 ›" : statsText + " · 点按查看 ›";
-        stats.setText(statsText);
+        if (open > 0) parts.add("点按查看 ›");
+        stats.setText(TextUtils.join(" · ", parts));
         final String targetLead = lead;
         final int confirmCount = confirm;
         final int openCount = open;
