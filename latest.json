@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 47,
-      "versionName": "0.47",
+      "versionCode": 48,
+      "versionName": "0.48",
       "size": 2525155,
-      "sha256": "2d8d1b8665c63b6675ee95eb8e482f2c0f151745d20d7aac7561ddcb6a175c5f",
+      "sha256": "2c1ad10434c757ca3e8fcb6e3517ae7fee8db0926a1d7804a4576f1f989ee516",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2d8d1b8665c63b6675ee95eb8e482f2c0f151745d20d7aac7561ddcb6a175c5f/offloor.apk",
-      "notes": "fix: keep stats.setText(TextUtils.join(...)) for home visual check (v0.47)"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2c1ad10434c757ca3e8fcb6e3517ae7fee8db0926a1d7804a4576f1f989ee516/offloor.apk",
+      "notes": "fix: ensure entire hero card responds reliably on every tap (v0.48)"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
