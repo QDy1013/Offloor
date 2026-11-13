@@ -1047,6 +1047,33 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 ? "开启自动读取后，群里的作业、考试、接龙会自动整理到这里"
                 : "群里出现作业、考试、接龙时，会自动整理到这里");
         stats.setText(TextUtils.join(" · ", parts));
+        final String targetLead = lead;
+        final int confirmCount = confirm;
+        final int openCount = open;
+        final int totalCount = total;
+        hero.setOnClickListener(v -> {
+            newCardsOnly = false;
+            if ("confirm".equals(targetLead) || (targetLead.isEmpty() && confirmCount > 0)) {
+                scope = Engine.CardScope.ALL;
+                window = Engine.CardWindow.NEEDS_CONFIRM;
+            } else if ("today".equals(targetLead)) {
+                scope = Engine.CardScope.ALL;
+                window = Engine.CardWindow.TODAY;
+            } else if ("overdue".equals(targetLead)) {
+                scope = Engine.CardScope.OVERDUE;
+                window = Engine.CardWindow.ANY;
+            } else if ("tomorrow".equals(targetLead)) {
+                scope = Engine.CardScope.ALL;
+                window = Engine.CardWindow.TOMORROW;
+            } else if (openCount == 0 && totalCount > 0) {
+                scope = Engine.CardScope.COMPLETED;
+                window = Engine.CardWindow.ANY;
+            } else {
+                scope = Engine.CardScope.ALL;
+                window = Engine.CardWindow.ANY;
+            }
+            resetCardPage();
+        });
     }
 
     /** 「扫描历史」：把通知栏里还挂着的消息（含会话通知里折叠的旧消息）重新过一遍，并告诉用户结果。 */
