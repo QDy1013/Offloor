@@ -3013,10 +3013,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             deadline[0] = value; time.setText("时间：" + dateTimeLabel(value));
         }));
         timing.addView(time, new LinearLayout.LayoutParams(-1, -2));
-        CourseUi.gap(timing, 8);
-        timing.addView(CourseUi.action(this, "暂不设置时间 / 清除", false, () -> {
-            deadline[0] = 0L; time.setText("时间：待确认");
-        }), new LinearLayout.LayoutParams(-1, -2));
         form.addView(timing, new LinearLayout.LayoutParams(-1, -2));
         CourseUi.gap(form, 24);
         form.addView(Ui.sectionLabel(this, "补充信息 · 可选"));

@@ -32,9 +32,10 @@ public class CampusActivity extends Activity {
     private long busUpdated;
     private CampusClassroomRefresh classroomRefresh;
     private boolean roomAttempted,roomLoading;
-    private String roomCampus="长安校区",roomDate="",roomToken="",roomError="",roomLocation="";
+    private String roomCampus="长安校区",roomDate="",roomToken="",roomError="";
     private int roomStart,roomEnd,roomLimit=40;
-    private String roomSubmittedLocation="";
+    private final java.util.Set<String> selectedRoomLocations=new java.util.LinkedHashSet<>();
+    private final java.util.Set<String> submittedRoomLocations=new java.util.LinkedHashSet<>();
     private final java.util.List<String> roomLocations=new java.util.ArrayList<>();
     private boolean resumed;
     private LinearLayout list;
@@ -61,7 +62,7 @@ public class CampusActivity extends Activity {
             int[] range=CampusClassroomQuery.defaultRange(System.currentTimeMillis()); roomStart=range[0]; roomEnd=range[1];
             roomCampus=getSharedPreferences("classroom-live",MODE_PRIVATE).getString("campus","长安校区");
             if (!"友谊校区".equals(roomCampus)) roomCampus="长安校区";
-            roomAttempted=false; roomToken=""; roomError=""; roomLocation=""; roomLoading=false;
+            roomAttempted=false; roomToken=""; roomError=""; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLoading=false;
         }
         CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload(); updates.postDelayed(clock,60_000);
     }
@@ -243,7 +244,7 @@ public class CampusActivity extends Activity {
     }
     private void stopClassroomQuery() { if (classroomRefresh!=null) { classroomRefresh.stop(); classroomRefresh=null; } }
     private void startClassroomQuery(boolean repaint) {
-        roomAttempted=true; roomSubmittedLocation=roomLocation;
+        roomAttempted=true; submittedRoomLocations.clear(); submittedRoomLocations.addAll(selectedRoomLocations);
         if (data==null || data.owner.isEmpty()) { roomLoading=false; roomError="请先登录校园账号"; return; }
         CampusClassroomQuery query;
         try { roomDate=CampusClassroomQuery.today(System.currentTimeMillis()); query=new CampusClassroomQuery(roomCampus,roomDate,roomStart,roomEnd); }
@@ -282,21 +283,33 @@ public class CampusActivity extends Activity {
         java.util.List<CampusClassroomResult.Room> knownRooms=CampusClassroomResult.rooms(module);
         for (String place:CampusClassroomResult.locations(knownRooms)) if (!roomLocations.contains(place) && knownRooms.stream().anyMatch(r -> r.location.equals(place) && r.detail.contains(roomCampus))) roomLocations.add(place);
         java.util.List<String> locations=new java.util.ArrayList<>(roomLocations);
+        selectedRoomLocations.retainAll(locations);
+        if (selectedRoomLocations.isEmpty() && !locations.isEmpty()) selectedRoomLocations.add(locations.get(0));
+        String locationLabel=selectedRoomLocations.isEmpty()?"选择教学楼"
+                :(selectedRoomLocations.size()==1?selectedRoomLocations.iterator().next()
+                :selectedRoomLocations.iterator().next()+" 等"+selectedRoomLocations.size()+"处");
         LinearLayout query=card(); query.addView(text("今天 · "+CampusClassroomQuery.today(System.currentTimeMillis()),13,Ui.SUB,true)); CourseUi.gap(query,12);
         TextView campus=CourseUi.action(this,roomCampus+"  ▾",false,() -> new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择校区").setItems(new String[]{"长安校区","友谊校区"},(d,i) -> {
-            roomCampus=i==0?"长安校区":"友谊校区"; roomLocation=""; roomLocations.clear(); getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply(); roomOptionsChanged();
+            roomCampus=i==0?"长安校区":"友谊校区"; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLocations.clear(); getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply(); roomOptionsChanged();
         }).show());
         LinearLayout places=new LinearLayout(this); query.addView(places);
         campus.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); places.addView(campus,new LinearLayout.LayoutParams(0,dp(44),1));
-        TextView location=CourseUi.action(this,(roomLocation.isEmpty()?"全部地点":roomLocation)+"  ▾",false,() -> {
-            String[] choices=new String[locations.size()+1]; choices[0]="全部地点";
-            for (int i=0;i<locations.size();i++) choices[i+1]=locations.get(i);
-            int selected=roomLocation.isEmpty()?0:locations.indexOf(roomLocation)+1;
-            new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择地点（教学楼 / 楼座）").setSingleChoiceItems(choices,selected,(dialog,which) -> {
-                roomLocation=which==0?"":locations.get(which-1); dialog.dismiss(); roomOptionsChanged();
-            }).setNegativeButton("取消",null).show();
+        TextView location=CourseUi.action(this,locationLabel+"  ▾",false,() -> {
+            String[] choices=locations.toArray(new String[0]);
+            boolean[] checked=new boolean[choices.length];
+            for (int i=0;i<choices.length;i++) checked[i]=selectedRoomLocations.contains(choices[i]);
+            new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择教学楼（可多选）")
+                    .setMultiChoiceItems(choices,checked,(dialog,which,isChecked) -> checked[which]=isChecked)
+                    .setNegativeButton("取消",null)
+                    .setPositiveButton("确定",(dialog,which) -> {
+                        java.util.Set<String> next=new java.util.LinkedHashSet<>();
+                        for (int i=0;i<choices.length;i++) if (checked[i]) next.add(choices[i]);
+                        if (next.isEmpty()) { toast("请至少选择一个教学楼"); return; }
+                        selectedRoomLocations.clear(); selectedRoomLocations.addAll(next);
+                        roomOptionsChanged();
+                    }).show();
         });
-        location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END); location.setContentDescription("地点筛选，"+(roomLocation.isEmpty()?"全部地点":roomLocation));
+        location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END); location.setContentDescription("教学楼筛选，"+locationLabel);
         location.setEnabled(!locations.isEmpty()); location.setAlpha(locations.isEmpty()?.5f:1f);
         location.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
         LinearLayout.LayoutParams locationParams=new LinearLayout.LayoutParams(0,dp(44),1); locationParams.leftMargin=dp(10); places.addView(location,locationParams); CourseUi.gap(query,10);
@@ -318,9 +331,9 @@ public class CampusActivity extends Activity {
         if (!current) {
             if (!roomLoading) note("选择校区与时段后查询，旧结果不会作为本次结果展示。"); return;
         }
-        java.util.List<CampusClassroomResult.Room> rooms=CampusClassroomResult.atLocation(allRooms,roomSubmittedLocation);
-        if (rooms.isEmpty()) { if (!roomLoading) note(roomLocation.isEmpty()?"该时段没有查到可展示的空闲教室。":"所选地点在本次结果中暂无可展示的空闲教室。"); return; }
-        section("找到 "+rooms.size()+" 间空闲教室"); note(CampusSummary.field(module,"查询条件")+(roomLocation.isEmpty()?"":" · "+roomLocation));
+        java.util.List<CampusClassroomResult.Room> rooms=CampusClassroomResult.atLocations(allRooms,submittedRoomLocations);
+        if (rooms.isEmpty()) { if (!roomLoading) note("所选教学楼在本次结果中暂无可展示的空闲教室。"); return; }
+        section("找到 "+rooms.size()+" 间空闲教室"); note(CampusSummary.field(module,"查询条件")+(submittedRoomLocations.isEmpty()?"":" · "+String.join("、",submittedRoomLocations)));
         LinearLayout result=card();
         for (int i=0;i<Math.min(roomLimit,rooms.size());i++) {
             CampusClassroomResult.Room room=rooms.get(i);

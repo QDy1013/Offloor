@@ -30,6 +30,13 @@ final class CampusClassroomResult {
         for (Room room:rooms) if (location.isEmpty() || location.equals(room.location)) result.add(room);
         return result;
     }
+    static List<Room> atLocations(List<Room> rooms,java.util.Collection<String> locations) {
+        if (locations==null || locations.isEmpty()) return new ArrayList<>();
+        java.util.Set<String> selected=new java.util.HashSet<>(locations);
+        List<Room> result=new ArrayList<>();
+        for (Room room:rooms) if (selected.contains(room.location)) result.add(room);
+        return result;
+    }
     private static String normalized(String value) {
         return java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFKC).trim().toUpperCase(java.util.Locale.ROOT);
     }
