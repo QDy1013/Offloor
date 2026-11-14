@@ -677,6 +677,58 @@ async function main() {
         assert.match(spaNoticeCap.notice, /官方脚本解析到的须知/);
     });
 
+    h = harness({
+        handle: async (url) => {
+            if (url === '/ic-web/sysConfig/public') return {ok: true, json: async () => ({code: 0, data: {siteName: 'ic'}})};
+            if (url === '/ic-web/sysConfig/public?sysKind=1') return {ok: true, json: async () => ({code: 0, data: {resvCode: 0}})};
+        }
+    });
+    const cfgFallbackCap = await h.api.run('captcha', {}, 'owner');
+    check('loadConfig skips responses without resvCode and falls back to sysKind=1', () => {
+        assert.equal(cfgFallbackCap.mode, '0');
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/sysConfig/public')) return {ok: true, json: async () => ({code: 0, data: {foo: 1, resvCode: 9}})};
+        }
+    });
+    const cfgDiagCap = await h.api.run('captcha', {}, 'owner');
+    check('unreadable sysConfig resvCode fails closed with config diagnostic keys', () => {
+        assert.match(cfgDiagCap.error, /验证码配置/);
+        assert.match(cfgDiagCap.error, /rc=9/);
+    });
+
+    let chHits = 0;
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {kindId: 51, sysKind: 1, name: '友谊校区研修间（1-4人）'},
+                    {kindId: 71, sysKind: 1, name: '长安校区研修间（2-8人）'}
+                ]})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (!q.get('kindIds') || q.get('kindIds') === '51,71') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, kindId: 51, labName: '友谊校区图书馆'})], count: 1})};
+                }
+                if (q.get('kindIds') === '51') throw new Error('must skip Friendship kindId when already loaded');
+                if (q.get('kindIds') === '71') {
+                    chHits += 1;
+                    if (chHits === 1) return {ok: true, json: async () => ({code: 1, message: '请求频繁,请稍后重试'})};
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 701, kindId: 71, labName: '长安校区图书馆'})], count: 1})};
+                }
+            }
+        }
+    });
+    const rateRes = await h.api.run('query', {date: DATE}, 'owner');
+    check('query skips already-loaded Friendship kinds and retries rate-limited ChangAn kind once cleanly', () => {
+        assert.equal(rateRes.rooms.length, 2);
+        assert.ok(rateRes.rooms.some(r => r.location.includes('长安校区')));
+        assert.equal(chHits, 2);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -28,6 +28,8 @@
         if (result.code !== 0) { const e = new Error((clean(result.message) || '校方未接受本次请求') + ' [' + (post ? 'POST ' : '') + path + ']'); e.definite = true; throw e; }
         return result;
     }
+    const pause = ms => root && typeof root.setTimeout === 'function' ? new Promise(r => root.setTimeout(r, ms)) : Promise.resolve();
+    const isRateLimited = e => !!(e && /频繁|frequent|限流/i.test(String(e.message || '')));
     async function tryGet(path, variants) {
         let lastErr = null;
         for (const params of variants) {
@@ -36,8 +38,39 @@
         }
         throw lastErr;
     }
+    function extractConfigMode(data) {
+        const pick = d => {
+            if (!d || typeof d !== 'object') return '';
+            const v = d.resvCode;
+            if (v === 0 || v === 1 || v === 2 || v === '0' || v === '1' || v === '2') return String(v);
+            if (d.data && typeof d.data === 'object' && d.data !== d) return pick(d.data);
+            return '';
+        };
+        if (Array.isArray(data)) {
+            for (const item of data) { const m = pick(item); if (m) return m; }
+            return '';
+        }
+        return pick(data);
+    }
+    function configTag(data) {
+        if (Array.isArray(data)) return 'arr:' + data.length;
+        if (data && typeof data === 'object') return clean(Object.keys(data).slice(0, 8).join(',') + ';rc=' + String(data.resvCode), 90);
+        return typeof data;
+    }
     async function loadConfig() {
-        return tryGet('sysConfig/public', [undefined, {sysKind: 1}, {type: 1}, {type: 2}]);
+        let fallbackRes = null, lastErr = null;
+        for (const params of [undefined, {sysKind: 1}, {type: 1}, {type: 2}]) {
+            try {
+                const res = await request('sysConfig/public', params);
+                if (!fallbackRes) fallbackRes = res;
+                if (extractConfigMode(res.data)) return res;
+            } catch (e) {
+                if (!e || !e.definite) throw e;
+                lastErr = e;
+            }
+        }
+        if (fallbackRes) return fallbackRes;
+        throw lastErr;
     }
     function extractNotice(data) {
         if (typeof data === 'string') return clean(data, 6000);
@@ -377,6 +410,14 @@
         }
         return '';
     }
+    function recordKindMeta(out, x, keyId, sk, campus) {
+        if (!keyId || !out.kindMeta || out.kindMeta.has(keyId)) return;
+        const meta = {id: keyId, rawId: id(x.id) ? String(x.id) : '', sysKind: Number.isFinite(sk) ? sk : null,
+            labId: id(x.labId) ? String(x.labId) : '', roomId: id(x.roomId) ? String(x.roomId) : '',
+            campus, keys: Object.keys(x).slice(0, 8).join(',')};
+        out.kindMeta.set(keyId, meta);
+        out.kindItems.push(meta);
+    }
     function walkMenu(nodes, parentId, out, inheritedCampus) {
         if (!nodes) return;
         if (!Array.isArray(nodes)) {
@@ -408,12 +449,15 @@
             if (kids) {
                 if (selfId) out.parentIds.add(selfId);
                 walkMenu(kids, selfId || pId, out, c);
-            } else if (selfId) {
-                out.leafIds.add(selfId);
-                const key = selfId + '|' + pId;
-                if (!out.seenLeaves.has(key)) {
-                    out.seenLeaves.add(key);
-                    out.leaves.push({id: selfId, parentId: pId, kindId, labId, roomId, devId, campus: c});
+            } else {
+                if (kindId || selfId) recordKindMeta(out, n, kindId || selfId, Number.isFinite(sk) ? sk : null, c);
+                if (selfId) {
+                    out.leafIds.add(selfId);
+                    const key = selfId + '|' + pId;
+                    if (!out.seenLeaves.has(key)) {
+                        out.seenLeaves.add(key);
+                        out.leaves.push({id: selfId, parentId: pId, kindId, labId, roomId, devId, campus: c});
+                    }
                 }
             }
         }
@@ -450,43 +494,32 @@
                 const kid = record(x.kindId, out.kindIds);
                 record(x.labId, out.labIds);
                 record(x.roomId, out.roomIds);
-                const keyId = kid || pk;
-                if (primaryKey === 'kindId' && keyId && !out.kindMeta.has(keyId)) {
-                    const meta = {id: keyId, rawId: id(x.id) ? String(x.id) : '', sysKind: Number.isFinite(sk) ? sk : null,
-                        labId: id(x.labId) ? String(x.labId) : '', roomId: id(x.roomId) ? String(x.roomId) : '',
-                        campus: c, keys: Object.keys(x).slice(0, 8).join(',')};
-                    out.kindMeta.set(keyId, meta);
-                    out.kindItems.push(meta);
-                }
+                if (primaryKey === 'kindId') recordKindMeta(out, x, kid || pk, sk, c);
             }
         };
         const safeGet = (p, params) => request(p, params).catch(e => {
             if (e && e.definite) out.menuShapes.push(p + '!:' + clean(e.message, 30));
             return null;
         });
-        // 并行拉取菜单/类目/区域，避免串行等待叠加延迟。
-        const [rm1, k1, l1] = await Promise.all([
-            safeGet('roomMenu', {sysKind: 1}),
-            safeGet('kind', {sysKind: 1}),
-            safeGet('lab', {sysKind: 1})
-        ]);
-        recordShape('rm1', rm1); recordShape('k1', k1); recordShape('l1', l1);
+        // 优先只拉 roomMenu?sysKind=1；若已含两校区和有效类目/分支，则不再额外触发 kind/lab 限流。
+        const rm1 = await safeGet('roomMenu', {sysKind: 1});
+        recordShape('rm1', rm1);
         if (rm1) walkMenu(rm1.data, '', out, '');
-        if (k1) ingestList(k1, 'kindId', out.kindIds);
-        if (l1) ingestList(l1, 'labId', out.labIds);
+        if (!out.menuCampuses.has('长安校区') || !out.menuCampuses.has('友谊校区') || (!out.leaves.length && !out.kindIds.size)) {
+            const [k1, l1] = await Promise.all([safeGet('kind', {sysKind: 1}), safeGet('lab', {sysKind: 1})]);
+            recordShape('k1', k1); recordShape('l1', l1);
+            if (k1) ingestList(k1, 'kindId', out.kindIds);
+            if (l1) ingestList(l1, 'labId', out.labIds);
+        }
         // sysKind=1 仅返回一个校区（或漏掉某些节点）时，并列补查无参菜单并过滤非研修室节点。
         if (!out.menuCampuses.has('长安校区') || !out.menuCampuses.has('友谊校区')) {
-            const [rm0, k0, l0] = await Promise.all([
-                safeGet('roomMenu'),
-                safeGet('kind'),
-                safeGet('lab')
-            ]);
+            const [rm0, k0, l0] = await Promise.all([safeGet('roomMenu'), safeGet('kind'), safeGet('lab')]);
             recordShape('rm0', rm0); recordShape('k0', k0); recordShape('l0', l0);
             if (rm0) walkMenu(rm0.data, '', out, '');
             if (k0) ingestList(k0, 'kindId', out.kindIds);
             if (l0) ingestList(l0, 'labId', out.labIds);
         }
-        if (!out.leaves.length && !out.labIds.size) {
+        if (!out.leaves.length && !out.labIds.size && (!out.menuCampuses.has('长安校区') || !out.menuCampuses.has('友谊校区'))) {
             const [rmC, lC] = await Promise.all([safeGet('roomMenu', {classKind: 1}), safeGet('lab', {classKind: 1})]);
             if (rmC) walkMenu(rmC.data, '', out, '');
             if (lC) ingestList(lC, 'labId', out.labIds);
@@ -532,18 +565,31 @@
                 results[idx] = {ok: false, error: e};
             }
         };
-        // 先并发探测前两项以快速识别不接受该参数组合的接口，确认可行后以 4 路并发拉取并按原序合并。
+        // 先并发探测前两项以快速识别不接受该参数组合的接口，确认可行后以 2 路限速并发拉取，避免触发校方频繁限制。
         const probeEnd = Math.min(2, pairs.length);
         await Promise.all(Array.from({length: probeEnd}, (_, i) => runOne(i)));
         if (probeEnd < pairs.length && results.slice(0, probeEnd).some(r => r && r.ok)) {
             let cursor = probeEnd;
-            const workers = Array.from({length: Math.min(4, pairs.length - probeEnd)}, async () => {
+            const workers = Array.from({length: Math.min(2, pairs.length - probeEnd)}, async () => {
                 while (cursor < pairs.length) {
                     const idx = cursor++;
+                    if (idx > probeEnd) await pause(90);
                     await runOne(idx);
                 }
             });
             await Promise.all(workers);
+        }
+        const rateIdx = [];
+        for (let i = 0; i < results.length; i++) {
+            if (results[i] && !results[i].ok && isRateLimited(results[i].error)) rateIdx.push(i);
+        }
+        if (rateIdx.length) {
+            await pause(800);
+            for (const idx of rateIdx) {
+                await runOne(idx);
+                if (results[idx] && !results[idx].ok && isRateLimited(results[idx].error)) break;
+                await pause(120);
+            }
         }
         const merged = [], seen = new Set(), missed = [];
         let more = false, anyValid = false, lastErr = null;
@@ -660,7 +706,11 @@
         let missedLeaves = await runPlan(out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.kindId || leaf.id, labId: leaf.labId || ''}));
         if (kinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             const extraKinds = kinds.filter(k => !out.leafIds.has(k));
-            const kList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
+            const rawList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
+            const needKinds = agg.campuses.size > 0 && !hasBothCampuses(agg.campuses)
+                ? rawList.filter(k => { const c = out.idCampus.get(k); return !c || !agg.campuses.has(c); })
+                : rawList;
+            const kList = needKinds.length ? needKinds : rawList;
             let missedKinds = await runPlan(kList, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''}));
             for (const build of [
                 k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k}),
@@ -672,15 +722,15 @@
                 k => ({sysKind: 1, resvDates: key, page, pageSize: 30, labIds: k}),
                 k => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: k})
             ]) {
-                if (!missedKinds.length || (agg.items.length && hasBothCampuses(agg.campuses))) break;
+                if (!missedKinds.length || (agg.items.length && hasBothCampuses(agg.campuses)) || isRateLimited(lastErr)) break;
                 missedKinds = await runPlan(missedKinds, build);
             }
             if (missedKinds.length && out.menuCampuses.has('长安校区') && !agg.campuses.has('长安校区')) {
                 const spa = await inspectSpaApi();
-                if (spa && spa.reserveKeys) {
+                if (spa && spa.reserveKeys && !isRateLimited(lastErr)) {
                     const known = new Set(['sysKind', 'resvDates', 'page', 'pageSize', 'kindIds', 'kindId', 'labId', 'labIds', 'roomIds']);
                     for (const rk of spa.reserveKeys.filter(x => !known.has(x)).slice(0, 3)) {
-                        if (!missedKinds.length || hasBothCampuses(agg.campuses)) break;
+                        if (!missedKinds.length || hasBothCampuses(agg.campuses) || isRateLimited(lastErr)) break;
                         missedKinds = await runPlan(missedKinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, [rk]: k}));
                     }
                 }
@@ -808,11 +858,11 @@
                 if (e && !e.definite) throw e;
             }
         }
-        const fallback = await queryReserve(key, 1);
+        const fallback = (await queryReserve(key, 1)).res;
         const hit = find(fallback.data);
         if (hit || !fallback.more) return hit || null;
         for (let pg = 2; pg <= 4; pg += 1) {
-            const next = await queryReserve(key, pg);
+            const next = (await queryReserve(key, pg)).res;
             const moreHit = find(next.data);
             if (moreHit) return moreHit;
             if (!next.data.length) break;
@@ -834,9 +884,9 @@
         const times = validate(room, args.date, args.start, args.end, ids.length);
         const title = clean(args.title, 100); if (!title) fail('请填写研修主题');
         const config = await loadConfig();
-        const mode = config.data && String(config.data.resvCode);
+        const mode = extractConfigMode(config.data);
         if (mode === '2') fail('校方要求滑块验证，请先使用官方系统完成验证；本次未提交预约');
-        if (mode !== '0' && mode !== '1') fail('校方验证码配置尚未读全，本次未提交预约');
+        if (mode !== '0' && mode !== '1') fail('校方验证码配置尚未读全，本次未提交预约 [' + configTag(config.data) + ']');
         const captcha = clean(args.captcha, 12);
         if (mode === '1' && !captcha) fail('请输入图片验证码');
         const rawSysKind = posInt(raw.sysKind), rawResvKind = posInt(raw.resvKind), rawProp = nonNegInt(raw.resvProperty), rawClassKind = posInt(raw.classKind);
@@ -858,14 +908,14 @@
         const [configRes, noticeRes] = await Promise.allSettled([loadConfig(), loadNotice(raw)]);
         if (configRes.status !== 'fulfilled') throw configRes.reason;
         const response = configRes.value;
-        const mode = response.data && String(response.data.resvCode);
+        const mode = extractConfigMode(response.data);
         const notice = (noticeRes.status === 'fulfilled' ? noticeRes.value : '') || extractNotice(response.data);
         if (!notice) {
             if (noticeRes.status === 'rejected') throw noticeRes.reason;
             fail('尚未读取到校方预约须知，请稍后重试');
         }
         if (mode === '2') return {mode, notice, message: '校方要求滑块验证，本版本暂不能在原生页面完成，请使用官方系统验证'};
-        if (mode !== '1' && mode !== '0') fail('校方验证码配置尚未读全');
+        if (mode !== '1' && mode !== '0') fail('校方验证码配置尚未读全 [' + configTag(response.data) + ']');
         if (mode === '0') return {mode, notice};
         const image = await root.fetch('/ic-web/captcha?id=' + Date.now(), {credentials: 'same-origin', headers: storedUser().token ? {token: storedUser().token} : {}});
         if (!image.ok) fail('验证码读取失败');
