@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 54,
-      "versionName": "0.54",
-      "size": 2525155,
-      "sha256": "d65f017075b4861518825ec2ad5d8ff36ae0b273baa522a9b346126d7a9b2dc5",
+      "versionCode": 55,
+      "versionName": "0.55",
+      "size": 2529251,
+      "sha256": "3c27d49f1da9c0f10d248a32a6ff82edb25e154b05912b75fa5dc3d9337a1af6",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/d65f017075b4861518825ec2ad5d8ff36ae0b273baa522a9b346126d7a9b2dc5/offloor.apk",
-      "notes": "fix: guard concurrent connect loops and harden roomMenu/lab/kind fallback (v0.54)"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/3c27d49f1da9c0f10d248a32a6ff82edb25e154b05912b75fa5dc3d9337a1af6/offloor.apk",
+      "notes": "v0.55: fix study room reserve filter params and normalize ms timestamps"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
