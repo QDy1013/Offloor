@@ -382,6 +382,111 @@ async function main() {
         assert.match(planSource, /MAX_SLOTS = 288/);
     });
 
+    // ---------- 回归：双校区不早退聚合、混合轴落空补查、无参菜单兜底与 UI 常驻双校区选项 ----------
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [{id: 10, sysKind: 0, name: '全校研修室', children: [{id: 11, name: '友谊校区研修间', children: []}]}]})};
+            }
+            if (url.startsWith('/ic-web/kind')) {
+                return {ok: true, json: async () => ({code: 0, data: [{kindId: 11, name: '友谊校区研修间'}]})};
+            }
+            if (url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: [{labId: 22, name: '长安校区图书馆七层'}]})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('kindIds') === '11') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, devName: '研修间1(南501)', labName: '友谊校区图书馆东馆五层'})], count: 1})};
+                }
+                if (q.get('labId') === '22') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 701, devName: '研修间701', labName: '长安校区图书馆七层'})], count: 1})};
+                }
+                return {ok: true, json: async () => ({code: 1, message: '参数不能全为空'})};
+            }
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('partial single-campus kindIds result still merges ChangAn rooms from labs axis', () => {
+        assert.equal(result.rooms.length, 2);
+        assert.ok(result.rooms.some(r => r.location.includes('友谊校区')));
+        assert.ok(result.rooms.some(r => r.location.includes('长安校区')));
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {id: 1, sysKind: 0, name: '长安校区图书馆', children: [{id: 71, name: '长安七层研修间', children: []}]},
+                    {id: 2, sysKind: 1, name: '友谊校区图书馆', children: [{id: 51, name: '友谊五层研修间', children: []}]},
+                ]})};
+            }
+            if (url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('kindIds') && q.get('kindIds').includes(',')) {
+                    return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+                }
+                if (q.get('kindIds') === '51') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 502, devName: '南502', labName: '友谊校区图书馆东馆五层'})], count: 1})};
+                }
+                if (q.get('kindIds') === '71') {
+                    return {ok: true, json: async () => ({code: 0, data: [], count: 0})};
+                }
+                if (q.get('labId') === '71') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 702, devName: '702', labName: '长安校区图书馆七层'})], count: 1})};
+                }
+                return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+            }
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('missed ChangAn leaf retries via labId and keeps sysKind=0 tree nodes', () => {
+        assert.equal(result.rooms.length, 2);
+        assert.ok(result.rooms.some(r => r.location.includes('长安校区')));
+        assert.ok(result.rooms.some(r => r.location.includes('友谊校区')));
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('sysKind') === '1') {
+                    return {ok: true, json: async () => ({code: 0, data: [{id: 51, sysKind: 1, name: '友谊校区研修室', children: []}]})};
+                }
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {id: 51, sysKind: 1, name: '友谊校区研修室', children: []},
+                    {id: 72, sysKind: 0, name: '长安校区研修室', children: []},
+                    {id: 88, sysKind: 8, name: '长安校区座位', children: []},
+                ]})};
+            }
+            if (url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('kindIds') === '51') return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 503, labName: '友谊校区图书馆'})], count: 1})};
+                if (q.get('kindIds') === '72') return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 703, labName: '长安校区图书馆七层'})], count: 1})};
+                if (q.get('kindIds') === '88') throw new Error('must not query sysKind=8 seat leaf');
+                return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+            }
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('unfiltered menu fallback finds ChangAn campus while filtering out sysKind=8 seats', () => {
+        assert.equal(result.rooms.length, 2);
+        assert.ok(result.rooms.some(r => r.location.includes('长安校区')));
+        assert.ok(result.rooms.some(r => r.location.includes('友谊校区')));
+    });
+
+    check('campus strip always exposes ChangAn and Friendship choices with empty-state diagnostics', () => {
+        assert.match(activity, /keys\.add\("长安校区"\);\s*keys\.add\("友谊校区"\);/);
+        assert.match(activity, /emptyCampusCard\(/);
+        assert.match(activity, /formatDiag\(/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

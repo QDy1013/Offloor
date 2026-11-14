@@ -94,6 +94,7 @@
     const numeric = v => v !== null && v !== undefined && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : NaN;
     function safeRoom(raw, date) {
         if (!raw || !id(raw.devId)) return null;
+        if (raw.classKind != null && raw.classKind !== '' && Number(raw.classKind) > 1) return null;
         const rule = raw.resvRule;
         let open = ([raw.openTimes, raw.openTime, raw.openTimeList, raw.devOpenTime].find(a => Array.isArray(a) && a.length > 0) || [])
             .map(x => ({slot: x, scopeLimit: undefined}));
@@ -194,79 +195,117 @@
         }
         return {begin: date + ' ' + start.slice(0, 5) + ':00', end: date + ' ' + end.slice(0, 5) + ':00'};
     }
-    function walkMenu(nodes, parentId, out) {
+    function campusTag(value) {
+        const text = String(value || '');
+        if (text.includes('长安')) return '长安校区';
+        if (text.includes('友谊')) return '友谊校区';
+        if (text.includes('太仓')) return '太仓校区';
+        return '';
+    }
+    function nodeCampus(item) {
+        if (!item || typeof item !== 'object') return '';
+        for (const f of [item.campusName, item.campus, item.labName, item.kindName, item.roomName, item.devName, item.name, item.title, item.label]) {
+            const c = campusTag(f);
+            if (c) return c;
+        }
+        return '';
+    }
+    function walkMenu(nodes, parentId, out, inheritedCampus) {
         if (!nodes) return;
         if (!Array.isArray(nodes)) {
-            if (typeof nodes === 'object') walkMenu([nodes], parentId, out);
+            if (typeof nodes === 'object') walkMenu([nodes], parentId, out, inheritedCampus);
             return;
         }
         for (const n of nodes) {
             if (!n || typeof n !== 'object') continue;
-            if (n.sysKind != null && n.sysKind !== '' && Number(n.sysKind) !== 1) continue;
-            if (id(n.kindId)) out.kindIds.add(String(n.kindId));
-            if (id(n.labId)) out.labIds.add(String(n.labId));
-            if (id(n.roomId)) out.roomIds.add(String(n.roomId));
-            if (id(n.devId)) out.devIds.add(String(n.devId));
+            const sk = n.sysKind != null && n.sysKind !== '' ? Number(n.sysKind) : NaN;
+            if (Number.isFinite(sk) && sk > 1) continue;
+            const c = nodeCampus(n) || inheritedCampus || '';
+            if (c) out.menuCampuses.add(c);
+            const recordId = (val, set) => {
+                if (!id(val)) return '';
+                const s = String(val);
+                if (set) set.add(s);
+                if (c) out.idCampus.set(s, c);
+                return s;
+            };
+            const kindId = recordId(n.kindId, out.kindIds);
+            const labId = recordId(n.labId, out.labIds);
+            const roomId = recordId(n.roomId, out.roomIds);
+            const devId = recordId(n.devId, out.devIds);
             const selfId = id(n.id) ? String(n.id) : '';
+            if (c && selfId) out.idCampus.set(selfId, c);
             const pId = parentId || (id(n.parentId) ? String(n.parentId) : '');
-            const kids = [n.children, n.childList, n.list, n.rooms, n.labs, n.kinds, n.devs, n.data].find(a => Array.isArray(a) && a.length > 0);
+            const kids = [n.children, n.childList, n.subList, n.sonList, n.nodes, n.list, n.rooms, n.roomList,
+                n.labs, n.kinds, n.devs, n.devList, n.data].find(a => Array.isArray(a) && a.length > 0);
             if (kids) {
                 if (selfId) out.parentIds.add(selfId);
-                walkMenu(kids, selfId || pId, out);
+                walkMenu(kids, selfId || pId, out, c);
             } else if (selfId) {
                 out.leafIds.add(selfId);
-                out.leaves.push({id: selfId, parentId: pId});
+                const key = selfId + '|' + pId;
+                if (!out.seenLeaves.has(key)) {
+                    out.seenLeaves.add(key);
+                    out.leaves.push({id: selfId, parentId: pId, kindId, labId, roomId, devId, campus: c});
+                }
             }
         }
     }
     async function loadMenu() {
-        const out = {kindIds: new Set(), labIds: new Set(), roomIds: new Set(), devIds: new Set(), parentIds: new Set(), leafIds: new Set(), leaves: []};
-        try {
-            const m = await request('roomMenu', {sysKind: 1});
-            walkMenu(m && m.data, '', out);
-        } catch (_) {}
-        if (!out.leafIds.size && !out.kindIds.size && !out.labIds.size && !out.roomIds.size) {
-            try {
-                const m = await request('roomMenu');
-                walkMenu(m && m.data, '', out);
-            } catch (_) {}
+        const out = {kindIds: new Set(), labIds: new Set(), roomIds: new Set(), devIds: new Set(),
+            parentIds: new Set(), leafIds: new Set(), seenLeaves: new Set(), leaves: [], menuCampuses: new Set(), idCampus: new Map()};
+        const ingestList = (res, primaryKey, targetSet) => {
+            for (const x of array(res && res.data)) {
+                if (!x || typeof x !== 'object') continue;
+                const sk = x.sysKind != null && x.sysKind !== '' ? Number(x.sysKind) : NaN;
+                if (Number.isFinite(sk) && sk > 1) continue;
+                const c = nodeCampus(x);
+                if (c) out.menuCampuses.add(c);
+                const record = (val, set) => {
+                    if (!id(val)) return;
+                    const s = String(val);
+                    if (set) set.add(s);
+                    if (c) out.idCampus.set(s, c);
+                };
+                record(x[primaryKey] || x.id, targetSet);
+                record(x.kindId, out.kindIds);
+                record(x.labId, out.labIds);
+                record(x.roomId, out.roomIds);
+            }
+        };
+        try { const m = await request('roomMenu', {sysKind: 1}); walkMenu(m && m.data, '', out, ''); } catch (_) {}
+        try { ingestList(await request('kind', {sysKind: 1}), 'kindId', out.kindIds); } catch (_) {}
+        try { ingestList(await request('lab', {sysKind: 1}), 'labId', out.labIds); } catch (_) {}
+        // sysKind=1 仅返回一个校区（或漏掉某些节点）时，补查无参菜单并过滤非研修室节点。
+        if (!out.menuCampuses.has('长安校区') || !out.menuCampuses.has('友谊校区')) {
+            try { const m = await request('roomMenu'); walkMenu(m && m.data, '', out, ''); } catch (_) {}
+            try { ingestList(await request('kind'), 'kindId', out.kindIds); } catch (_) {}
+            try { ingestList(await request('lab'), 'labId', out.labIds); } catch (_) {}
         }
-        try {
-            const k = await request('kind', {sysKind: 1});
-            for (const x of (k && Array.isArray(k.data) ? k.data : [])) {
-                const v = x && (x.kindId || x.id);
-                if (id(v)) out.kindIds.add(String(v));
-            }
-        } catch (_) {}
-        try {
-            const l = await request('lab', {sysKind: 1});
-            for (const x of (l && Array.isArray(l.data) ? l.data : [])) {
-                const v = x && (x.labId || x.id);
-                if (id(v)) out.labIds.add(String(v));
-            }
-        } catch (_) {}
         if (!out.leafIds.size && !out.kindIds.size && !out.labIds.size && !out.roomIds.size) {
-            try {
-                const sm = await request('seatMenu');
-                walkMenu(sm && sm.data, '', out);
-            } catch (_) {}
+            try { const sm = await request('seatMenu'); walkMenu(sm && sm.data, '', out, ''); } catch (_) {}
         }
         return out;
     }
-    async function tryBatch(items, buildParams) {
-        const list = (items || []).filter(Boolean).slice(0, 40);
-        if (!list.length) return null;
-        let firstParams = null, firstRes = null, startIdx = 0;
-        while (startIdx < list.length) {
-            firstParams = buildParams(list[startIdx]);
-            if (firstParams) break;
-            startIdx += 1;
+    function roomKey(item) {
+        return String(item.devId || item.roomId || item.id || JSON.stringify(item));
+    }
+    function hasBothCampuses(rowsOrSet) {
+        if (rowsOrSet instanceof Set) return rowsOrSet.has('长安校区') && rowsOrSet.has('友谊校区');
+        let c1 = false, c2 = false;
+        for (const r of array(rowsOrSet)) {
+            const c = nodeCampus(r);
+            if (c === '长安校区') c1 = true;
+            else if (c === '友谊校区') c2 = true;
+            if (c1 && c2) return true;
         }
-        if (!firstParams) return null;
-        try { firstRes = await request('reserve', firstParams); } catch (_) { return null; }
-        if (!firstRes || !Array.isArray(firstRes.data)) return null;
-        const merged = [], seen = new Set();
-        let more = false;
+        return false;
+    }
+    async function tryBatch(items, buildParams) {
+        const list = (items || []).filter(Boolean).slice(0, 60);
+        if (!list.length) return null;
+        const merged = [], seen = new Set(), missed = [];
+        let more = false, anyValid = false, leadErrs = 0, lastErr = null;
         const trackMore = (params, res) => {
             const ps = Number(params && params.pageSize) || 30;
             const pg = Number(params && params.page) || 1;
@@ -274,29 +313,69 @@
             if (arr.length >= ps || (res && Number.isFinite(res.count) && pg * ps < res.count)) more = true;
         };
         const append = arr => {
-            for (const item of (Array.isArray(arr) ? arr : [])) {
+            for (const item of array(arr)) {
                 if (!item || typeof item !== 'object') continue;
-                const k = String(item.devId || item.roomId || item.id || JSON.stringify(item));
+                const k = roomKey(item);
                 if (!seen.has(k)) { seen.add(k); merged.push(item); }
             }
         };
-        append(firstRes.data);
-        trackMore(firstParams, firstRes);
-        for (let i = startIdx + 1; i < list.length; i += 1) {
-            const p = buildParams(list[i]);
+        for (const item of list) {
+            const p = buildParams(item);
             if (!p) continue;
             try {
                 const r = await request('reserve', p);
-                if (r && Array.isArray(r.data)) { append(r.data); trackMore(p, r); }
-            } catch (_) {}
+                if (r && Array.isArray(r.data)) {
+                    anyValid = true;
+                    leadErrs = 0;
+                    if (r.data.length > 0) append(r.data);
+                    else missed.push(item);
+                    trackMore(p, r);
+                } else {
+                    missed.push(item);
+                }
+            } catch (e) {
+                lastErr = e;
+                missed.push(item);
+                if (!anyValid && ++leadErrs >= 3) break;
+            }
         }
-        return {code: 0, data: merged, count: merged.length, more};
+        if (!anyValid) return {ok: false, error: lastErr, missed};
+        return {ok: true, data: merged, count: merged.length, more, missed};
     }
     async function queryReserve(key, page) {
-        let firstErr = null;
-        try { return await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
+        let firstErr = null, firstRes = null;
+        try { firstRes = await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
         catch (e) { firstErr = e; }
+        if (firstRes && Array.isArray(firstRes.data) && firstRes.data.length > 0 && hasBothCampuses(firstRes.data)) {
+            return {res: firstRes, out: null};
+        }
         const out = await loadMenu();
+        const hasMenu = !!(out.leafIds.size || out.kindIds.size || out.labIds.size || out.roomIds.size || out.parentIds.size || out.devIds.size);
+        if (firstRes && Array.isArray(firstRes.data) && (!hasMenu || page > 1)) {
+            return {res: firstRes, out};
+        }
+        const agg = {items: [], seen: new Set(), more: false, count: null, campuses: new Set(), anyEmpty: false, multiBatch: false};
+        const mergeInto = (res, fromBatch) => {
+            if (!res || !Array.isArray(res.data)) return;
+            if (res.data.length === 0) agg.anyEmpty = true;
+            for (const item of res.data) {
+                if (!item || typeof item !== 'object') continue;
+                const c = nodeCampus(item) || out.idCampus.get(String(item.labId || '')) || out.idCampus.get(String(item.kindId || '')) || '';
+                if (c) agg.campuses.add(c);
+                if (c && !item.campusName && !item.campus) item.campusName = c;
+                const k = roomKey(item);
+                if (!agg.seen.has(k)) { agg.seen.add(k); agg.items.push(item); }
+            }
+            if (fromBatch) {
+                agg.multiBatch = true;
+                if (res.more) agg.more = true;
+            } else {
+                const ps = 40;
+                if (res.data.length >= ps || (Number.isFinite(res.count) && page * ps < res.count)) agg.more = true;
+                if (agg.count == null && Number.isFinite(res.count)) agg.count = res.count;
+            }
+        };
+        if (firstRes && Array.isArray(firstRes.data)) mergeInto(firstRes, false);
         const kinds = [...out.kindIds], labs = [...out.labIds], rooms = [...out.roomIds];
         const devs = [...out.devIds], leaves = [...out.leafIds], parents = [...out.parentIds];
         const singleAttempts = [];
@@ -318,51 +397,94 @@
         }
         if (leaves.length && !rooms.length) singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, roomIds: leaves.join(',')});
         if (devs.length) singleAttempts.push({sysKind: 1, resvDates: key, devIds: devs.join(',')});
-        let lastErr = firstErr, emptyRes = null;
+        let lastErr = firstErr;
         for (const params of singleAttempts) {
             try {
                 const res = await request('reserve', params);
                 if (res && Array.isArray(res.data)) {
-                    if (res.data.length > 0 || page > 1) return res;
-                    if (!emptyRes) emptyRes = res;
+                    mergeInto(res, false);
+                    // 仅当两个校区都已拿到，或没有任何其他维度的待查列表时，才直接结束。
+                    const moreAxes = labs.length > 0 || kinds.length > 1 || leaves.length > 1 || parents.length > 0;
+                    if ((res.data.length > 0 || page > 1) && (hasBothCampuses(agg.campuses) || !moreAxes)) {
+                        return {res: {code: 0, data: agg.items, count: agg.multiBatch ? agg.items.length : (agg.count != null ? Math.max(agg.count, agg.items.length) : agg.items.length), more: agg.more}, out};
+                    }
                 }
             } catch (err) { lastErr = err; }
         }
-        const batchPlans = [
-            [out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id, labId: ''})],
-            [out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id})],
-            [out.leaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id, labId: leaf.parentId} : null)],
-            [out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: leaf.id})],
-            [out.leaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.parentId, labId: leaf.id} : null)],
-            [kinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''})],
-            [kinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k})],
-            [labs, l => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: l})],
-            [parents, p => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: p})],
-            [parents, p => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: p, labId: ''})],
-            [rooms, r => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: r})],
-            [out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: leaf.id})],
-            [out.leaves, leaf => ({resvDates: key, sysKind: 1, roomIds: leaf.id})],
-            [devs, d => ({sysKind: 1, resvDates: key, devIds: d})],
-            [out.leaves, leaf => ({sysKind: 1, resvDates: key, devIds: leaf.id})],
-        ];
-        for (const [items, fn] of batchPlans) {
+        const runPlan = async (items, fn) => {
+            if (!items || !items.length) return [];
             const res = await tryBatch(items, fn);
-            if (res && Array.isArray(res.data)) {
-                if (res.data.length > 0 || page > 1) return res;
-                if (!emptyRes) emptyRes = res;
+            if (!res || !res.ok) { if (res && res.error) lastErr = res.error; return items; }
+            mergeInto(res, true);
+            return res.missed;
+        };
+        // 先按叶子节点/类目查，若有未命中的叶子或仍缺校区，再补查独立 kindIds、labIds 与房间维度并合并去重。
+        let missedLeaves = await runPlan(out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.kindId || leaf.id, labId: leaf.labId || ''}));
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id, labId: leaf.parentId} : null));
+        }
+        if (kinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            const extraKinds = kinds.filter(k => !out.leafIds.has(k));
+            const kList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
+            const missedKinds = await runPlan(kList, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''}));
+            if (missedKinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+                await runPlan(missedKinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k}));
             }
         }
-        if (emptyRes) return emptyRes;
+        if (labs.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            await runPlan(labs, l => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: l}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: leaf.labId || leaf.id}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.parentId, labId: leaf.id} : null));
+        }
+        if (parents.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            const extraParents = parents.filter(p => !out.labIds.has(p));
+            const missedParents = await runPlan(extraParents.length ? extraParents : parents, p => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: p}));
+            if (missedParents.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+                await runPlan(missedParents, p => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: p, labId: ''}));
+            }
+        }
+        if (rooms.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            await runPlan(rooms, r => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: r}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: leaf.roomId || leaf.id}));
+            if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+                missedLeaves = await runPlan(missedLeaves, leaf => ({resvDates: key, sysKind: 1, roomIds: leaf.roomId || leaf.id}));
+            }
+        }
+        if (devs.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            await runPlan(devs, d => ({sysKind: 1, resvDates: key, devIds: d}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, devIds: leaf.devId || leaf.id}));
+        }
+        if (agg.items.length || agg.anyEmpty) {
+            return {res: {code: 0, data: agg.items, count: agg.multiBatch ? agg.items.length : (agg.count != null ? agg.count : agg.items.length), more: agg.more}, out};
+        }
         throw lastErr || firstErr;
     }
     async function query(args, account) {
         await identity(account); const date = clean(args.date, 10), key = dateKey(date);
         rooms.clear();
-        const result = await queryReserve(key, args.page || 1);
+        const {res: result, out} = await queryReserve(key, args.page || 1);
         const items = array(result.data), safe = [];
         for (const raw of items) { const room = safeRoom(raw, date); if (room) { rooms.set(String(room.id), raw); safe.push(room); } }
+        const diag = out ? {
+            kinds: out.kindIds.size,
+            labs: out.labIds.size,
+            leaves: out.leaves.length,
+            menuCampuses: [...out.menuCampuses],
+            roomCampuses: [...new Set(safe.map(r => nodeCampus(r)).filter(Boolean))]
+        } : null;
         return {rooms: safe, date, count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1,
-            more: typeof result.more === 'boolean' ? result.more : null};
+            more: typeof result.more === 'boolean' ? result.more : null, diag};
     }
     function cancellable(row, user) { const state = row && numeric(row.resvStatus); return !!row && row.classKind === 1 && same(row.appAccNo, user.accNo) && Number.isSafeInteger(state) && state >= 0 && !(state & 4) && !(state & 128) && typeof row.uuid === 'string' && id(row.uuid); }
     function status(value) {

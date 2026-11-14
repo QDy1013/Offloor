@@ -45,7 +45,7 @@ public class StudyRoomActivity extends Activity {
     private boolean ready, busy, mine, active, reconciled, pageMore = true;
     private int page = 1, epoch, count = -1;
     private long updatedAt;
-    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "";
+    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "";
     private JSONArray rows;
     /** 本人已有预约，用来提示和自己的安排撞车；本页只读一次。 */
     private JSONArray myBookings;
@@ -215,7 +215,7 @@ public class StudyRoomActivity extends Activity {
         } else {
             dateStrip();
             LinkedHashMap<String, List<JSONObject>> grouped = groupRooms();
-            String activeCampus = grouped.containsKey(selectedCampus) ? selectedCampus : "";
+            String activeCampus = isCampusChoice(grouped, selectedCampus) ? selectedCampus : "";
             campusStrip(grouped, activeCampus);
             roomGroups(grouped, activeCampus);
         }
@@ -349,13 +349,22 @@ public class StudyRoomActivity extends Activity {
         return ordered;
     }
 
+    private boolean isCampusChoice(LinkedHashMap<String, List<JSONObject>> grouped, String key) {
+        return !key.isEmpty() && ("长安校区".equals(key) || "友谊校区".equals(key) || grouped.containsKey(key));
+    }
+
     private void campusStrip(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus) {
-        if (rows == null || rows.length() == 0 || grouped.isEmpty()) return;
+        if (rows == null) return;
         LinearLayout line = horizontalScroll(body, 12);
         addCampusChip(line, "", "全部 " + rows.length(), activeCampus.isEmpty());
-        for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
-            String name = entry.getKey();
-            addCampusChip(line, name, name + " " + entry.getValue().size(), name.equals(activeCampus));
+        List<String> keys = new ArrayList<>();
+        keys.add("长安校区");
+        keys.add("友谊校区");
+        for (String name : grouped.keySet()) if (!keys.contains(name)) keys.add(name);
+        for (String name : keys) {
+            List<JSONObject> list = grouped.get(name);
+            int n = list == null ? 0 : list.size();
+            addCampusChip(line, name, name + " " + n, name.equals(activeCampus));
         }
     }
 
@@ -375,16 +384,53 @@ public class StudyRoomActivity extends Activity {
             if (!busy) body.addView(text("暂时没有数据，点右上角刷新重试", 13, Ui.SUB, false));
             return;
         }
-        if (rows.length() == 0) { emptyCard(); return; }
-        if (!activeCampus.isEmpty() && grouped.containsKey(activeCampus)) {
+        if (!activeCampus.isEmpty()) {
             List<JSONObject> items = grouped.get(activeCampus);
-            campusHeading(activeCampus, items);
-            for (JSONObject row : items) roomCard(row);
+            if (items != null && !items.isEmpty()) {
+                campusHeading(activeCampus, items);
+                for (JSONObject row : items) roomCard(row);
+            } else {
+                campusHeading(activeCampus, java.util.Collections.emptyList());
+                emptyCampusCard(activeCampus);
+            }
             return;
         }
+        if (rows.length() == 0) { emptyCard(); return; }
         for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
             campusHeading(entry.getKey(), entry.getValue());
             for (JSONObject row : entry.getValue()) roomCard(row);
+        }
+        if (!grouped.containsKey("长安校区") || !grouped.containsKey("友谊校区")) {
+            String missing = !grouped.containsKey("长安校区") && !grouped.containsKey("友谊校区")
+                    ? "长安校区与友谊校区" : (!grouped.containsKey("长安校区") ? "长安校区" : "友谊校区");
+            LinearLayout note = card();
+            note.addView(text("本次未从校方接口读到" + missing + "的研修室", 13, Ui.SUB, true));
+            if (!queryDiag.isEmpty()) {
+                CourseUi.gap(note, 4);
+                note.addView(text(queryDiag, 12, Ui.MUTE, false));
+            }
+        }
+    }
+
+    private void emptyCampusCard(String campusName) {
+        LinearLayout c = card();
+        c.addView(text(campusName + " 这一天没有查到研修室", 15, Ui.TEXT, true));
+        CourseUi.gap(c, 6);
+        c.addView(text(rows != null && rows.length() > 0
+                ? "校方这次只返回了其他校区的研修室，或该校区今天暂无可显示的房间。"
+                : "本页为空不代表其他日期也满，可以换个日期或刷新再试。", 12, Ui.SUB, false));
+        if (!queryDiag.isEmpty()) {
+            CourseUi.gap(c, 6);
+            c.addView(text(queryDiag, 12, Ui.MUTE, false));
+        }
+        if (rows != null && rows.length() > 0) {
+            action(c, "查看全部校区", () -> {
+                selectedCampus = "";
+                campusPrefs().edit().putString("campus", selectedCampus).apply();
+                render();
+            });
+        } else {
+            action(c, "换个日期", this::chooseDate);
         }
     }
 
@@ -666,11 +712,35 @@ public class StudyRoomActivity extends Activity {
         return out;
     }
 
+    private static String formatDiag(JSONObject diag) {
+        if (diag == null) return "";
+        String menu = joinArray(diag.optJSONArray("menuCampuses"));
+        String got = joinArray(diag.optJSONArray("roomCampuses"));
+        return "校方菜单：类目 " + diag.optInt("kinds") + " · 区域 " + diag.optInt("labs")
+                + " · 分支 " + diag.optInt("leaves")
+                + (menu.isEmpty() ? "" : " · 菜单含[" + menu + "]")
+                + (got.isEmpty() ? "" : " · 返回[" + got + "]");
+    }
+
+    private static String joinArray(JSONArray arr) {
+        if (arr == null || arr.length() == 0) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < arr.length(); i++) {
+            String s = arr.optString(i, "").trim();
+            if (s.isEmpty()) continue;
+            if (sb.length() > 0) sb.append("/");
+            sb.append(s);
+        }
+        return sb.toString();
+    }
+
     private void query() {
         pageMore = true;
+        if (!mine) queryDiag = "";
         call(mine ? "mine" : "query", args("date", date, "page", page), result -> {
             rows = result.optJSONArray(mine ? "bookings" : "rooms");
             if (mine && rows != null) reconciled = true;
+            else if (!mine) queryDiag = formatDiag(result.optJSONObject("diag"));
             count = result.has("count") ? result.optInt("count", -1) : -1;
             pageMore = !result.has("more") || result.isNull("more") || result.optBoolean("more", true);
             updatedAt = System.currentTimeMillis();
