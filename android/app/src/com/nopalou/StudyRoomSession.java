@@ -72,7 +72,7 @@ final class StudyRoomSession {
                 @Override public void onReceivedError(WebView v,android.webkit.WebResourceRequest r,android.webkit.WebResourceError e) { if (r.isForMainFrame()) fail("校方系统连接失败，请重新连接"); }
             });
             deadline=SystemClock.elapsedRealtime()+25_000; spaWaitUntil=0;
-            web.loadUrl(LOGIN); handler.postDelayed(connect,200);
+            web.loadUrl(HOME); handler.postDelayed(connect,200);
         } catch (Exception e) { fail("研修室会话暂时无法启动"); }
     }
     private final Runnable connect=new Runnable() { public void run() {
@@ -168,14 +168,17 @@ final class StudyRoomSession {
         deadline=SystemClock.elapsedRealtime()+25_000; spaWaitUntil=0;
         web.evaluateJavascript("window.__louStudyReady=null;window.__louStudyConnecting=false;",null);
         String url=web.getUrl();
-        if (!allowed(url)) web.loadUrl(LOGIN);
+        String path=url==null?null:Uri.parse(url).getPath();
+        if (!allowed(url) || (path!=null && path.startsWith("/authcenter/"))) web.loadUrl(HOME);
         handler.postDelayed(connect,150);
     }
     void openOfficial(Runnable returned) {
         if (web==null || official!=null || stopped) return;
         busy=false; ready=false; pending=null; ++generation; handler.removeCallbacksAndMessages(null);
         if (web.getParent() instanceof ViewGroup) ((ViewGroup)web.getParent()).removeView(web);
-        if (!allowed(web.getUrl())) web.loadUrl(LOGIN);
+        String url=web.getUrl();
+        String path=url==null?null:Uri.parse(url).getPath();
+        if (!allowed(url) || (path!=null && path.startsWith("/authcenter/"))) web.loadUrl(HOME);
         int theme=Ui.dark?android.R.style.Theme_DeviceDefault_NoActionBar:android.R.style.Theme_DeviceDefault_Light_NoActionBar;
         android.app.Dialog dialog=new android.app.Dialog(host,theme);
         android.widget.LinearLayout root=CourseUi.column(host);
