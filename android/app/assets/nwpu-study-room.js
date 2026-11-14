@@ -4,6 +4,7 @@
     if (root.NwpuStudyRoom) { if (typeof module !== 'undefined') module.exports = root.NwpuStudyRoom; return; }
     const ORIGIN = 'https://ic.nwpu.edu.cn';
     let busy = false, rooms = new Map(), bookings = new Map(), members = new Map();
+    let verifiedUser = null, cachedMenu = null, unfilteredRejectedToken = '';
     const clean = (v, max = 180) => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
     const id = v => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0) || (typeof v === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(v));
     const same = (a, b) => String(a) === String(b);
@@ -25,10 +26,19 @@
         if (result.code !== 0) { const e = new Error(clean(result.message) || '校方未接受本次请求'); e.definite = true; throw e; }
         return result;
     }
-    async function identity(account) {
+    async function identity(account, forceFresh) {
+        const curToken = storedUser().token || '';
+        if (!forceFresh && verifiedUser && verifiedUser.token && curToken === verifiedUser.token
+            && same(verifiedUser.account, account) && (Date.now() - verifiedUser.at) < 60000) {
+            return verifiedUser.user;
+        }
         const response = await request('auth/userInfo');
         const user = response.data;
-        if (!user || !id(user.accNo) || !same(user.logonName, account)) fail('校园账号与预约账号不一致，请重新连接');
+        if (!user || !id(user.accNo) || !same(user.logonName, account)) {
+            verifiedUser = null;
+            fail('校园账号与预约账号不一致，请重新连接');
+        }
+        verifiedUser = curToken ? {account: String(account), token: curToken, user, at: Date.now()} : null;
         return user;
     }
     function dateKey(date) {
@@ -252,6 +262,10 @@
         }
     }
     async function loadMenu() {
+        const curToken = storedUser().token || '';
+        if (cachedMenu && curToken && cachedMenu.token === curToken && (Date.now() - cachedMenu.at) < 300000) {
+            return cachedMenu.out;
+        }
         const out = {kindIds: new Set(), labIds: new Set(), roomIds: new Set(), devIds: new Set(),
             parentIds: new Set(), leafIds: new Set(), seenLeaves: new Set(), leaves: [], menuCampuses: new Set(), idCampus: new Map()};
         const ingestList = (res, primaryKey, targetSet) => {
@@ -273,17 +287,33 @@
                 record(x.roomId, out.roomIds);
             }
         };
-        try { const m = await request('roomMenu', {sysKind: 1}); walkMenu(m && m.data, '', out, ''); } catch (_) {}
-        try { ingestList(await request('kind', {sysKind: 1}), 'kindId', out.kindIds); } catch (_) {}
-        try { ingestList(await request('lab', {sysKind: 1}), 'labId', out.labIds); } catch (_) {}
-        // sysKind=1 仅返回一个校区（或漏掉某些节点）时，补查无参菜单并过滤非研修室节点。
+        const safeGet = (p, params) => request(p, params).catch(() => null);
+        // 并行拉取菜单/类目/区域，避免串行等待叠加延迟。
+        const [rm1, k1, l1] = await Promise.all([
+            safeGet('roomMenu', {sysKind: 1}),
+            safeGet('kind', {sysKind: 1}),
+            safeGet('lab', {sysKind: 1})
+        ]);
+        if (rm1) walkMenu(rm1.data, '', out, '');
+        if (k1) ingestList(k1, 'kindId', out.kindIds);
+        if (l1) ingestList(l1, 'labId', out.labIds);
+        // sysKind=1 仅返回一个校区（或漏掉某些节点）时，并列补查无参菜单并过滤非研修室节点。
         if (!out.menuCampuses.has('长安校区') || !out.menuCampuses.has('友谊校区')) {
-            try { const m = await request('roomMenu'); walkMenu(m && m.data, '', out, ''); } catch (_) {}
-            try { ingestList(await request('kind'), 'kindId', out.kindIds); } catch (_) {}
-            try { ingestList(await request('lab'), 'labId', out.labIds); } catch (_) {}
+            const [rm0, k0, l0] = await Promise.all([
+                safeGet('roomMenu'),
+                safeGet('kind'),
+                safeGet('lab')
+            ]);
+            if (rm0) walkMenu(rm0.data, '', out, '');
+            if (k0) ingestList(k0, 'kindId', out.kindIds);
+            if (l0) ingestList(l0, 'labId', out.labIds);
         }
         if (!out.leafIds.size && !out.kindIds.size && !out.labIds.size && !out.roomIds.size) {
-            try { const sm = await request('seatMenu'); walkMenu(sm && sm.data, '', out, ''); } catch (_) {}
+            const sm = await safeGet('seatMenu');
+            if (sm) walkMenu(sm.data, '', out, '');
+        }
+        if (curToken && (out.leafIds.size || out.kindIds.size || out.labIds.size || out.roomIds.size || out.parentIds.size || out.devIds.size)) {
+            cachedMenu = {token: curToken, at: Date.now(), out};
         }
         return out;
     }
@@ -302,10 +332,38 @@
         return false;
     }
     async function tryBatch(items, buildParams) {
-        const list = (items || []).filter(Boolean).slice(0, 60);
-        if (!list.length) return null;
+        const pairs = [];
+        for (const item of (items || [])) {
+            if (!item) continue;
+            const p = buildParams(item);
+            if (p) pairs.push({item, p});
+            if (pairs.length >= 60) break;
+        }
+        if (!pairs.length) return null;
+        const results = new Array(pairs.length).fill(null);
+        const runOne = async idx => {
+            try {
+                const r = await request('reserve', pairs[idx].p);
+                results[idx] = {ok: !!(r && Array.isArray(r.data)), res: r};
+            } catch (e) {
+                results[idx] = {ok: false, error: e};
+            }
+        };
+        // 先并发探测前两项以快速识别不接受该参数组合的接口，确认可行后以 4 路并发拉取并按原序合并。
+        const probeEnd = Math.min(2, pairs.length);
+        await Promise.all(Array.from({length: probeEnd}, (_, i) => runOne(i)));
+        if (probeEnd < pairs.length && results.slice(0, probeEnd).some(r => r && r.ok)) {
+            let cursor = probeEnd;
+            const workers = Array.from({length: Math.min(4, pairs.length - probeEnd)}, async () => {
+                while (cursor < pairs.length) {
+                    const idx = cursor++;
+                    await runOne(idx);
+                }
+            });
+            await Promise.all(workers);
+        }
         const merged = [], seen = new Set(), missed = [];
-        let more = false, anyValid = false, leadErrs = 0, lastErr = null;
+        let more = false, anyValid = false, lastErr = null;
         const trackMore = (params, res) => {
             const ps = Number(params && params.pageSize) || 30;
             const pg = Number(params && params.page) || 1;
@@ -319,33 +377,32 @@
                 if (!seen.has(k)) { seen.add(k); merged.push(item); }
             }
         };
-        for (const item of list) {
-            const p = buildParams(item);
-            if (!p) continue;
-            try {
-                const r = await request('reserve', p);
-                if (r && Array.isArray(r.data)) {
-                    anyValid = true;
-                    leadErrs = 0;
-                    if (r.data.length > 0) append(r.data);
-                    else missed.push(item);
-                    trackMore(p, r);
-                } else {
-                    missed.push(item);
-                }
-            } catch (e) {
-                lastErr = e;
-                missed.push(item);
-                if (!anyValid && ++leadErrs >= 3) break;
+        for (let i = 0; i < pairs.length; i += 1) {
+            const entry = results[i];
+            if (!entry) { missed.push(pairs[i].item); continue; }
+            if (entry.ok) {
+                anyValid = true;
+                if (entry.res.data.length > 0) append(entry.res.data);
+                else missed.push(pairs[i].item);
+                trackMore(pairs[i].p, entry.res);
+            } else {
+                if (entry.error) lastErr = entry.error;
+                missed.push(pairs[i].item);
             }
         }
         if (!anyValid) return {ok: false, error: lastErr, missed};
         return {ok: true, data: merged, count: merged.length, more, missed};
     }
     async function queryReserve(key, page) {
+        const curToken = storedUser().token || '';
         let firstErr = null, firstRes = null;
-        try { firstRes = await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
-        catch (e) { firstErr = e; }
+        if (!curToken || unfilteredRejectedToken !== curToken) {
+            try { firstRes = await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
+            catch (e) {
+                firstErr = e;
+                if (e && e.definite && curToken) unfilteredRejectedToken = curToken;
+            }
+        }
         if (firstRes && Array.isArray(firstRes.data) && firstRes.data.length > 0 && hasBothCampuses(firstRes.data)) {
             return {res: firstRes, out: null};
         }
@@ -381,35 +438,33 @@
         const singleAttempts = [];
         if (kinds.length) {
             singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds.join(','), labId: ''});
-            singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds.join(',')});
+            if (kinds.length === 1) singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds[0]});
         }
-        if (leaves.length) {
+        if (leaves.length && (kinds.length !== leaves.length || leaves.some(x => !out.kindIds.has(x)))) {
             singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: leaves.join(','), labId: ''});
-            singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: leaves.join(',')});
         }
         if (labs.length === 1) {
             singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, labId: labs[0]});
-            if (kinds.length) singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds.join(','), labId: labs[0]});
         }
-        if (rooms.length) {
-            singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, roomIds: rooms.join(',')});
-            singleAttempts.push({resvDates: key, sysKind: 1, roomIds: rooms.join(',')});
+        if (rooms.length === 1) {
+            singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, roomIds: rooms[0]});
         }
-        if (leaves.length && !rooms.length) singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, roomIds: leaves.join(',')});
-        if (devs.length) singleAttempts.push({sysKind: 1, resvDates: key, devIds: devs.join(',')});
+        if (devs.length === 1) singleAttempts.push({sysKind: 1, resvDates: key, devIds: devs[0]});
         let lastErr = firstErr;
         for (const params of singleAttempts) {
             try {
                 const res = await request('reserve', params);
                 if (res && Array.isArray(res.data)) {
                     mergeInto(res, false);
-                    // 仅当两个校区都已拿到，或没有任何其他维度的待查列表时，才直接结束。
                     const moreAxes = labs.length > 0 || kinds.length > 1 || leaves.length > 1 || parents.length > 0;
                     if ((res.data.length > 0 || page > 1) && (hasBothCampuses(agg.campuses) || !moreAxes)) {
                         return {res: {code: 0, data: agg.items, count: agg.multiBatch ? agg.items.length : (agg.count != null ? Math.max(agg.count, agg.items.length) : agg.items.length), more: agg.more}, out};
                     }
                 }
-            } catch (err) { lastErr = err; }
+            } catch (err) {
+                lastErr = err;
+                if (err && err.definite && params.kindIds && params.kindIds.includes(',')) break;
+            }
         }
         const runPlan = async (items, fn) => {
             if (!items || !items.length) return [];
@@ -418,14 +473,8 @@
             mergeInto(res, true);
             return res.missed;
         };
-        // 先按叶子节点/类目查，若有未命中的叶子或仍缺校区，再补查独立 kindIds、labIds 与房间维度并合并去重。
+        // 按「叶子类目 → 补充 kindIds → 校区区域 labIds → 未命中叶子改用 labId/roomIds/devIds」高命中顺序并发补查。
         let missedLeaves = await runPlan(out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.kindId || leaf.id, labId: leaf.labId || ''}));
-        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
-            missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id}));
-        }
-        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
-            missedLeaves = await runPlan(missedLeaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id, labId: leaf.parentId} : null));
-        }
         if (kinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             const extraKinds = kinds.filter(k => !out.leafIds.has(k));
             const kList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
@@ -436,6 +485,12 @@
         }
         if (labs.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             await runPlan(labs, l => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: l}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id}));
+        }
+        if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
+            missedLeaves = await runPlan(missedLeaves, leaf => (leaf.parentId ? {sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.id, labId: leaf.parentId} : null));
         }
         if (missedLeaves.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             missedLeaves = await runPlan(missedLeaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: leaf.labId || leaf.id}));
@@ -545,7 +600,7 @@
     }
     async function submit(args, account) {
         if (args.confirmed !== true || args.agreed !== true) fail('请阅读须知并确认预约');
-        const user = await identity(account), key = dateKey(args.date);
+        const user = await identity(account, true), key = dateKey(args.date);
         if (!id(args.id) || !rooms.has(String(args.id))) fail('请先查询并选择房间');
         const raw = await refreshRoom(args.id, key, rooms.get(String(args.id)));
         if (!raw) fail('该房间已不可预约，请重新查询');
@@ -570,16 +625,15 @@
     }
     async function cancel(args, account) {
         if (args.confirmed !== true || !id(args.uuid) || !bookings.has(String(args.uuid))) fail('请先查询并确认要取消的本人预约');
-        const user = await identity(account), row = bookings.get(String(args.uuid));
+        const user = await identity(account, true), row = bookings.get(String(args.uuid));
         if (!cancellable(row, user)) fail('该预约不满足取消条件，请重新查询');
         try { const result = await request('reserve/delete', {uuid: row.uuid}, true); bookings.delete(String(args.uuid)); return {success: true, message: clean(result.message) || '已取消，请刷新核对'}; }
         catch (e) { if (e.definite) throw e; return {unknown: true, message: '取消结果未确认，请先刷新我的预约，勿重复取消'}; }
     }
     async function captcha(args, account) {
         await identity(account);
-        const response = await request('sysConfig/public');
+        const [response, tip] = await Promise.all([request('sysConfig/public'), request('sysInfo', {sysKind: 1})]);
         const mode = response.data && String(response.data.resvCode);
-        const tip = await request('sysInfo', {sysKind: 1});
         let notice = '';
         if (Array.isArray(tip.data)) notice = tip.data.map(x => clean(x.content, 6000)).filter(Boolean).join('\n');
         else if (tip.data) notice = clean(tip.data.content, 6000);

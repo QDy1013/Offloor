@@ -487,6 +487,58 @@ async function main() {
         assert.match(activity, /formatDiag\(/);
     });
 
+    // ---------- 回归：连接与查询加速（隐藏网页禁图、目录与读态鉴权缓存、写前仍强制核身） ----------
+    let menuHits = 0, userHits = 0, unfilteredHits = 0;
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/auth/userInfo')) {
+                userHits += 1;
+                return {ok: true, json: async () => ({code: 0, data: {accNo: 10, logonName: 'owner'}})};
+            }
+            if (url.startsWith('/ic-web/roomMenu') || url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                menuHits += 1;
+                return url.startsWith('/ic-web/roomMenu')
+                    ? {ok: true, json: async () => ({code: 0, data: [
+                        {id: 51, sysKind: 1, name: '友谊校区', children: []},
+                        {id: 71, sysKind: 1, name: '长安校区', children: []}
+                    ]})}
+                    : {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (!q.get('kindIds')) {
+                    unfilteredHits += 1;
+                    return {ok: true, json: async () => ({code: 1, message: '参数不能全为空'})};
+                }
+                if (q.get('kindIds').includes(',')) return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+                if (q.get('kindIds') === '51') return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, kindId: 51, labName: '友谊校区图书馆'})], count: 1})};
+                if (q.get('kindIds') === '71') return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 123, kindId: 71, labName: '长安校区图书馆'})], count: 1})};
+                return {ok: true, json: async () => ({code: 0, data: [], count: 0})};
+            }
+        }
+    });
+    await h.api.run('ready', {}, 'owner');
+    await h.api.run('query', {date: DATE}, 'owner');
+    const firstMenuHits = menuHits, firstUserHits = userHits, firstUnfilteredHits = unfilteredHits;
+    await h.api.run('query', {date: '2026-11-13'}, 'owner');
+    check('subsequent date query reuses session menu, identity and parameter knowledge', () => {
+        assert.equal(firstUserHits, 1);
+        assert.equal(userHits, firstUserHits);
+        assert.equal(menuHits, firstMenuHits);
+        assert.equal(firstUnfilteredHits, 1);
+        assert.equal(unfilteredHits, 1);
+    });
+    await h.api.run('query', {date: DATE}, 'owner');
+    await h.api.run('submit', payload(), 'owner');
+    check('submit still verifies user identity live even when read identity cache is warm', () => {
+        assert.equal(userHits, firstUserHits + 1);
+    });
+    check('hidden session blocks network images until official dialog opens', () => {
+        assert.match(session, /setBlockNetworkImage\(true\)/);
+        assert.match(session, /setBlockNetworkImage\(false\)/);
+        assert.match(session, /onPageCommitVisible\(/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
