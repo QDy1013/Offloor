@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 60,
-      "versionName": "0.60",
+      "versionCode": 61,
+      "versionName": "0.61",
       "size": 2537443,
-      "sha256": "382219cfdc44c1ea78109a150fabca8941febdfaff50f52867581063ac3343cc",
+      "sha256": "c9c28df7d83b7a05c631820e4f9c53a3e04c53cee141bf1d0230eaa8857bdc24",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/382219cfdc44c1ea78109a150fabca8941febdfaff50f52867581063ac3343cc/offloor.apk",
-      "notes": "v0.60 fix study room missing-parameter errors on booking flow"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/c9c28df7d83b7a05c631820e4f9c53a3e04c53cee141bf1d0230eaa8857bdc24/offloor.apk",
+      "notes": "v0.61 fix sysInfo missing param and ChangAn kind discovery"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
