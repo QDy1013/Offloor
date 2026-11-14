@@ -120,10 +120,42 @@
         }
         return {begin: date + ' ' + start.slice(0, 5) + ':00', end: date + ' ' + end.slice(0, 5) + ':00'};
     }
+    function collectIds(nodes, out) {
+        if (!Array.isArray(nodes)) return;
+        for (const n of nodes) {
+            if (!n || typeof n !== 'object') continue;
+            if (n.sysKind != null && Number(n.sysKind) !== 1 && !Array.isArray(n.children)) continue;
+            if (id(n.roomId)) out.roomIds.add(String(n.roomId));
+            if (id(n.labId)) out.labIds.add(String(n.labId));
+            if (id(n.kindId)) out.kindIds.add(String(n.kindId));
+            if (id(n.id) && !n.roomId && !n.labId && !n.kindId && !Array.isArray(n.children)) out.roomIds.add(String(n.id));
+            if (Array.isArray(n.children)) collectIds(n.children, out);
+        }
+    }
+    async function queryReserve(key, page) {
+        try { return await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
+        catch (e) {
+            if (!/参数.*空/.test(e && e.message || '')) throw e;
+            const out = {roomIds: new Set(), labIds: new Set(), kindIds: new Set()};
+            try { collectIds((await request('roomMenu', {sysKind: 1})).data, out); } catch (_) { }
+            if (!out.roomIds.size && !out.labIds.size && !out.kindIds.size) {
+                try {
+                    const labs = await request('lab', {sysKind: 1});
+                    for (const x of array(labs.data)) if (x && id(x.labId || x.id)) out.labIds.add(String(x.labId || x.id));
+                } catch (_) { }
+            }
+            const params = {sysKind: 1, resvDates: key, page, pageSize: 40};
+            if (out.roomIds.size) params.roomIds = Array.from(out.roomIds).join(',');
+            if (out.labIds.size) params.labIds = Array.from(out.labIds).join(',');
+            if (out.kindIds.size) params.kindIds = Array.from(out.kindIds).join(',');
+            if (!params.roomIds && !params.labIds && !params.kindIds) throw e;
+            return await request('reserve', params);
+        }
+    }
     async function query(args, account) {
         await identity(account); const date = clean(args.date, 10), key = dateKey(date);
         rooms.clear();
-        const result = await request('reserve', {sysKind: 1, resvDates: key, page: args.page || 1, pageSize: 40});
+        const result = await queryReserve(key, args.page || 1);
         const items = array(result.data), safe = [];
         for (const raw of items) { const room = safeRoom(raw, date); if (room) { rooms.set(String(room.id), raw); safe.push(room); } }
         return {rooms: safe, date, count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
