@@ -121,10 +121,10 @@
         return {begin: date + ' ' + start.slice(0, 5) + ':00', end: date + ' ' + end.slice(0, 5) + ':00'};
     }
     function collectIds(nodes, out) {
-        if (!Array.isArray(nodes)) return;
-        for (const n of nodes) {
+        const list = Array.isArray(nodes) ? nodes : (nodes && Array.isArray(nodes.children) ? nodes.children : (nodes && typeof nodes === 'object' ? [nodes] : []));
+        for (const n of list) {
             if (!n || typeof n !== 'object') continue;
-            if (n.sysKind != null && Number(n.sysKind) !== 1 && !Array.isArray(n.children)) continue;
+            if (n.sysKind != null && Number(n.sysKind) !== 1) continue;
             if (id(n.roomId)) out.roomIds.add(String(n.roomId));
             if (id(n.labId)) out.labIds.add(String(n.labId));
             if (id(n.kindId)) out.kindIds.add(String(n.kindId));
@@ -144,11 +144,17 @@
                     for (const x of array(labs.data)) if (x && id(x.labId || x.id)) out.labIds.add(String(x.labId || x.id));
                 } catch (_) { }
             }
+            if (!out.roomIds.size && !out.labIds.size && !out.kindIds.size) {
+                try {
+                    const kinds = await request('kind', {sysKind: 1});
+                    for (const x of array(kinds.data)) if (x && id(x.kindId || x.id)) out.kindIds.add(String(x.kindId || x.id));
+                } catch (_) { }
+            }
             const params = {sysKind: 1, resvDates: key, page, pageSize: 40};
             if (out.roomIds.size) params.roomIds = Array.from(out.roomIds).join(',');
-            if (out.labIds.size) params.labIds = Array.from(out.labIds).join(',');
-            if (out.kindIds.size) params.kindIds = Array.from(out.kindIds).join(',');
-            if (!params.roomIds && !params.labIds && !params.kindIds) throw e;
+            else if (out.labIds.size) params.labIds = Array.from(out.labIds).join(',');
+            else if (out.kindIds.size) params.kindIds = Array.from(out.kindIds).join(',');
+            else throw e;
             return await request('reserve', params);
         }
     }

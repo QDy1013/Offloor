@@ -25,7 +25,7 @@ final class StudyRoomSession {
     private String script,loginScript,account,owner;
     private boolean stopped,busy,submitted,ready,writing;
     boolean isReady() { return ready && !stopped; }
-    private int generation;
+    private int generation,connectToken;
     private Callback pending;
     private long deadline,spaWaitUntil;
     private android.app.Dialog official;
@@ -66,7 +66,7 @@ final class StudyRoomSession {
                 @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !allowed(url); }
                 @Override public void onPageFinished(WebView v,String url) {
                     android.webkit.CookieManager.getInstance().flush();
-                    if (!stopped && !ready && official==null && pending!=null) { handler.removeCallbacks(connect); handler.post(connect); }
+                    if (!stopped && !ready && official==null && pending!=null) { ++connectToken; handler.removeCallbacks(connect); handler.post(connect); }
                 }
                 @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); fail("校方连接证书校验失败"); }
                 @Override public void onReceivedError(WebView v,android.webkit.WebResourceRequest r,android.webkit.WebResourceError e) { if (r.isForMainFrame()) fail("校方系统连接失败，请重新连接"); }
@@ -77,13 +77,14 @@ final class StudyRoomSession {
     }
     private final Runnable connect=new Runnable() { public void run() {
         if (stopped || ready || web==null) return;
+        final int token=connectToken;
         if (!validAccount()) { fail("校园账号已变化，请重新连接"); return; }
         if (SystemClock.elapsedRealtime()>deadline) { fail("连接尚未完成；请打开校方页面完成验证后重新连接"); return; }
         String url=web.getUrl();
         if (!allowed(url)) { handler.postDelayed(this,200); return; }
         if ("uis.nwpu.edu.cn".equals(Uri.parse(url).getHost())) {
             web.evaluateJavascript(loginScript+";JSON.stringify(NwpuLogin.inspect())",value -> {
-                if (stopped) return;
+                if (stopped || token!=connectToken) return;
                 if (!url.equals(web.getUrl())) { handler.postDelayed(connect,200); return; }
                 String phase=parse(value).optString("phase");
                 if ("challenge".equals(phase)) { fail("校方要求安全验证，请打开校方页面完成验证后重新连接"); return; }
@@ -101,12 +102,12 @@ final class StudyRoomSession {
             if (path!=null && path.startsWith("/authcenter/")) { spaWaitUntil=0; handler.postDelayed(connect,200); return; }
             if (spaWaitUntil==0) spaWaitUntil=SystemClock.elapsedRealtime()+6_000;
             web.evaluateJavascript("(function(){try{var u=JSON.parse(sessionStorage.getItem('userInfo')||'{}');return u&&u.token?'ready':'wait';}catch(e){return 'wait';}})()",tokenState -> {
-                if (stopped) return;
+                if (stopped || token!=connectToken) return;
                 if (!url.equals(web.getUrl())) { spaWaitUntil=0; handler.postDelayed(connect,200); return; }
                 String state=parseString(tokenState);
                 if (!"ready".equals(state) && SystemClock.elapsedRealtime()<spaWaitUntil) { handler.postDelayed(connect,200); return; }
                 web.evaluateJavascript(script+";if(!window.__louStudyReady && !window.__louStudyConnecting){window.__louStudyConnecting=true;NwpuStudyRoom.run('ready',{},"+JSONObject.quote(account)+").then(function(r){window.__louStudyReady=r;window.__louStudyConnecting=false;});}JSON.stringify(window.__louStudyReady)",value -> {
-                    if (stopped) return;
+                    if (stopped || token!=connectToken) return;
                     if (!url.equals(web.getUrl())) { handler.postDelayed(connect,200); return; }
                     JSONObject result=parse(value);
                     if (result.optBoolean("ready")) { ready=true; resolve(new JSONObject(),""); }
