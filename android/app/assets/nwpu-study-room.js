@@ -4,10 +4,12 @@
     if (root.NwpuStudyRoom) { if (typeof module !== 'undefined') module.exports = root.NwpuStudyRoom; return; }
     const ORIGIN = 'https://ic.nwpu.edu.cn';
     let busy = false, rooms = new Map(), bookings = new Map(), members = new Map();
-    let verifiedUser = null, cachedMenu = null, unfilteredRejectedToken = '';
+    let verifiedUser = null, cachedMenu = null, unfilteredRejectedToken = '', cachedNoticeParams;
     const clean = (v, max = 180) => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
     const id = v => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0) || (typeof v === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(v));
     const same = (a, b) => String(a) === String(b);
+    const posInt = v => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim()))) && Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : 0;
+    const nonNegInt = v => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim()))) && Number.isSafeInteger(Number(v)) && Number(v) >= 0 ? Number(v) : -1;
     function fail(message) { throw new Error(message); }
     function origin() { if (!root.location || root.location.origin !== ORIGIN) fail('预约会话不在校方系统，请重新连接'); }
     function storedUser() { try { return JSON.parse(root.sessionStorage.getItem('userInfo') || '{}') || {}; } catch (_) { return {}; } }
@@ -23,8 +25,61 @@
         if (!response.ok) fail('校方连接失败，请稍后重试');
         const result = await response.json();
         if (!result || typeof result.code !== 'number') fail('校方返回了无法识别的数据');
-        if (result.code !== 0) { const e = new Error(clean(result.message) || '校方未接受本次请求'); e.definite = true; throw e; }
+        if (result.code !== 0) { const e = new Error((clean(result.message) || '校方未接受本次请求') + ' [' + (post ? 'POST ' : '') + path + ']'); e.definite = true; throw e; }
         return result;
+    }
+    async function tryGet(path, variants) {
+        let lastErr = null;
+        for (const params of variants) {
+            try { return await request(path, params); }
+            catch (e) { if (!e || !e.definite) throw e; lastErr = e; }
+        }
+        throw lastErr;
+    }
+    async function loadConfig() {
+        return tryGet('sysConfig/public', [undefined, {sysKind: 1}, {type: 1}, {type: 2}]);
+    }
+    function extractNotice(data) {
+        if (typeof data === 'string') return clean(data, 6000);
+        const pick = x => typeof x === 'string' ? clean(x, 6000) : x && typeof x === 'object' ? clean(x.content || x.notice || x.msg || x.remark || x.info || x.resvNotice || x.tip || '', 6000) : '';
+        if (Array.isArray(data)) return data.map(pick).filter(Boolean).join('\n');
+        return pick(data);
+    }
+    async function loadNotice() {
+        let lastDefinite = null, anyOk = false;
+        const probeBatch = async (batch) => {
+            const settled = await Promise.allSettled(batch.map(params => request('sysInfo', params).then(res => ({params, notice: extractNotice(res.data)}))));
+            let netErr = null;
+            for (const item of settled) {
+                if (item.status === 'fulfilled') {
+                    anyOk = true;
+                    if (item.value.notice) { cachedNoticeParams = item.value.params; return item.value.notice; }
+                } else {
+                    const err = item.reason;
+                    if (!err || !err.definite) netErr = netErr || err;
+                    else lastDefinite = err;
+                }
+            }
+            if (netErr) throw netErr;
+            return '';
+        };
+        if (cachedNoticeParams !== undefined) {
+            const cachedHit = await probeBatch([cachedNoticeParams]);
+            if (cachedHit) return cachedHit;
+            cachedNoticeParams = undefined;
+        }
+        // Try standard sysKind=1 first, then fan out read-only parameter variants if rejected or empty.
+        const firstHit = await probeBatch([{sysKind: 1}]);
+        if (firstHit) return firstHit;
+        for (const batch of [
+            [{sysKind: 1, type: 2}, {sysKind: 1, type: 1}, {type: 2}, {type: 1}, undefined],
+            [{sysKind: 1, type: 0}, {type: 0}, {kind: 1}, {sysKind: 1, classKind: 1}, {sysKind: 1, infoType: 1}, {infoType: 1}]
+        ]) {
+            const hit = await probeBatch(batch);
+            if (hit) return hit;
+        }
+        if (!anyOk && lastDefinite) throw lastDefinite;
+        fail('尚未读取到校方预约须知，请稍后重试');
     }
     async function identity(account, forceFresh) {
         const curToken = storedUser().token || '';
@@ -552,14 +607,25 @@
         const user = await identity(account); bookings.clear();
         const begin = clean(args.begin || chinaDate(Date.now() - 7 * 86400000), 10), end = clean(args.end || chinaDate(Date.now() + 30 * 86400000), 10);
         dateKey(begin); dateKey(end);
-        const result = await request('reserve/resvInfo', {beginDate: begin, endDate: end, needStatus: 0, page: args.page || 1, pageNum: 40, orderKey: 'gmt_create', orderModel: 'desc'});
+        const page = args.page || 1;
+        const result = await tryGet('reserve/resvInfo', [
+            {beginDate: begin, endDate: end, needStatus: 0, page, pageNum: 40, orderKey: 'gmt_create', orderModel: 'desc'},
+            {beginDate: begin, endDate: end, needStatus: 0, page, pageNum: 40},
+            {beginDate: begin, endDate: end, page, pageNum: 40},
+            {beginDate: begin, endDate: end, sysKind: 1, page, pageNum: 40}
+        ]);
         const items = array(result.data).filter(x => x && Number(x.classKind) === 1 && (same(x.appAccNo, user.accNo) || (Array.isArray(x.resvMemberInfoList) && x.resvMemberInfoList.some(m => same(m.accNo, user.accNo) || same(m.logonName, account)))));
-        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); const state = numeric(x.resvStatus); const code = Number.isInteger(state) ? state : null; return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: timeText(x.resvBeginTime || x.startTime || x.beginTime), end: timeText(x.resvEndTime || x.endTime), status: status(code), state: code, canCancel: cancellable(x, user)}; }), count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
+        return {bookings: items.map(x => { bookings.set(String(x.uuid), x); const state = numeric(x.resvStatus); const code = Number.isInteger(state) ? state : null; return {uuid: clean(x.uuid, 100), name: clean((x.resvDevInfoList || []).map(d => d.devName || d.roomName).join('、')), location: clean((x.resvDevInfoList || []).map(d => d.labName).join('、')), title: clean(x.testName), begin: timeText(x.resvBeginTime || x.startTime || x.beginTime), end: timeText(x.resvEndTime || x.endTime), status: status(code), state: code, canCancel: cancellable(x, user)}; }), count: Number.isFinite(result.count) ? result.count : null, page};
     }
     async function findMembers(args, account) {
         const user = await identity(account), key = clean(args.key, 60);
         if (key.length < 2) fail('请输入至少两个字符的姓名或学号');
-        const response = await request('account/getMembers', {key, page: 1, pageNum: 10});
+        const response = await tryGet('account/getMembers', [
+            {key, page: 1, pageNum: 10},
+            {keyWord: key, page: 1, pageNum: 10},
+            {keyword: key, page: 1, pageNum: 10},
+            {key}
+        ]);
         return {members: array(response.data).filter(x => id(x.accNo) && !same(x.accNo, user.accNo) && x.status !== 2 && x.localstatus !== 2).map(x => { members.set(String(x.accNo), x); return {id: x.accNo, name: clean(x.trueName), account: clean(x.logonName)}; })};
     }
     async function refreshRoom(roomId, key, cached) {
@@ -612,13 +678,14 @@
         }
         const times = validate(room, args.date, args.start, args.end, ids.length);
         const title = clean(args.title, 100); if (!title) fail('请填写研修主题');
-        const config = await request('sysConfig/public');
+        const config = await loadConfig();
         const mode = config.data && String(config.data.resvCode);
         if (mode === '2') fail('校方要求滑块验证，请先使用官方系统完成验证；本次未提交预约');
         if (mode !== '0' && mode !== '1') fail('校方验证码配置尚未读全，本次未提交预约');
         const captcha = clean(args.captcha, 12);
         if (mode === '1' && !captcha) fail('请输入图片验证码');
-        const payload = {sysKind: 1, appAccNo: user.accNo, memberKind: ids.length > 1 ? 2 : 1, resvBeginTime: times.begin, resvEndTime: times.end, testName: title, resvKind: 2, resvProperty: 0, appUrl: '', resvMember: ids, resvDev: [raw.devId], memo: clean(args.memo, 300), captcha, addServices: []};
+        const rawSysKind = posInt(raw.sysKind), rawResvKind = posInt(raw.resvKind), rawProp = nonNegInt(raw.resvProperty), rawClassKind = posInt(raw.classKind);
+        const payload = {sysKind: rawSysKind || 1, appAccNo: user.accNo, memberKind: ids.length > 1 ? 2 : 1, resvBeginTime: times.begin, resvEndTime: times.end, testName: title, resvKind: rawResvKind || 2, resvProperty: rawProp >= 0 ? rawProp : 0, classKind: rawClassKind || 1, appUrl: '', resvMember: ids, resvDev: [raw.devId], memo: clean(args.memo, 300), captcha, addServices: []};
         // Never retry writes: after dispatch, a network failure means the server outcome is unknown.
         try { const result = await request('reserve', payload, true); return {success: true, message: clean(result.message) || '校方已受理，请在我的预约核对状态'}; }
         catch (e) { if (e.definite) throw e; return {unknown: true, message: '提交结果未确认，请先查询我的预约，勿重复提交'}; }
@@ -632,12 +699,15 @@
     }
     async function captcha(args, account) {
         await identity(account);
-        const [response, tip] = await Promise.all([request('sysConfig/public'), request('sysInfo', {sysKind: 1})]);
+        const [configRes, noticeRes] = await Promise.allSettled([loadConfig(), loadNotice()]);
+        if (configRes.status !== 'fulfilled') throw configRes.reason;
+        const response = configRes.value;
         const mode = response.data && String(response.data.resvCode);
-        let notice = '';
-        if (Array.isArray(tip.data)) notice = tip.data.map(x => clean(x.content, 6000)).filter(Boolean).join('\n');
-        else if (tip.data) notice = clean(tip.data.content, 6000);
-        if (!notice) fail('尚未读取到校方预约须知，请稍后重试');
+        const notice = (noticeRes.status === 'fulfilled' ? noticeRes.value : '') || extractNotice(response.data);
+        if (!notice) {
+            if (noticeRes.status === 'rejected') throw noticeRes.reason;
+            fail('尚未读取到校方预约须知，请稍后重试');
+        }
         if (mode === '2') return {mode, notice, message: '校方要求滑块验证，本版本暂不能在原生页面完成，请使用官方系统验证'};
         if (mode !== '1' && mode !== '0') fail('校方验证码配置尚未读全');
         if (mode === '0') return {mode, notice};

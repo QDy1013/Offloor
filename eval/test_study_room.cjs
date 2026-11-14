@@ -539,6 +539,81 @@ async function main() {
         assert.match(session, /onPageCommitVisible\(/);
     });
 
+    let sysInfoHits = 0, sysInfoType2Hits = 0;
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/sysInfo')) {
+                sysInfoHits++;
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('type') === '2' && q.get('sysKind') === '1') {
+                    sysInfoType2Hits++;
+                    return {ok: true, json: async () => ({code: 0, data: [{content: '实测须知：请提前10分钟签到'}]})};
+                }
+                return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+            }
+        }
+    });
+    const cap1 = await h.api.run('captcha', {}, 'owner');
+    const hitsAfterFirst = sysInfoHits;
+    const cap2 = await h.api.run('captcha', {}, 'owner');
+    check('captcha falls back and caches sysInfo parameters when sysKind=1 triggers missing parameter error', () => {
+        assert.equal(cap1.mode, '0');
+        assert.match(cap1.notice, /提前10分钟签到/);
+        assert.equal(cap2.notice, cap1.notice);
+        assert.equal(sysInfoHits, hitsAfterFirst + 1);
+        assert.equal(sysInfoType2Hits, 2);
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/sysInfo')) return {ok: true, json: async () => ({code: 0, data: []})};
+        }
+    });
+    const emptyNoticeCap = await h.api.run('captcha', {}, 'owner');
+    check('captcha still fails closed when school sysInfo returns no notice', () => {
+        assert.match(emptyNoticeCap.error, /预约须知/);
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/account/getMembers')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (!q.has('keyWord')) return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+                return {ok: true, json: async () => ({code: 0, data: [{accNo: 21, trueName: ' fallback同行人', logonName: 'fb'}]})};
+            }
+            if (url.startsWith('/ic-web/reserve/resvInfo')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.has('orderKey')) return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+                return {ok: true, json: async () => ({code: 0, data: [booking], count: 1})};
+            }
+        }
+    });
+    const memRes = await h.api.run('members', {key: '张三'}, 'owner');
+    const mineFallbackRes = await h.api.run('mine', {}, 'owner');
+    check('members and mine read calls fall back cleanly on missing parameter rejections', () => {
+        assert.equal(memRes.members.length, 1);
+        assert.equal(memRes.members[0].id, 21);
+        assert.equal(mineFallbackRes.bookings.length, 1);
+        assert.equal(mineFallbackRes.bookings[0].uuid, 'test-booking');
+    });
+
+    h = harness({
+        room: {sysKind: 1, resvKind: 3, resvProperty: 1, classKind: 1},
+        handle: async (url, init) => {
+            if (init.method === 'POST') return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+        }
+    });
+    await h.api.run('query', {date: DATE}, 'owner');
+    const badSubmit = await h.api.run('submit', payload(), 'owner');
+    check('submit failure surfaces failing POST endpoint without retry and forwards room kind fields', () => {
+        assert.match(badSubmit.error, /请求参数缺失/);
+        assert.match(badSubmit.error, /\[POST reserve\]/);
+        assert.equal(h.posts().length, 1);
+        assert.equal(h.posts()[0].payload.resvKind, 3);
+        assert.equal(h.posts()[0].payload.resvProperty, 1);
+        assert.equal(h.posts()[0].payload.classKind, 1);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
