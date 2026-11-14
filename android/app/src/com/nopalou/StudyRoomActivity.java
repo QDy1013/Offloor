@@ -42,10 +42,10 @@ public class StudyRoomActivity extends Activity {
     private StudyRoomSession session;
     private CampusData campus;
     private Timetable timetable;
-    private boolean ready, busy, mine, active, reconciled;
+    private boolean ready, busy, mine, active, reconciled, pageMore = true;
     private int page = 1, epoch, count = -1;
     private long updatedAt;
-    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), error = "", message = "";
+    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "";
     private JSONArray rows;
     /** 本人已有预约，用来提示和自己的安排撞车；本页只读一次。 */
     private JSONArray myBookings;
@@ -59,21 +59,25 @@ public class StudyRoomActivity extends Activity {
 
     private interface Result { void accept(JSONObject result); }
 
+    private android.content.SharedPreferences campusPrefs() { return getSharedPreferences("study_room_prefs", MODE_PRIVATE); }
     private android.content.SharedPreferences writeState() { return getSharedPreferences("study_room_writes", MODE_PRIVATE); }
     private boolean pendingWrite() { return campus != null && writeState().getBoolean(campus.owner, false); }
     private boolean markWrite(boolean pending) { return campus!=null && writeState().edit().putBoolean(campus.owner,pending).commit(); }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); Ui.apply(this);
+        selectedCampus = campusPrefs().getString("campus", "");
         if (state != null) {
             date = state.getString("date", date);
+            selectedCampus = state.getString("campus", selectedCampus);
             mine = state.getBoolean("mine");
             page = Math.max(1, state.getInt("page", 1));
         }
     }
 
     @Override public void onSaveInstanceState(Bundle state) {
-        state.putString("date", date); state.putBoolean("mine", mine); state.putInt("page", page);
+        state.putString("date", date); state.putString("campus", selectedCampus);
+        state.putBoolean("mine", mine); state.putInt("page", page);
         super.onSaveInstanceState(state);
     }
 
@@ -205,8 +209,16 @@ public class StudyRoomActivity extends Activity {
         statusCard();
         if (!ready) return;
         modeRow();
-        if (mine) mineHint(); else dateStrip();
-        list();
+        if (mine) {
+            mineHint();
+            list();
+        } else {
+            dateStrip();
+            LinkedHashMap<String, List<JSONObject>> grouped = groupRooms();
+            String activeCampus = grouped.containsKey(selectedCampus) ? selectedCampus : "";
+            campusStrip(grouped, activeCampus);
+            roomGroups(grouped, activeCampus);
+        }
         paging();
     }
 
@@ -310,6 +322,82 @@ public class StudyRoomActivity extends Activity {
         });
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
         line.addView(view, p);
+    }
+
+    private LinkedHashMap<String, List<JSONObject>> groupRooms() {
+        LinkedHashMap<String, List<JSONObject>> buckets = new LinkedHashMap<>();
+        if (rows == null) return buckets;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i); if (row == null) continue;
+            String site = StudyRoomPlan.campusOf(row.optString("campus"), row.optString("location"),
+                    row.optString("kind"), row.optString("name"));
+            List<JSONObject> items = buckets.get(site);
+            if (items == null) { items = new ArrayList<>(); buckets.put(site, items); }
+            items.add(row);
+        }
+        List<String> keys = new ArrayList<>(buckets.keySet());
+        java.util.Collections.sort(keys, (a, b) -> Integer.compare(StudyRoomPlan.campusOrder(a), StudyRoomPlan.campusOrder(b)));
+        LinkedHashMap<String, List<JSONObject>> ordered = new LinkedHashMap<>();
+        for (String key : keys) {
+            List<JSONObject> usable = new ArrayList<>(), blocked = new ArrayList<>();
+            for (JSONObject row : buckets.get(key)) {
+                if (row.optBoolean("available")) usable.add(row); else blocked.add(row);
+            }
+            usable.addAll(blocked);
+            ordered.put(key, usable);
+        }
+        return ordered;
+    }
+
+    private void campusStrip(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus) {
+        if (rows == null || rows.length() == 0 || grouped.isEmpty()) return;
+        LinearLayout line = horizontalScroll(body, 12);
+        addCampusChip(line, "", "全部 " + rows.length(), activeCampus.isEmpty());
+        for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
+            String name = entry.getKey();
+            addCampusChip(line, name, name + " " + entry.getValue().size(), name.equals(activeCampus));
+        }
+    }
+
+    private void addCampusChip(LinearLayout line, final String campusKey, String label, boolean selected) {
+        TextView view = chip(line, label, selected, () -> {
+            if (selectedCampus.equals(campusKey)) return;
+            selectedCampus = campusKey;
+            campusPrefs().edit().putString("campus", selectedCampus).apply();
+            render();
+        });
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
+        line.addView(view, p);
+    }
+
+    private void roomGroups(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus) {
+        if (rows == null) {
+            if (!busy) body.addView(text("暂时没有数据，点右上角刷新重试", 13, Ui.SUB, false));
+            return;
+        }
+        if (rows.length() == 0) { emptyCard(); return; }
+        if (!activeCampus.isEmpty() && grouped.containsKey(activeCampus)) {
+            List<JSONObject> items = grouped.get(activeCampus);
+            campusHeading(activeCampus, items);
+            for (JSONObject row : items) roomCard(row);
+            return;
+        }
+        for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
+            campusHeading(entry.getKey(), entry.getValue());
+            for (JSONObject row : entry.getValue()) roomCard(row);
+        }
+    }
+
+    private void campusHeading(String campusName, List<JSONObject> items) {
+        int usable = 0;
+        for (JSONObject row : items) if (row.optBoolean("available")) usable++;
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(4), dp(2), dp(8));
+        row.addView(text(campusName, 15, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
+        row.addView(text("共 " + items.size() + " 间 · " + usable + " 间可约", 12,
+                usable > 0 ? Ui.GREEN : Ui.SUB, false));
+        body.addView(row);
     }
 
     private void mineHint() {
@@ -515,8 +603,8 @@ public class StudyRoomActivity extends Activity {
             TextView prev = chip(actions, "上一页", false, () -> { if (busy) return; --page; rows = null; query(); });
             actions.addView(prev, new LinearLayout.LayoutParams(0, -2, 1));
         }
-        // 校方没给总条数时，只有这一页真的排满才认为后面还有，避免一直点“下一页”。
-        boolean more = rows.length() >= PAGE_SIZE && (count <= 0 || page * PAGE_SIZE < count);
+        // 校方没给总条数时，只有这一页真的排满且服务端仍有后续页才认为后面还有，避免一直点“下一页”。
+        boolean more = rows.length() >= PAGE_SIZE && pageMore && (count <= 0 || page * PAGE_SIZE < count);
         if (more) {
             TextView next = chip(actions, "下一页", false, () -> { if (busy) return; ++page; rows = null; query(); });
             LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(page > 1 ? 0 : -1, -2, page > 1 ? 1 : 0);
@@ -579,10 +667,12 @@ public class StudyRoomActivity extends Activity {
     }
 
     private void query() {
+        pageMore = true;
         call(mine ? "mine" : "query", args("date", date, "page", page), result -> {
             rows = result.optJSONArray(mine ? "bookings" : "rooms");
             if (mine && rows != null) reconciled = true;
             count = result.has("count") ? result.optInt("count", -1) : -1;
+            pageMore = !result.has("more") || result.isNull("more") || result.optBoolean("more", true);
             updatedAt = System.currentTimeMillis();
         });
     }
@@ -844,7 +934,7 @@ public class StudyRoomActivity extends Activity {
         showMembers[0].run();
         action(participants, "＋ 添加同行人（校方通讯录）", () -> searchMember(selected, showMembers[0]));
 
-        startView.setOnClickListener(v -> pickStart(plan, busySlots, slots, chosen, repaint[0]));
+        startView.setOnClickListener(v -> pickStart(plan, busySlots, chosen, repaint[0]));
         endView.setOnClickListener(v -> pickEnd(plan, busySlots, chosen, repaint[0]));
 
         LinearLayout footer = new LinearLayout(this); footer.setOrientation(LinearLayout.HORIZONTAL);
@@ -871,11 +961,9 @@ public class StudyRoomActivity extends Activity {
         } catch (Exception e) { return null; }
     }
 
-    private void pickStart(StudyRoomPlan.Room plan, List<StudyRoomPlan.Busy> busySlots,
-                           List<StudyRoomPlan.Slot> slots, final int[] chosen, final Runnable refresh) {
-        java.util.LinkedHashSet<Integer> unique = new java.util.LinkedHashSet<>();
-        for (StudyRoomPlan.Slot slot : slots) unique.add(slot.start);
-        final List<Integer> values = new ArrayList<>(unique);
+    private void pickStart(StudyRoomPlan.Room plan, List<StudyRoomPlan.Busy> busySlots, final int[] chosen, final Runnable refresh) {
+        final List<Integer> values = StudyRoomPlan.starts(plan, date, busySlots, System.currentTimeMillis());
+        if (values.isEmpty()) { toast("这一天已经没有可选的开始时间"); return; }
         String[] labels = new String[values.size()];
         for (int i = 0; i < values.size(); i++) labels[i] = StudyRoomPlan.clock(values.get(i));
         new AlertDialog.Builder(this, Ui.dialogTheme()).setTitle("选择开始时间").setItems(labels, (d, index) -> {

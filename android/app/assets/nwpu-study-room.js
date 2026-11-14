@@ -71,7 +71,14 @@
         return '';
     }
     function periodClock(value, isEnd) {
-        let s = typeof value === 'number' || /^\d{10,15}$/.test(clean(value, 20)) ? timeText(value) : clean(value, 32).replace(/\//g, '-');
+        const raw = clean(value, 32);
+        const epoch = (typeof value === 'number' && Number.isFinite(value) && value >= 1e9) || /^\d{10,15}$/.test(raw);
+        let s = epoch ? timeText(value) : raw.replace(/\//g, '-');
+        const compact = s.match(/^(\d{3,4})$/);
+        if (compact) {
+            const p = compact[1].padStart(4, '0');
+            s = p.slice(0, 2) + ':' + p.slice(2);
+        }
         const dt = s.match(/^\d{4}-\d{2}-\d{2}[ T](\d{1,2}:[0-5]\d(?::[0-5]\d)?)/);
         if (dt) s = dt[1];
         const m = s.match(/^(\d{1,2}):([0-5]\d)(?::([0-5]\d))?$/);
@@ -114,13 +121,16 @@
             const rawLimit = x.openLimit !== undefined && x.openLimit !== null ? x.openLimit
                 : (scopeLimit !== undefined && scopeLimit !== null ? scopeLimit : undefined);
             const limit = rawLimit === false ? 0 : numeric(rawLimit);
-            if (limit !== 0) return null;
-            return {start, end, limit: 0};
+            // Live ic.nwpu.edu.cn study rooms (sysKind=1) return openLimit=1 on normal bookable days; keep unknown/other codes blocked.
+            if (limit !== 0 && limit !== 1) return null;
+            return {start, end, limit};
         }).filter(Boolean);
         const reservations = Array.isArray(raw.resvInfo) ? raw.resvInfo : null;
-        const classes = Array.isArray(raw.cls) ? raw.cls : (raw.cls === null ? [] : null);
+        // Live ic.nwpu.edu.cn study rooms without academic timetables omit cls or set cls:null; reject non-array garbage.
+        const classes = Array.isArray(raw.cls) ? raw.cls : (raw.cls == null ? [] : null);
         const min = numeric(raw.minUser), max = numeric(raw.maxUser);
-        const rules = rule && typeof rule === 'object' ? {minMinutes: numeric(rule.minResvTime), maxMinutes: numeric(rule.maxResvTime), interval: numeric(rule.timeInterval), earliest: numeric(rule.earliestResvTime), latest: numeric(rule.latestResvTime), freezing: numeric(rule.freezingTime), release: numeric(rule.laterLineTime)} : null;
+        const releaseNum = rule && typeof rule === 'object' ? (Number.isFinite(numeric(rule.laterLineTime)) ? numeric(rule.laterLineTime) : (() => { const c = periodClock(rule.laterLineTime, false); return c ? Number(c.replace(':', '')) : NaN; })()) : NaN;
+        const rules = rule && typeof rule === 'object' ? {minMinutes: numeric(rule.minResvTime), maxMinutes: numeric(rule.maxResvTime), interval: numeric(rule.timeInterval), earliest: numeric(rule.earliestResvTime), latest: numeric(rule.latestResvTime), freezing: numeric(rule.freezingTime), release: releaseNum} : null;
         const completeRules = rules && rules.minMinutes > 0 && rules.maxMinutes >= rules.minMinutes && rules.interval > 0 && rules.earliest >= rules.latest && rules.latest >= 0 && rules.freezing >= 0;
         // 不可预约时把原因说清楚；界面直接显示，不让人对着“暂不可约”猜。
         const reasons = [];
@@ -129,19 +139,21 @@
         else if (!completeRules) reasons.push('预约时长或可约范围规则没读全');
         if (!periods.length) {
             const firstSlot = open[0] && open[0].slot;
-            const limTag = firstSlot ? ',lim=' + String(firstSlot.openLimit) : '';
+            const limTag = firstSlot ? ',lim=' + String(firstSlot.openLimit)
+                + ',t=' + clean(firstSlot.openStartTime || firstSlot.startTime || firstSlot.openStart || firstSlot.start, 20)
+                + '~' + clean(firstSlot.openEndTime || firstSlot.endTime || firstSlot.openEnd || firstSlot.end, 20) : '';
             reasons.push('这一天没有读到开放时段[' + (Array.isArray(raw.openTimes) ? raw.openTimes.length : String(raw.openTimes))
                 + '/' + (Array.isArray(raw.timeScopeOpenInfo) ? raw.timeScopeOpenInfo.length : String(raw.timeScopeOpenInfo))
                 + '/' + open.length + limTag + ']');
         }
         if (reservations === null) reasons.push('占用信息没读全');
-        if (classes === null) reasons.push('课表占用没读全[' + (raw.cls === undefined ? '无cls' : typeof raw.cls) + ']');
+        if (classes === null) reasons.push('课表占用没读全[' + typeof raw.cls + ']');
         if (!(Number.isInteger(min) && min > 0)) reasons.push('房间人数下限没读全');
         else if (!(Number.isInteger(max) && max >= min)) reasons.push('房间人数上限没读全');
         const usable = reasons.length === 0;
         const occupied = reservations === null || classes === null ? null : reservations.filter(x => !x || !(Number(x.resvStatus) & 128)).map(x => ({start: timeText(x && (x.startTime || x.resvBeginTime || x.beginTime || x.start)), end: timeText(x && (x.endTime || x.resvEndTime || x.end)), buffer: rules ? rules.freezing : NaN}))
             .concat(classes.map(x => ({start: timeText(x && (x.start || x.startTime)), end: timeText(x && (x.end || x.endTime)), buffer: 0})));
-        return {id: raw.devId, name: clean(raw.devName), location: clean(raw.labName), kind: clean(raw.kindName), min: Number.isInteger(min) && min > 0 ? min : null, max: Number.isInteger(max) && max > 0 ? max : null,
+        return {id: raw.devId, name: clean(raw.devName), location: clean(raw.labName), kind: clean(raw.kindName), campus: clean(raw.campusName || raw.campus), min: Number.isInteger(min) && min > 0 ? min : null, max: Number.isInteger(max) && max > 0 ? max : null,
             periods, occupied, rules, available: usable, reason: usable ? '' : reasons.slice(0, 2).join('；'), date};
     }
     function validate(room, date, start, end, count, now) {
@@ -242,7 +254,7 @@
         return out;
     }
     async function tryBatch(items, buildParams) {
-        const list = (items || []).filter(Boolean).slice(0, 16);
+        const list = (items || []).filter(Boolean).slice(0, 40);
         if (!list.length) return null;
         let firstParams = null, firstRes = null, startIdx = 0;
         while (startIdx < list.length) {
@@ -254,6 +266,13 @@
         try { firstRes = await request('reserve', firstParams); } catch (_) { return null; }
         if (!firstRes || !Array.isArray(firstRes.data)) return null;
         const merged = [], seen = new Set();
+        let more = false;
+        const trackMore = (params, res) => {
+            const ps = Number(params && params.pageSize) || 30;
+            const pg = Number(params && params.page) || 1;
+            const arr = res && Array.isArray(res.data) ? res.data : [];
+            if (arr.length >= ps || (res && Number.isFinite(res.count) && pg * ps < res.count)) more = true;
+        };
         const append = arr => {
             for (const item of (Array.isArray(arr) ? arr : [])) {
                 if (!item || typeof item !== 'object') continue;
@@ -262,15 +281,16 @@
             }
         };
         append(firstRes.data);
+        trackMore(firstParams, firstRes);
         for (let i = startIdx + 1; i < list.length; i += 1) {
             const p = buildParams(list[i]);
             if (!p) continue;
             try {
                 const r = await request('reserve', p);
-                if (r && Array.isArray(r.data)) append(r.data);
+                if (r && Array.isArray(r.data)) { append(r.data); trackMore(p, r); }
             } catch (_) {}
         }
-        return {code: 0, data: merged, count: merged.length};
+        return {code: 0, data: merged, count: merged.length, more};
     }
     async function queryReserve(key, page) {
         let firstErr = null;
@@ -341,7 +361,8 @@
         const result = await queryReserve(key, args.page || 1);
         const items = array(result.data), safe = [];
         for (const raw of items) { const room = safeRoom(raw, date); if (room) { rooms.set(String(room.id), raw); safe.push(room); } }
-        return {rooms: safe, date, count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1};
+        return {rooms: safe, date, count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1,
+            more: typeof result.more === 'boolean' ? result.more : null};
     }
     function cancellable(row, user) { const state = row && numeric(row.resvStatus); return !!row && row.classKind === 1 && same(row.appAccNo, user.accNo) && Number.isSafeInteger(state) && state >= 0 && !(state & 4) && !(state & 128) && typeof row.uuid === 'string' && id(row.uuid); }
     function status(value) {
@@ -364,12 +385,47 @@
         const response = await request('account/getMembers', {key, page: 1, pageNum: 10});
         return {members: array(response.data).filter(x => id(x.accNo) && !same(x.accNo, user.accNo) && x.status !== 2 && x.localstatus !== 2).map(x => { members.set(String(x.accNo), x); return {id: x.accNo, name: clean(x.trueName), account: clean(x.logonName)}; })};
     }
+    async function refreshRoom(roomId, key, cached) {
+        const find = data => array(data).find(x => same(x.devId, roomId));
+        try {
+            const response = await request('reserve', {sysKind: 1, devIds: roomId, resvDates: key});
+            const hit = find(response.data);
+            if (hit) return hit;
+        } catch (e) {
+            if (!e || !e.definite) throw e;
+        }
+        const direct = [];
+        if (cached && id(cached.kindId)) {
+            direct.push({sysKind: 1, resvDates: key, page: 1, pageSize: 40, kindIds: cached.kindId, labId: ''});
+            direct.push({sysKind: 1, resvDates: key, page: 1, pageSize: 40, kindIds: cached.kindId});
+        }
+        if (cached && id(cached.labId)) direct.push({sysKind: 1, resvDates: key, page: 1, pageSize: 40, labId: cached.labId});
+        if (cached && id(cached.roomId)) direct.push({sysKind: 1, resvDates: key, page: 1, pageSize: 40, roomIds: cached.roomId});
+        for (const params of direct) {
+            try {
+                const res = await request('reserve', params);
+                const hit = find(res.data);
+                if (hit) return hit;
+            } catch (e) {
+                if (e && !e.definite) throw e;
+            }
+        }
+        const fallback = await queryReserve(key, 1);
+        const hit = find(fallback.data);
+        if (hit || !fallback.more) return hit || null;
+        for (let pg = 2; pg <= 4; pg += 1) {
+            const next = await queryReserve(key, pg);
+            const moreHit = find(next.data);
+            if (moreHit) return moreHit;
+            if (!next.data.length) break;
+        }
+        return null;
+    }
     async function submit(args, account) {
         if (args.confirmed !== true || args.agreed !== true) fail('请阅读须知并确认预约');
         const user = await identity(account), key = dateKey(args.date);
         if (!id(args.id) || !rooms.has(String(args.id))) fail('请先查询并选择房间');
-        const response = await request('reserve', {sysKind: 1, devIds: args.id, resvDates: key});
-        const raw = array(response.data).find(x => same(x.devId, args.id));
+        const raw = await refreshRoom(args.id, key, rooms.get(String(args.id)));
         if (!raw) fail('该房间已不可预约，请重新查询');
         const room = safeRoom(raw, args.date), ids = [user.accNo];
         if (!Array.isArray(args.members) || args.members.length > 30) fail('同行人列表无效');

@@ -2,9 +2,12 @@ package com.nopalou;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 研修室时段与冲突计算的纯逻辑：不碰 Android，也不碰 org.json，方便离线跑用例。
@@ -18,8 +21,10 @@ final class StudyRoomPlan {
     /** 校方时间都按中国标准时间，不跟随手机时区，避免跨时区算出“昨天”。 */
     static final TimeZone CHINA = TimeZone.getTimeZone("Asia/Shanghai");
 
-    /** 一张房间卡片上最多算出这么多个可点时段；按 30 分钟间隔算，够铺满整天。 */
-    static final int MAX_SLOTS = 48;
+    /** 一张房间卡片上最多算出这么多个可点时段；按 5 分钟间隔算，也足够铺满全天。 */
+    static final int MAX_SLOTS = 288;
+
+    private static final Pattern CAMPUS_NAME = Pattern.compile("([\\u4e00-\\u9fa5A-Za-z0-9]{2,8}校区)");
 
     /** 默认预约时长（分钟）；只是初始值，用户可以在面板里改。 */
     private static final int DEFAULT_MINUTES = 60;
@@ -239,6 +244,51 @@ final class StudyRoomPlan {
             }
         }
         return out;
+    }
+
+    /** 选定开始时间前，所有合法网格开始时刻（分钟）；即使不足默认 60 分钟，只要够最短时长也会列出来。 */
+    static List<Integer> starts(Room room, String date, List<Busy> busy, long now) {
+        if (room == null || !room.complete() || room.periods.isEmpty()) return Collections.emptyList();
+        long dayStart = at(date, 0);
+        if (dayStart < 0) return Collections.emptyList();
+        LinkedHashSet<Integer> out = new LinkedHashSet<>();
+        int earliest = now <= dayStart ? 0 : (int) Math.ceil((now - dayStart) / 60000.0);
+        for (int[] period : room.periods) {
+            for (int[] free : free(room, period, busy, dayStart)) {
+                int from = align(free[0], period[0], room.interval, true);
+                if (earliest > from) from = align(earliest, period[0], room.interval, true);
+                for (int start = from; start + room.minMinutes <= free[1] && out.size() < MAX_SLOTS; start += room.interval) {
+                    if (!bookable(start + room.minMinutes)) break;
+                    out.add(start);
+                }
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
+    /** 识别房间所属校区，用于按校区筛选和分组；识别不到放进"其他"，绝不悄悄丢弃。 */
+    static String campusOf(String campus, String location, String kind, String name) {
+        String[] fields = {campus, location, kind, name};
+        for (String raw : fields) {
+            if (raw == null) continue;
+            String text = raw.trim();
+            if (text.isEmpty()) continue;
+            if (text.contains("长安")) return "长安校区";
+            if (text.contains("友谊")) return "友谊校区";
+            if (text.contains("太仓")) return "太仓校区";
+            Matcher m = CAMPUS_NAME.matcher(text);
+            if (m.find()) return m.group(1);
+        }
+        if (campus != null && !campus.trim().isEmpty()) return campus.trim();
+        return "其他";
+    }
+
+    static int campusOrder(String campus) {
+        if ("长安校区".equals(campus)) return 0;
+        if ("友谊校区".equals(campus)) return 1;
+        if ("太仓校区".equals(campus)) return 2;
+        if ("其他".equals(campus)) return 4;
+        return 3;
     }
 
     /** 选定开始时间后，所有合法结束时间（分钟）；不在开放时段内返回空列表。 */

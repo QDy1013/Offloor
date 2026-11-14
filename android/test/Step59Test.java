@@ -146,6 +146,22 @@ public final class Step59Test {
         check("null busy list is tolerated", StudyRoomPlan.overlaps(null,
                 StudyRoomPlan.at(DATE, "09:00"), StudyRoomPlan.at(DATE, "10:00")).isEmpty());
 
+        // ---------- 5 分钟间隔全天开始时间与校区分类 ----------
+        StudyRoomPlan.Room fiveMin = new StudyRoomPlan.Room(1, 4, 30, 180, 5).period(510, 1320);
+        List<StudyRoomPlan.Slot> allFive = StudyRoomPlan.slots(fiveMin, DATE, busy(), StudyRoomPlan.at(DATE, 0), 0);
+        List<Integer> allStarts = StudyRoomPlan.starts(fiveMin, DATE, busy(), StudyRoomPlan.at(DATE, 0));
+        check("5-minute interval spans full opening hours past morning",
+                allFive.size() == 151 && "21:00–22:00".equals(allFive.get(allFive.size() - 1).label())
+                        && allStarts.contains(1290) && !allStarts.contains(1295));
+        check("campus classification handles NWPU campuses and unknown sites safely",
+                "长安校区".equals(StudyRoomPlan.campusOf("", "长安校区图书馆", "", "A101"))
+                        && "友谊校区".equals(StudyRoomPlan.campusOf("", "友谊校区图书馆东馆五层", "友谊校区研修间 (1-4人)", "南503"))
+                        && "太仓校区".equals(StudyRoomPlan.campusOf("", "太仓校区学习中心", "", "T101"))
+                        && "其他".equals(StudyRoomPlan.campusOf("", "总馆自习室", "", "101"))
+                        && StudyRoomPlan.campusOrder("长安校区") < StudyRoomPlan.campusOrder("友谊校区")
+                        && StudyRoomPlan.campusOrder("友谊校区") < StudyRoomPlan.campusOrder("太仓校区")
+                        && StudyRoomPlan.campusOrder("太仓校区") < StudyRoomPlan.campusOrder("其他"));
+
         System.out.println(checks + " study room plan checks passed");
     }
 }

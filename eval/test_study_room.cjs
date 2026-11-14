@@ -45,7 +45,8 @@ async function main() {
     check('confirmed submit dispatches one write with verified identity', () => { assert.equal(result.success, true); assert.equal(h.posts().length, 1); assert.equal(h.posts()[0].payload.appAccNo, 10); assert.deepEqual(Array.from(h.posts()[0].payload.resvMember), [10]); });
     check('availability is refreshed immediately before write', () => { const queries = h.calls.filter(c => c.url.startsWith('/ic-web/reserve?')); assert.equal(queries.length, 2); assert.match(queries[1].url, /devIds=123/); });
 
-    for (const [name, room] of [['missing occupancy', {resvInfo: undefined}], ['missing class schedule', {cls: undefined}], ['missing rules', {resvRule: null}], ['unknown opening limit', {openTimes: [{openStartTime: '08:00', openEndTime: '22:00'}]}], ['view only', {onlyView: true}], ['missing participant limit', {minUser: undefined}]]) {
+    // 校方实测无排课研修室会省略 cls 字段；仅当 cls 给了非数组脏值或缺失 resvInfo 时才拦截。
+    for (const [name, room] of [['missing occupancy', {resvInfo: undefined}], ['invalid class schedule', {cls: 'invalid'}], ['missing rules', {resvRule: null}], ['unknown opening limit', {openTimes: [{openStartTime: '08:00', openEndTime: '22:00'}]}], ['unsupported opening limit', {openTimes: [{openStartTime: '08:00', openEndTime: '22:00', openLimit: 2}]}], ['view only', {onlyView: true}], ['missing participant limit', {minUser: undefined}]]) {
         h = harness({room}); result = await h.api.run('query', {date: DATE}, 'owner');
         check(name + ' fails closed', () => assert.equal(result.rooms[0].available, false));
     }
@@ -147,7 +148,7 @@ async function main() {
         ['view only room', {onlyView: true}, /仅可查看/],
         ['participant limit missing', {minUser: undefined}, /人数/],
         ['occupancy missing', {resvInfo: undefined}, /占用/],
-        ['class schedule missing', {cls: undefined}, /课表/]]) {
+        ['class schedule invalid', {cls: 'invalid'}, /课表/]]) {
         h = harness({room}); result = await h.api.run('query', {date: DATE}, 'owner');
         const row = result.rooms[0];
         check('unavailable room explains why: ' + name, () => { assert.equal(row.available, false); assert.match(row.reason, pattern); });
@@ -286,6 +287,99 @@ async function main() {
         assert.equal(result.rooms[0].available, true);
         assert.equal(result.rooms[0].periods[0].start, '08:00');
         assert.equal(result.rooms[0].periods[0].end, '24:00');
+    });
+
+    // ---------- 回归：实测 openLimit=1 与缺 cls 研修室、提交回退与校区分组 ----------
+    h = harness({
+        room: {
+            devId: 503,
+            devName: '研修间2(南503)',
+            labName: '友谊校区图书馆东馆五层',
+            kindName: '友谊校区研修间 (1-4人)',
+            openTimes: [{openStartTime: '08:30', openEndTime: '22:00', openLimit: 1}],
+            timeScopeOpenInfo: null,
+            cls: undefined,
+            resvRule: {minResvTime: 30, maxResvTime: 180, timeInterval: 5, earliestResvTime: 2880, latestResvTime: 0, freezingTime: 0, laterLineTime: '08:00'}
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('live openLimit=1 and omitted cls study rooms become bookable', () => {
+        assert.equal(result.rooms[0].available, true);
+        assert.equal(result.rooms[0].periods[0].start, '08:30');
+        assert.equal(result.rooms[0].periods[0].end, '22:00');
+        assert.equal(result.rooms[0].periods[0].limit, 1);
+    });
+
+    const compact = h.api.safeRoom(rawRoom({openTimes: [{openStartTime: 830, openEndTime: '2200', openLimit: 1}], cls: undefined}), DATE);
+    check('compact HHmm opening hours never parse as 1970 Unix timestamps', () => {
+        assert.equal(compact.available, true);
+        assert.equal(compact.periods[0].start, '08:30');
+        assert.equal(compact.periods[0].end, '22:00');
+    });
+
+    h = harness({
+        handle: async (url, init) => {
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (!q.get('kindIds') && !q.get('labId') && !q.get('roomIds') && !q.get('devIds')) {
+                    return {ok: true, json: async () => ({code: 1, message: '参数不能全为空'})};
+                }
+                if (q.get('devIds')) return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+                if (q.get('kindIds') === '201') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 123, kindId: 201, openTimes: [{openStartTime: '08:30', openEndTime: '22:00', openLimit: 1}], cls: undefined})], count: 1})};
+                }
+                return {ok: true, json: async () => ({code: 0, data: [], count: 0})};
+            }
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [{id: 100, children: [{id: 201, children: []}]}]})};
+            }
+            if (url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+        }
+    });
+    await h.api.run('query', {date: DATE}, 'owner');
+    result = await h.api.run('submit', payload(), 'owner');
+    check('submit refreshes via kindId when devIds filter returns parameter error', () => {
+        assert.equal(result.success, true);
+        assert.equal(h.posts().length, 1);
+    });
+
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                const leaves = Array.from({length: 20}, (_, i) => ({id: 300 + i, children: []}));
+                return {ok: true, json: async () => ({code: 0, data: [{id: 10, children: leaves}]})};
+            }
+            if (url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                const kid = Number(q.get('kindIds'));
+                if (!kid) return {ok: true, json: async () => ({code: 1, message: '参数不能全为空'})};
+                const base = (kid - 300) * 3;
+                const site = kid >= 310 ? '长安校区图书馆' : '友谊校区图书馆';
+                const batch = [0, 1, 2].map(n => rawRoom({devId: 1000 + base + n, devName: '房' + (base + n), labName: site, openTimes: [{openStartTime: '08:30', openEndTime: '22:00', openLimit: 1}], cls: undefined}));
+                return {ok: true, json: async () => ({code: 0, data: batch, count: batch.length})};
+            }
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('batched leaf query covers >16 categories across both campuses without false more-page', () => {
+        assert.equal(result.rooms.length, 60);
+        assert.ok(result.rooms.some(r => r.location.includes('长安校区')));
+        assert.ok(result.rooms.some(r => r.location.includes('友谊校区')));
+        assert.equal(result.more, false);
+    });
+
+    const planSource = fs.readFileSync(path.join(app, 'src/com/nopalou/StudyRoomPlan.java'), 'utf8');
+    check('study room UI supports campus grouping and full-day 5-minute start picking', () => {
+        assert.match(activity, /campusStrip\(/);
+        assert.match(activity, /roomGroups\(/);
+        assert.match(activity, /StudyRoomPlan\.campusOf\(/);
+        assert.match(activity, /StudyRoomPlan\.starts\(/);
+        assert.match(planSource, /MAX_SLOTS = 288/);
     });
 
     console.log(checks + ' study room checks passed');
