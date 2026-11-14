@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 52,
-      "versionName": "0.52",
+      "versionCode": 53,
+      "versionName": "0.53",
       "size": 2525155,
-      "sha256": "324b7b363aff0ec23604a0e3798e56239e75118659aad3ec76531aa67a96bd4a",
+      "sha256": "93d68d0b5433ff1188fd352c91caeecff047b8ca516875319a6efe17344853c8",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/324b7b363aff0ec23604a0e3798e56239e75118659aad3ec76531aa67a96bd4a/offloor.apk",
-      "notes": "fix: start study room session from ic.nwpu.edu.cn home instead of stale doAuth URL (v0.52)"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/93d68d0b5433ff1188fd352c91caeecff047b8ca516875319a6efe17344853c8/offloor.apk",
+      "notes": "fix: populate roomIds/labIds/kindIds from roomMenu when reserve rejects empty filters (v0.53)"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
