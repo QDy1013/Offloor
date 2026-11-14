@@ -272,6 +272,22 @@ async function main() {
         assert.throws(() => h.api.validate(result.rooms[0], DATE, '09:00', '10:00', 1, NOW), /占用/);
     });
 
+    h = harness({
+        room: {
+            cls: null,
+            openTimes: [],
+            timeScopeOpenInfo: [
+                {startDay: 20261112, endDay: null, openLimit: 0, openTimeList: [{openStartTime: '8:00:00', openEndTime: '24:00:00'}]}
+            ]
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('explicit null cls and timeScopeOpenInfo open-ended schedule parse to HH:mm', () => {
+        assert.equal(result.rooms[0].available, true);
+        assert.equal(result.rooms[0].periods[0].start, '08:00');
+        assert.equal(result.rooms[0].periods[0].end, '24:00');
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

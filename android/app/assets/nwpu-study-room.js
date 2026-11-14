@@ -61,6 +61,26 @@
         return text.replace(/\//g, '-');
     }
     function clock(value) { return /^(?:[01]\d|2[0-3]):[0-5]\d(?::00)?$/.test(String(value || '')); }
+    function scopeDay(value) {
+        if (value == null || value === '') return '';
+        if (typeof value === 'number' && Number.isFinite(value)) return chinaDate(value < 1e11 ? value * 1000 : value);
+        const s = clean(value, 30).replace(/\//g, '-');
+        if (/^\d{10,15}$/.test(s)) return chinaDate(stamp(s));
+        if (/^\d{8}$/.test(s)) return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        return '';
+    }
+    function periodClock(value, isEnd) {
+        let s = typeof value === 'number' || /^\d{10,15}$/.test(clean(value, 20)) ? timeText(value) : clean(value, 32).replace(/\//g, '-');
+        const dt = s.match(/^\d{4}-\d{2}-\d{2}[ T](\d{1,2}:[0-5]\d(?::[0-5]\d)?)/);
+        if (dt) s = dt[1];
+        const m = s.match(/^(\d{1,2}):([0-5]\d)(?::([0-5]\d))?$/);
+        if (!m) return '';
+        const h = Number(m[1]), min = Number(m[2]), sec = m[3] ? Number(m[3]) : 0;
+        if (isEnd && h === 24 && min === 0 && sec === 0) return '24:00';
+        if (h < 0 || h > 23) return '';
+        return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+    }
     // 校方开放时段会用 24:00 表示当天结束，但它不是一个可提交的钟点，换成次日零点。
     function at(date, value) { const text = String(value == null ? '' : value); if (text === '24:00' || text === '24:00:00') return stamp(date + ' 00:00:00') + 86400000; return stamp(date + ' ' + (text.length === 5 ? text + ':00' : text)); }
     function array(data) { if (!Array.isArray(data)) fail('校方未返回有效列表，不能判断是否空闲'); return data; }
@@ -68,17 +88,37 @@
     function safeRoom(raw, date) {
         if (!raw || !id(raw.devId)) return null;
         const rule = raw.resvRule;
-        let open = Array.isArray(raw.openTimes) ? raw.openTimes : [];
+        let open = ([raw.openTimes, raw.openTime, raw.openTimeList, raw.devOpenTime].find(a => Array.isArray(a) && a.length > 0) || [])
+            .map(x => ({slot: x, scopeLimit: undefined}));
         if (!open.length && Array.isArray(raw.timeScopeOpenInfo)) {
-            const scopes = raw.timeScopeOpenInfo.filter(x => x &&
-                ((!x.startDay && !x.endDay && raw.timeScopeOpenInfo.length === 1) ||
-                (date >= String(x.startDay || '').slice(0, 10).replace(/\//g, '-') && date <= String(x.endDay || x.startDay || '').slice(0, 10).replace(/\//g, '-'))));
-            open = scopes.flatMap(x => Array.isArray(x.openTimeList) ? x.openTimeList : []);
+            const scopes = raw.timeScopeOpenInfo.filter(x => {
+                if (!x || typeof x !== 'object') return false;
+                const sd = scopeDay(x.startDay || x.startDate || x.beginDay);
+                const ed = scopeDay(x.endDay || x.endDate);
+                if (!sd && !ed) return true;
+                if (sd && !ed) return date >= sd;
+                if (!sd && ed) return date <= ed;
+                return date >= sd && date <= ed;
+            });
+            open = scopes.flatMap(x => {
+                const list = [x.openTimeList, x.openTimes, x.openTime].find(a => Array.isArray(a) && a.length > 0);
+                const items = list || (x.openStartTime || x.openEndTime || x.startTime || x.endTime ? [x] : []);
+                return items.map(slot => ({slot, scopeLimit: x.openLimit}));
+            });
         }
-        const periods = open.filter(x => x && clock(x.openStartTime) && (clock(x.openEndTime) || x.openEndTime === '24:00') && at(date, x.openEndTime) > at(date, x.openStartTime) && numeric(x.openLimit) === 0)
-            .map(x => ({start: clean(x.openStartTime), end: clean(x.openEndTime), limit: 0}));
+        const periods = open.map(({slot: x, scopeLimit}) => {
+            if (!x || typeof x !== 'object') return null;
+            const start = periodClock(x.openStartTime || x.startTime || x.openStart || x.start, false);
+            const end = periodClock(x.openEndTime || x.endTime || x.openEnd || x.end, true);
+            if (!start || !end || !(at(date, end) > at(date, start))) return null;
+            const rawLimit = x.openLimit !== undefined && x.openLimit !== null ? x.openLimit
+                : (scopeLimit !== undefined && scopeLimit !== null ? scopeLimit : undefined);
+            const limit = rawLimit === false ? 0 : numeric(rawLimit);
+            if (limit !== 0) return null;
+            return {start, end, limit: 0};
+        }).filter(Boolean);
         const reservations = Array.isArray(raw.resvInfo) ? raw.resvInfo : null;
-        const classes = Array.isArray(raw.cls) ? raw.cls : null;
+        const classes = Array.isArray(raw.cls) ? raw.cls : (raw.cls === null ? [] : null);
         const min = numeric(raw.minUser), max = numeric(raw.maxUser);
         const rules = rule && typeof rule === 'object' ? {minMinutes: numeric(rule.minResvTime), maxMinutes: numeric(rule.maxResvTime), interval: numeric(rule.timeInterval), earliest: numeric(rule.earliestResvTime), latest: numeric(rule.latestResvTime), freezing: numeric(rule.freezingTime), release: numeric(rule.laterLineTime)} : null;
         const completeRules = rules && rules.minMinutes > 0 && rules.maxMinutes >= rules.minMinutes && rules.interval > 0 && rules.earliest >= rules.latest && rules.latest >= 0 && rules.freezing >= 0;
@@ -87,9 +127,15 @@
         if (raw.onlyView) reasons.push('校方标注为仅可查看，不能预约');
         if (!rule || typeof rule !== 'object') reasons.push('校方没有返回预约规则');
         else if (!completeRules) reasons.push('预约时长或可约范围规则没读全');
-        if (!periods.length) reasons.push('这一天没有读到开放时段');
+        if (!periods.length) {
+            const firstSlot = open[0] && open[0].slot;
+            const limTag = firstSlot ? ',lim=' + String(firstSlot.openLimit) : '';
+            reasons.push('这一天没有读到开放时段[' + (Array.isArray(raw.openTimes) ? raw.openTimes.length : String(raw.openTimes))
+                + '/' + (Array.isArray(raw.timeScopeOpenInfo) ? raw.timeScopeOpenInfo.length : String(raw.timeScopeOpenInfo))
+                + '/' + open.length + limTag + ']');
+        }
         if (reservations === null) reasons.push('占用信息没读全');
-        if (classes === null) reasons.push('课表占用没读全');
+        if (classes === null) reasons.push('课表占用没读全[' + (raw.cls === undefined ? '无cls' : typeof raw.cls) + ']');
         if (!(Number.isInteger(min) && min > 0)) reasons.push('房间人数下限没读全');
         else if (!(Number.isInteger(max) && max >= min)) reasons.push('房间人数上限没读全');
         const usable = reasons.length === 0;
