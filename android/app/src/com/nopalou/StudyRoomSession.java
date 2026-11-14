@@ -179,6 +179,9 @@ final class StudyRoomSession {
         handler.postDelayed(connect,80);
     }
     void openOfficial(Runnable returned) {
+        openOfficial("返回研修室并重新连接", returned);
+    }
+    void openOfficial(String backLabel, Runnable returned) {
         if (web==null || official!=null || stopped) return;
         busy=false; ready=false; pending=null; ++generation; handler.removeCallbacksAndMessages(null);
         web.getSettings().setBlockNetworkImage(false);
@@ -194,7 +197,8 @@ final class StudyRoomSession {
         android.widget.LinearLayout bar=new android.widget.LinearLayout(host);
         bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
         bar.setPadding(Ui.dp(host,12),Ui.dp(host,8),Ui.dp(host,12),Ui.dp(host,8));
-        bar.addView(CourseUi.action(host,"返回研修室并重新连接",true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-1,Ui.dp(host,44)));
+        String label=backLabel==null||backLabel.isEmpty()?"返回研修室并重新连接":backLabel;
+        bar.addView(CourseUi.action(host,label,true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-1,Ui.dp(host,44)));
         root.addView(bar,new android.widget.LinearLayout.LayoutParams(-1,-2));
         root.addView(Ui.hairline(host),new android.widget.LinearLayout.LayoutParams(-1,1));
         root.addView(web,new android.widget.LinearLayout.LayoutParams(-1,0,1));

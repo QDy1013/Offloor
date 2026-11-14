@@ -451,6 +451,7 @@ public class StudyRoomActivity extends Activity {
         hint.addView(text("最近 7 天到未来 30 天，包含本人参与的研修室预约", 12, Ui.SUB, false));
         CourseUi.gap(hint, 4);
         hint.addView(text("只有本人发起、且校方状态允许的预约才能在这里取消", 12, Ui.MUTE, false));
+        if (session != null) action(hint, "去西工大官方平台核验预约", () -> session.openOfficial("返回我的预约", this::reconnectFromOfficial));
     }
 
     private void list() {
