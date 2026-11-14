@@ -716,10 +716,12 @@ public class StudyRoomActivity extends Activity {
         if (diag == null) return "";
         String menu = joinArray(diag.optJSONArray("menuCampuses"));
         String got = joinArray(diag.optJSONArray("roomCampuses"));
+        String detail = diag.optString("detail", "").trim();
         return "校方菜单：类目 " + diag.optInt("kinds") + " · 区域 " + diag.optInt("labs")
                 + " · 分支 " + diag.optInt("leaves")
                 + (menu.isEmpty() ? "" : " · 菜单含[" + menu + "]")
-                + (got.isEmpty() ? "" : " · 返回[" + got + "]");
+                + (got.isEmpty() ? "" : " · 返回[" + got + "]")
+                + (detail.isEmpty() ? "" : "\n" + detail);
     }
 
     private static String joinArray(JSONArray arr) {
@@ -841,7 +843,7 @@ public class StudyRoomActivity extends Activity {
     /** 每次打开面板都重新读一次验证码配置和须知，避免拿着过期的图片提交。 */
     private void prepare(JSONObject row, int start, int end) {
         if (busy) { toast("上一请求尚未完成，请稍候"); return; }
-        boolean sent = call("captcha", new JSONObject(), config -> {
+        boolean sent = call("captcha", args("id", row.opt("id")), config -> {
             if ("2".equals(config.optString("mode"))) {
                 message = config.optString("message", "校方要求滑块验证，请在官方页面完成");
                 toast(message);

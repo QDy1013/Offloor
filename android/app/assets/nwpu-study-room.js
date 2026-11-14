@@ -4,7 +4,7 @@
     if (root.NwpuStudyRoom) { if (typeof module !== 'undefined') module.exports = root.NwpuStudyRoom; return; }
     const ORIGIN = 'https://ic.nwpu.edu.cn';
     let busy = false, rooms = new Map(), bookings = new Map(), members = new Map();
-    let verifiedUser = null, cachedMenu = null, unfilteredRejectedToken = '', cachedNoticeParams;
+    let verifiedUser = null, cachedMenu = null, unfilteredRejectedToken = '', cachedNoticeParams, cachedSpa = null;
     const clean = (v, max = 180) => String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
     const id = v => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0) || (typeof v === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(v));
     const same = (a, b) => String(a) === String(b);
@@ -45,9 +45,78 @@
         if (Array.isArray(data)) return data.map(pick).filter(Boolean).join('\n');
         return pick(data);
     }
-    async function loadNotice() {
+    function scanBundleSnippets(texts, token) {
+        const snippets = [];
+        for (const text of texts) {
+            let pos = 0;
+            while (snippets.length < 4 && (pos = text.indexOf(token, pos)) !== -1) {
+                snippets.push(text.slice(Math.max(0, pos - 60), Math.min(text.length, pos + 180)));
+                pos += token.length;
+            }
+        }
+        return snippets;
+    }
+    function parseParamKeys(snippets, stopWords) {
+        const keys = [];
+        for (const s of snippets) {
+            const matches = s.match(/[a-zA-Z_][a-zA-Z0-9_]{1,24}(?=\s*[:=])/g) || [];
+            for (const k of matches) {
+                if (stopWords.has(k) || keys.includes(k)) continue;
+                keys.push(k);
+            }
+        }
+        return keys;
+    }
+    async function inspectSpaApi() {
+        if (cachedSpa) return cachedSpa;
+        if (!root.document || !root.fetch) return null;
+        const urls = [];
+        const addUrl = u => {
+            if (typeof u !== 'string' || !u.startsWith(ORIGIN) || !/\.js(\?|$)/i.test(u)) return;
+            if (/chunk-vendors|vendor|polyfill|echarts|jquery|element|vant/i.test(u)) return;
+            if (!urls.includes(u)) urls.push(u);
+        };
+        try {
+            const scripts = root.document.scripts || [];
+            for (let i = 0; i < scripts.length; i++) addUrl(scripts[i] && scripts[i].src);
+            if (root.performance && typeof root.performance.getEntriesByType === 'function') {
+                for (const e of root.performance.getEntriesByType('resource')) addUrl(e && e.name);
+            }
+        } catch (_) { }
+        if (!urls.length) return null;
+        const texts = [];
+        for (const u of urls.slice(0, 6)) {
+            try {
+                const res = await root.fetch(u, {credentials: 'omit'});
+                if (res && res.ok) {
+                    const txt = await res.text();
+                    if (txt && txt.length <= 2500000) texts.push(txt);
+                }
+            } catch (_) { }
+        }
+        if (!texts.length) return null;
+        const stop = new Set(['url', 'method', 'get', 'post', 'params', 'data', 'headers', 'return', 'function', 'const', 'let', 'var', 'true', 'false', 'null', 'undefined', 'async', 'await', 'ic', 'web', 'sysInfo', 'reserve']);
+        const sysSnippets = scanBundleSnippets(texts, 'sysInfo');
+        const resSnippets = scanBundleSnippets(texts, '/ic-web/reserve');
+        const infoQs = [];
+        for (const s of sysSnippets) {
+            const qm = s.match(/sysInfo\?([a-zA-Z0-9_=&%-]+)/);
+            if (qm && qm[1]) infoQs.push(qm[1]);
+        }
+        cachedSpa = {
+            scripts: urls.length,
+            sysInfoKeys: parseParamKeys(sysSnippets, stop),
+            sysInfoQs: infoQs,
+            sysInfoSnippet: clean(sysSnippets[0] || '', 110),
+            reserveKeys: parseParamKeys(resSnippets, stop),
+            reserveSnippet: clean(resSnippets[0] || '', 120)
+        };
+        return cachedSpa;
+    }
+    async function loadNotice(raw) {
         let lastDefinite = null, anyOk = false;
         const probeBatch = async (batch) => {
+            if (!batch || !batch.length) return '';
             const settled = await Promise.allSettled(batch.map(params => request('sysInfo', params).then(res => ({params, notice: extractNotice(res.data)}))));
             let netErr = null;
             for (const item of settled) {
@@ -68,17 +137,50 @@
             if (cachedHit) return cachedHit;
             cachedNoticeParams = undefined;
         }
-        // Try standard sysKind=1 first, then fan out read-only parameter variants if rejected or empty.
-        const firstHit = await probeBatch([{sysKind: 1}]);
+        const sk = posInt(raw && raw.sysKind) || 1;
+        const firstHit = await probeBatch([{sysKind: sk}]);
         if (firstHit) return firstHit;
+        const roomSpecific = [
+            raw && id(raw.kindId) ? {kindId: raw.kindId} : null,
+            raw && id(raw.devId) ? {devId: raw.devId} : null,
+            raw && id(raw.labId) ? {labId: raw.labId} : null,
+            {resvKind: posInt(raw && raw.resvKind) || 2},
+            {noticeType: 1},
+            {sysType: 1}
+        ].filter(Boolean);
         for (const batch of [
-            [{sysKind: 1, type: 2}, {sysKind: 1, type: 1}, {type: 2}, {type: 1}, undefined],
-            [{sysKind: 1, type: 0}, {type: 0}, {kind: 1}, {sysKind: 1, classKind: 1}, {sysKind: 1, infoType: 1}, {infoType: 1}]
+            [{sysKind: sk, type: 2}, {sysKind: sk, type: 1}, {type: 2}, {type: 1}, undefined],
+            [{sysKind: sk, type: 0}, {type: 0}, {kind: 1}, {sysKind: sk, classKind: 1}, {infoType: 1}, {infoType: 2}],
+            roomSpecific,
+            [{sysKind: sk, resvKind: 2}, {sysKind: sk, type: 'resv'}, {type: 'resv'}, {code: 1}, {key: 'resv'}, {flag: 1}, {id: 1}]
         ]) {
             const hit = await probeBatch(batch);
             if (hit) return hit;
         }
-        if (!anyOk && lastDefinite) throw lastDefinite;
+        if (!anyOk) {
+            const spa = await inspectSpaApi();
+            if (spa) {
+                const dyn = [];
+                for (const q of spa.sysInfoQs.slice(0, 3)) {
+                    const obj = {};
+                    for (const [k, v] of new URLSearchParams(q)) obj[k] = v || '1';
+                    if (Object.keys(obj).length) dyn.push(obj);
+                }
+                for (const k of spa.sysInfoKeys.slice(0, 6)) {
+                    dyn.push({[k]: 1});
+                    dyn.push({[k]: 2});
+                    if (raw && id(raw[k])) dyn.push({[k]: raw[k]});
+                }
+                const dynHit = await probeBatch(dyn.slice(0, 12));
+                if (dynHit) return dynHit;
+                if (lastDefinite && spa.sysInfoSnippet) {
+                    const tagged = new Error(lastDefinite.message + ' {' + spa.sysInfoSnippet + '}');
+                    tagged.definite = true;
+                    throw tagged;
+                }
+            }
+            if (lastDefinite) throw lastDefinite;
+        }
         fail('尚未读取到校方预约须知，请稍后重试');
     }
     async function identity(account, forceFresh) {
@@ -322,7 +424,14 @@
             return cachedMenu.out;
         }
         const out = {kindIds: new Set(), labIds: new Set(), roomIds: new Set(), devIds: new Set(),
-            parentIds: new Set(), leafIds: new Set(), seenLeaves: new Set(), leaves: [], menuCampuses: new Set(), idCampus: new Map()};
+            parentIds: new Set(), leafIds: new Set(), seenLeaves: new Set(), leaves: [],
+            menuCampuses: new Set(), idCampus: new Map(), kindItems: [], kindMeta: new Map(), menuShapes: []};
+        const recordShape = (name, res) => {
+            if (!res) { out.menuShapes.push(name + ':null'); return; }
+            const d = res.data;
+            const info = Array.isArray(d) ? d.length : (d && typeof d === 'object' ? Object.keys(d).slice(0, 4).join(',') : typeof d);
+            out.menuShapes.push(name + ':' + info);
+        };
         const ingestList = (res, primaryKey, targetSet) => {
             for (const x of array(res && res.data)) {
                 if (!x || typeof x !== 'object') continue;
@@ -331,24 +440,37 @@
                 const c = nodeCampus(x);
                 if (c) out.menuCampuses.add(c);
                 const record = (val, set) => {
-                    if (!id(val)) return;
+                    if (!id(val)) return '';
                     const s = String(val);
                     if (set) set.add(s);
                     if (c) out.idCampus.set(s, c);
+                    return s;
                 };
-                record(x[primaryKey] || x.id, targetSet);
-                record(x.kindId, out.kindIds);
+                const pk = record(x[primaryKey] || x.id, targetSet);
+                const kid = record(x.kindId, out.kindIds);
                 record(x.labId, out.labIds);
                 record(x.roomId, out.roomIds);
+                const keyId = kid || pk;
+                if (primaryKey === 'kindId' && keyId && !out.kindMeta.has(keyId)) {
+                    const meta = {id: keyId, rawId: id(x.id) ? String(x.id) : '', sysKind: Number.isFinite(sk) ? sk : null,
+                        labId: id(x.labId) ? String(x.labId) : '', roomId: id(x.roomId) ? String(x.roomId) : '',
+                        campus: c, keys: Object.keys(x).slice(0, 8).join(',')};
+                    out.kindMeta.set(keyId, meta);
+                    out.kindItems.push(meta);
+                }
             }
         };
-        const safeGet = (p, params) => request(p, params).catch(() => null);
+        const safeGet = (p, params) => request(p, params).catch(e => {
+            if (e && e.definite) out.menuShapes.push(p + '!:' + clean(e.message, 30));
+            return null;
+        });
         // 并行拉取菜单/类目/区域，避免串行等待叠加延迟。
         const [rm1, k1, l1] = await Promise.all([
             safeGet('roomMenu', {sysKind: 1}),
             safeGet('kind', {sysKind: 1}),
             safeGet('lab', {sysKind: 1})
         ]);
+        recordShape('rm1', rm1); recordShape('k1', k1); recordShape('l1', l1);
         if (rm1) walkMenu(rm1.data, '', out, '');
         if (k1) ingestList(k1, 'kindId', out.kindIds);
         if (l1) ingestList(l1, 'labId', out.labIds);
@@ -359,9 +481,15 @@
                 safeGet('kind'),
                 safeGet('lab')
             ]);
+            recordShape('rm0', rm0); recordShape('k0', k0); recordShape('l0', l0);
             if (rm0) walkMenu(rm0.data, '', out, '');
             if (k0) ingestList(k0, 'kindId', out.kindIds);
             if (l0) ingestList(l0, 'labId', out.labIds);
+        }
+        if (!out.leaves.length && !out.labIds.size) {
+            const [rmC, lC] = await Promise.all([safeGet('roomMenu', {classKind: 1}), safeGet('lab', {classKind: 1})]);
+            if (rmC) walkMenu(rmC.data, '', out, '');
+            if (lC) ingestList(lC, 'labId', out.labIds);
         }
         if (!out.leafIds.size && !out.kindIds.size && !out.labIds.size && !out.roomIds.size) {
             const sm = await safeGet('seatMenu');
@@ -533,9 +661,35 @@
         if (kinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             const extraKinds = kinds.filter(k => !out.leafIds.has(k));
             const kList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
-            const missedKinds = await runPlan(kList, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''}));
-            if (missedKinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
-                await runPlan(missedKinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k}));
+            let missedKinds = await runPlan(kList, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''}));
+            for (const build of [
+                k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k}),
+                k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindId: k}),
+                k => ({resvDates: key, page, pageSize: 30, kindIds: k}),
+                k => { const m = out.kindMeta && out.kindMeta.get(k); return m && m.sysKind != null && m.sysKind !== 1 ? {sysKind: m.sysKind, resvDates: key, page, pageSize: 30, kindIds: k} : null; },
+                k => { const m = out.kindMeta && out.kindMeta.get(k); return m && id(m.labId) ? {sysKind: 1, resvDates: key, page, pageSize: 30, labId: m.labId} : null; },
+                k => ({sysKind: 1, resvDates: key, page, pageSize: 30, labId: k}),
+                k => ({sysKind: 1, resvDates: key, page, pageSize: 30, labIds: k}),
+                k => ({sysKind: 1, resvDates: key, page, pageSize: 30, roomIds: k})
+            ]) {
+                if (!missedKinds.length || (agg.items.length && hasBothCampuses(agg.campuses))) break;
+                missedKinds = await runPlan(missedKinds, build);
+            }
+            if (missedKinds.length && out.menuCampuses.has('长安校区') && !agg.campuses.has('长安校区')) {
+                const spa = await inspectSpaApi();
+                if (spa && spa.reserveKeys) {
+                    const known = new Set(['sysKind', 'resvDates', 'page', 'pageSize', 'kindIds', 'kindId', 'labId', 'labIds', 'roomIds']);
+                    for (const rk of spa.reserveKeys.filter(x => !known.has(x)).slice(0, 3)) {
+                        if (!missedKinds.length || hasBothCampuses(agg.campuses)) break;
+                        missedKinds = await runPlan(missedKinds, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, [rk]: k}));
+                    }
+                }
+                if (!agg.campuses.has('长安校区')) {
+                    const ks = (out.kindItems || []).slice(0, 6).map(m => (m.id + '(sk=' + m.sysKind + (m.labId ? ',l=' + m.labId : '') + ')')).join(',');
+                    const errTag = lastErr ? ' · err:' + clean(lastErr.message, 60) : '';
+                    const spaTag = spa && spa.reserveSnippet ? ' · spa:' + clean(spa.reserveSnippet, 80) : '';
+                    out.detail = clean((out.menuShapes || []).join(' ') + (ks ? ' · k:[' + ks + ']' : '') + errTag + spaTag, 240);
+                }
             }
         }
         if (labs.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
@@ -591,7 +745,8 @@
             labs: out.labIds.size,
             leaves: out.leaves.length,
             menuCampuses: [...out.menuCampuses],
-            roomCampuses: [...new Set(safe.map(r => nodeCampus(r)).filter(Boolean))]
+            roomCampuses: [...new Set(safe.map(r => nodeCampus(r)).filter(Boolean))],
+            detail: out.detail || ''
         } : null;
         return {rooms: safe, date, count: Number.isFinite(result.count) ? result.count : null, page: args.page || 1,
             more: typeof result.more === 'boolean' ? result.more : null, diag};
@@ -699,7 +854,8 @@
     }
     async function captcha(args, account) {
         await identity(account);
-        const [configRes, noticeRes] = await Promise.allSettled([loadConfig(), loadNotice()]);
+        const raw = args && id(args.id) ? rooms.get(String(args.id)) : null;
+        const [configRes, noticeRes] = await Promise.allSettled([loadConfig(), loadNotice(raw)]);
         if (configRes.status !== 'fulfilled') throw configRes.reason;
         const response = configRes.value;
         const mode = response.data && String(response.data.resvCode);

@@ -614,6 +614,69 @@ async function main() {
         assert.equal(h.posts()[0].payload.classKind, 1);
     });
 
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/kind')) {
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {id: 51, sysKind: 1, name: '友谊校区研修间（1-4人）'},
+                    {id: 71, sysKind: 1, name: '长安校区研修间（2-8人）'}
+                ]})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('kindId') === '71') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 701, kindId: 71, labName: '长安校区图书馆'})], count: 1})};
+                }
+                if (q.get('kindIds') === '71') return {ok: true, json: async () => ({code: 0, data: [], count: 0})};
+                return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, kindId: 51, labName: '友谊校区图书馆'})], count: 1})};
+            }
+        }
+    });
+    const singRes = await h.api.run('query', {date: DATE}, 'owner');
+    check('kind fallback discovers ChangAn rooms via singular kindId when kindIds returns empty', () => {
+        assert.equal(singRes.rooms.length, 2);
+        assert.ok(singRes.rooms.some(r => r.location.includes('长安校区')));
+        assert.ok(singRes.rooms.some(r => r.location.includes('友谊校区')));
+    });
+
+    h = harness({
+        room: {devId: 123, kindId: 51, labId: 9},
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/sysInfo')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('kindId') === '51') return {ok: true, json: async () => ({code: 0, data: [{content: '按类目读到的预约须知'}]})};
+                return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+            }
+        }
+    });
+    await h.api.run('query', {date: DATE}, 'owner');
+    const kindNoticeCap = await h.api.run('captcha', {id: 123}, 'owner');
+    check('captcha uses selected room kindId fallback for sysInfo when generic params fail', () => {
+        assert.match(kindNoticeCap.notice, /按类目读到的预约须知/);
+    });
+
+    h = harness({
+        handle: async (url, init) => {
+            if (url === 'https://ic.nwpu.edu.cn/js/app.test.js') {
+                assert.equal(init.credentials, 'omit');
+                return {ok: true, text: async () => 'fetchSys(){return get({url:"/ic-web/sysInfo",params:{infoCode:2}})}'};
+            }
+            if (url.startsWith('/ic-web/sysInfo')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (q.get('infoCode') === '2') return {ok: true, json: async () => ({code: 0, data: [{content: '官方脚本解析到的须知'}]})};
+                return {ok: true, json: async () => ({code: 1, message: '请求参数缺失'})};
+            }
+        }
+    });
+    h.root.document = {scripts: [{src: 'https://ic.nwpu.edu.cn/js/app.test.js'}]};
+    const spaNoticeCap = await h.api.run('captcha', {}, 'owner');
+    check('captcha discovers exotic sysInfo query param from same-origin loaded script when needed', () => {
+        assert.match(spaNoticeCap.notice, /官方脚本解析到的须知/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
