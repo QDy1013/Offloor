@@ -729,6 +729,21 @@ async function main() {
         assert.equal(chHits, 2);
     });
 
+    h = harness({
+        handle: async (url) => {
+            if (url === '/ic-web/sysConfig/public') {
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {cfgKey: 'siteName', cfgValue: 'ic'},
+                    {cfgKey: 'resvCode', cfgValue: '0'}
+                ]})};
+            }
+        }
+    });
+    const arrCfgCap = await h.api.run('captcha', {}, 'owner');
+    check('loadConfig parses resvCode from key-value array entries', () => {
+        assert.equal(arrCfgCap.mode, '0');
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

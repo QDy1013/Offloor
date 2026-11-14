@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.63 修复真机实测 `v0.62` 时长按/点击可约时段出现的 `校方验证码配置尚未读全 [arr:33]`：长安校区已成功加载全部 4 间可约研修室，进一步发现 `/ic-web/sysConfig/public` 实际返回 33 项键值配置数组，扩展 `extractConfigMode` 支持从键值配置数组条目中提取 `resvCode`（并保留未知值安全拦截），同时丰富数组配置诊断标签以防键名差异。
+
 v0.62 修复真机实测定位的两个关键阻塞：1）`roomMenu?sysKind=1` 已返回两校区类目时不再并发探测 `kind`/`lab`（消除 `权限不足 [lab]` 无效请求），补查长安校区时跳过已命中的友谊校区类目，并将 `tryBatch` 降至 2 路限速并发与 `请求频繁` 单次退避重试，避免触达校方频控；2）`loadConfig` 支持在无参 `sysConfig/public` 缺少 `resvCode` 时继续回退 `{sysKind: 1}`/`{type: 1/2}` 并解析数字或嵌套 `resvCode`，仍缺时附带安全字段诊断，同时修复 `refreshRoom` 慢回退分支取 `.res` 的笔误。
 
 v0.61 进一步修复真机实测发现的「`请求参数缺失 [sysInfo]`」与「长安校区返回 0 间研修室」问题：打开预约弹窗时透传当前房间标识并在 `sysInfo` 增加 `kindId`/`devId`/`labId`/`resvKind`/`noticeType`/`sysType`/`infoType=2` 与同源官方脚本参数线索发现（失败仍安全拦截）；`kind` 类目补查扩展单数 `kindId`、去 `sysKind`、按类目自带 `sysKind` / `labId` 及 `labIds` / `roomIds` 回退，并在仍缺失校区时直接展示类目明细与官方接口片段诊断。

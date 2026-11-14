@@ -39,10 +39,16 @@
         throw lastErr;
     }
     function extractConfigMode(data) {
+        const valid = v => v === 0 || v === 1 || v === 2 || v === '0' || v === '1' || v === '2' ? String(v) : '';
         const pick = d => {
             if (!d || typeof d !== 'object') return '';
-            const v = d.resvCode;
-            if (v === 0 || v === 1 || v === 2 || v === '0' || v === '1' || v === '2') return String(v);
+            const direct = valid(d.resvCode ?? d.resv_code);
+            if (direct) return direct;
+            const k = clean(d.cfgKey || d.configKey || d.paramKey || d.sysKey || d.itemKey || d.key || d.code || d.name || d.cfgName || '', 40);
+            if (/^(?:resvCode|resv_code|resvCaptcha|captchaCode)$/i.test(k)) {
+                const kv = valid(d.cfgValue ?? d.configValue ?? d.paramValue ?? d.sysValue ?? d.itemValue ?? d.value ?? d.val);
+                if (kv) return kv;
+            }
             if (d.data && typeof d.data === 'object' && d.data !== d) return pick(d.data);
             return '';
         };
@@ -53,7 +59,11 @@
         return pick(data);
     }
     function configTag(data) {
-        if (Array.isArray(data)) return 'arr:' + data.length;
+        if (Array.isArray(data)) {
+            const first = data[0] && typeof data[0] === 'object' ? Object.keys(data[0]).slice(0, 6).join(',') : typeof data[0];
+            const hit = data.find(x => x && typeof x === 'object' && /resv|code|capt|verify/i.test(JSON.stringify(x)));
+            return clean('arr:' + data.length + ';k=' + first + (hit ? ';m=' + JSON.stringify(hit) : ''), 110);
+        }
         if (data && typeof data === 'object') return clean(Object.keys(data).slice(0, 8).join(',') + ';rc=' + String(data.resvCode), 90);
         return typeof data;
     }
