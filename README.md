@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.55 修复研修室查询报错「请求参数错误」：改用 `ic-web` `sysKind=1` 对应的单分类/单楼栋参数（优先 `kindIds` 与 `labId`，兼容叶节点空 `children: []` 及分批聚合查询），并支持 `resvInfo` 毫秒级时间戳转换。
+
 v0.54 研修室稳定性加固：避免 `onPageFinished` 与后台轮询产生并发 `connect` 循环；精简 `roomMenu` / `lab` / `kind` 过滤参数提取，防止跨系统或空参数异常。
 
 v0.53 修复研修室查询报错「参数不能全为空」：当 `/ic-web/reserve` 要求至少传入房间/楼栋/类别筛选参数时，自动从 `/ic-web/roomMenu` 或 `/ic-web/lab` 获取并补充 `roomIds` / `labIds` / `kindIds`。

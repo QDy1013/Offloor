@@ -60,7 +60,9 @@ public final class Step59Test {
         check("invalid date yields no instant", StudyRoomPlan.at("2026-02-30", 480) == -1);
         check("school timestamps parse in China time", StudyRoomPlan.stamp("2026-11-12 09:30:00") == StudyRoomPlan.at(DATE, "09:30")
                 && StudyRoomPlan.stamp("2026/11/12 09:30") == StudyRoomPlan.at(DATE, "09:30")
-                && StudyRoomPlan.stamp("2026-11-12 09:30") == StudyRoomPlan.at(DATE, "09:30"));
+                && StudyRoomPlan.stamp("2026-11-12 09:30") == StudyRoomPlan.at(DATE, "09:30")
+                && StudyRoomPlan.stamp(String.valueOf(StudyRoomPlan.at(DATE, "09:30"))) == StudyRoomPlan.at(DATE, "09:30")
+                && StudyRoomPlan.stamp(String.valueOf(StudyRoomPlan.at(DATE, "09:30") / 1000L)) == StudyRoomPlan.at(DATE, "09:30"));
         check("unreadable timestamps are rejected", StudyRoomPlan.stamp("unknown") == -1 && StudyRoomPlan.stamp("") == -1
                 && StudyRoomPlan.stamp(null) == -1 && StudyRoomPlan.stamp("2026-11-12") == -1);
 

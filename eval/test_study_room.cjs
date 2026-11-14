@@ -232,6 +232,46 @@ async function main() {
         assert.match(write, /if \(!sent \|\| !ready\) \{ markWrite\(false\); reminderRow = null/);
     });
 
+    // ---------- 回归：roomMenu 单类目回退与毫秒时间戳归一化 ----------
+    const startMs = Date.parse('2026-11-12T09:00:00+08:00');
+    const endMs = Date.parse('2026-11-12T10:00:00+08:00');
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [{id: 100, name: '图书馆', children: [{id: 201, name: '个人研修室', children: []}, {id: 202, name: '多人研修室', children: []}]}]})};
+            }
+            if (url.startsWith('/ic-web/kind') || url.startsWith('/ic-web/lab')) {
+                return {ok: true, json: async () => ({code: 0, data: []})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                const kindIds = q.get('kindIds'), labId = q.get('labId'), roomIds = q.get('roomIds');
+                if (!kindIds && !labId && !roomIds) {
+                    return {ok: true, json: async () => ({code: 1, message: '参数不能全为空'})};
+                }
+                if (roomIds || (kindIds && kindIds.includes(','))) {
+                    return {ok: true, json: async () => ({code: 1, message: '请求参数错误'})};
+                }
+                if (kindIds === '201') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 123, resvInfo: [{startTime: startMs, endTime: String(endMs), resvStatus: 0}]})], count: 1})};
+                }
+                if (kindIds === '202') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 124, devName: '研修室 B'})], count: 1})};
+                }
+                return {ok: true, json: async () => ({code: 0, data: [], count: 0})};
+            }
+        }
+    });
+    result = await h.api.run('query', {date: DATE}, 'owner');
+    check('empty-filter and param-error fall back to per-leaf kindIds and normalize ms timestamps', () => {
+        assert.equal(result.rooms.length, 2);
+        assert.equal(result.rooms[0].id, 123);
+        assert.equal(result.rooms[1].id, 124);
+        assert.equal(result.rooms[0].occupied[0].start, '2026-11-12 09:00:00');
+        assert.equal(result.rooms[0].occupied[0].end, '2026-11-12 10:00:00');
+        assert.throws(() => h.api.validate(result.rooms[0], DATE, '09:00', '10:00', 1, NOW), /占用/);
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

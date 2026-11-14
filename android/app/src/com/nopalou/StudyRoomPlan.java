@@ -81,10 +81,18 @@ final class StudyRoomPlan {
         return format.format(new java.util.Date(millis));
     }
 
-    /** 校方返回的时间串（"yyyy-MM-dd HH:mm:ss" 等）换成毫秒；认不出返回 -1。 */
+    /** 校方返回的时间串（"yyyy-MM-dd HH:mm:ss" 或毫秒时间戳等）换成毫秒；认不出返回 -1。 */
     static long stamp(String value) {
         if (value == null) return -1;
         String text = value.trim().replace('/', '-').replace('T', ' ');
+        if (text.matches("\\d{10,15}")) {
+            try {
+                long num = Long.parseLong(text);
+                return text.length() == 10 ? num * 1000L : num;
+            } catch (Exception ignored) {
+                return -1;
+            }
+        }
         if (text.length() < 16 || !text.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}(?::\\d{2})?(?:\\.\\d+)?.*")) return -1;
         String[] patterns = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss.SSS"};
         for (String pattern : patterns) {
