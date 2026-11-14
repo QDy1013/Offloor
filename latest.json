@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 59,
-      "versionName": "0.59",
+      "versionCode": 60,
+      "versionName": "0.60",
       "size": 2537443,
-      "sha256": "87105d3f98c76ca9945220565dd670cce0a6b173dcaf3fd2f78b1b69a204f308",
+      "sha256": "382219cfdc44c1ea78109a150fabca8941febdfaff50f52867581063ac3343cc",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/87105d3f98c76ca9945220565dd670cce0a6b173dcaf3fd2f78b1b69a204f308/offloor.apk",
-      "notes": "v0.59: speed up study room WebView connect and concurrent queries"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/382219cfdc44c1ea78109a150fabca8941febdfaff50f52867581063ac3343cc/offloor.apk",
+      "notes": "v0.60 fix study room missing-parameter errors on booking flow"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
