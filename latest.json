@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 57,
-      "versionName": "0.57",
+      "versionCode": 58,
+      "versionName": "0.58",
       "size": 2533347,
-      "sha256": "c632738da491db9bcf594cefeb346e07d5064e44d0890e62a42afdf313d7f5e7",
+      "sha256": "637714c592a239e73de7e614e22893e0153f08a4929d3536dfe6550de7550172",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/c632738da491db9bcf594cefeb346e07d5064e44d0890e62a42afdf313d7f5e7/offloor.apk",
-      "notes": "v0.57: 修复实测研修室误判暂不可约并新增按校区分类"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/637714c592a239e73de7e614e22893e0153f08a4929d3536dfe6550de7550172/offloor.apk",
+      "notes": "v0.58: fix missing Chang'an campus study rooms and keep both campuses visible"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
