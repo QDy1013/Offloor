@@ -540,7 +540,7 @@ public class StudyRoomActivity extends Activity {
     }
 
     private void reconnectFromOfficial() {
-        if (busy || !active) return;
+        if (!active) return;
         if (session == null) { connect(); return; }
         ready = false; rows = null; reconciled = false; error = ""; busy = true; int token = ++epoch;
         render();

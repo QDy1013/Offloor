@@ -33,8 +33,9 @@ final class StudyRoomSession {
     static boolean allowed(String value) {
         try {
             Uri u=Uri.parse(value);
+            String h=u.getHost();
             return "https".equals(u.getScheme()) && u.getUserInfo()==null && (u.getPort()==-1 || u.getPort()==443)
-                && ("ic.nwpu.edu.cn".equals(u.getHost()) || "uis.nwpu.edu.cn".equals(u.getHost()));
+                && h!=null && (h.equals("nwpu.edu.cn") || h.endsWith(".nwpu.edu.cn"));
         } catch (Exception e) { return false; }
     }
     private boolean validAccount() {
@@ -70,7 +71,7 @@ final class StudyRoomSession {
                 @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); fail("校方连接证书校验失败"); }
                 @Override public void onReceivedError(WebView v,android.webkit.WebResourceRequest r,android.webkit.WebResourceError e) { if (r.isForMainFrame()) fail("校方系统连接失败，请重新连接"); }
             });
-            deadline=SystemClock.elapsedRealtime()+75_000; spaWaitUntil=0;
+            deadline=SystemClock.elapsedRealtime()+25_000; spaWaitUntil=0;
             web.loadUrl(LOGIN); handler.postDelayed(connect,200);
         } catch (Exception e) { fail("研修室会话暂时无法启动"); }
     }
@@ -164,15 +165,15 @@ final class StudyRoomSession {
         if (login==null || data==null || !data.owner.equals(login.owner)) { callback.finished(null,"请先在校园页连接校园账号"); return; }
         account=login.account; owner=login.owner; pending=callback; busy=true; ready=false; submitted=false; writing=false;
         handler.removeCallbacksAndMessages(null);
-        deadline=SystemClock.elapsedRealtime()+75_000; spaWaitUntil=0;
+        deadline=SystemClock.elapsedRealtime()+25_000; spaWaitUntil=0;
         web.evaluateJavascript("window.__louStudyReady=null;window.__louStudyConnecting=false;",null);
         String url=web.getUrl();
         if (!allowed(url)) web.loadUrl(LOGIN);
         handler.postDelayed(connect,150);
     }
     void openOfficial(Runnable returned) {
-        if (web==null || busy || official!=null || stopped) return;
-        ready=false; handler.removeCallbacksAndMessages(null);
+        if (web==null || official!=null || stopped) return;
+        busy=false; ready=false; pending=null; ++generation; handler.removeCallbacksAndMessages(null);
         if (web.getParent() instanceof ViewGroup) ((ViewGroup)web.getParent()).removeView(web);
         if (!allowed(web.getUrl())) web.loadUrl(LOGIN);
         int theme=Ui.dark?android.R.style.Theme_DeviceDefault_NoActionBar:android.R.style.Theme_DeviceDefault_Light_NoActionBar;
