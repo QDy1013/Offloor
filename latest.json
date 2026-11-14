@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 61,
-      "versionName": "0.61",
+      "versionCode": 62,
+      "versionName": "0.62",
       "size": 2537443,
-      "sha256": "c9c28df7d83b7a05c631820e4f9c53a3e04c53cee141bf1d0230eaa8857bdc24",
+      "sha256": "2cdbecfb683538418eed6bff8c83637eba2602fdfabd9832910c7e42adb87770",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/c9c28df7d83b7a05c631820e4f9c53a3e04c53cee141bf1d0230eaa8857bdc24/offloor.apk",
-      "notes": "v0.61 fix sysInfo missing param and ChangAn kind discovery"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2cdbecfb683538418eed6bff8c83637eba2602fdfabd9832910c7e42adb87770/offloor.apk",
+      "notes": "v0.62: throttle reserve fallback queries and probe sysConfig variants"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
