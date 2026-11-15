@@ -455,10 +455,15 @@ public class StudyRoomActivity extends Activity {
 
     private List<JSONObject> filterAvailable(List<JSONObject> items) {
         if (items == null) return java.util.Collections.emptyList();
-        if (!onlyAvailable) return items;
-        List<JSONObject> out = new ArrayList<>();
-        for (JSONObject row : items) if (row != null && row.optBoolean("available")) out.add(row);
-        return out;
+        if (onlyAvailable) {
+            List<JSONObject> out = new ArrayList<>();
+            for (JSONObject row : items) if (row != null && row.optBoolean("available")) out.add(row);
+            return out;
+        }
+        List<JSONObject> sorted = new ArrayList<>(items.size());
+        for (JSONObject row : items) if (row != null && row.optBoolean("available")) sorted.add(row);
+        for (JSONObject row : items) if (row != null && !row.optBoolean("available")) sorted.add(row);
+        return sorted;
     }
 
     private void emptyFilteredCard() {

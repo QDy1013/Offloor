@@ -33,6 +33,7 @@ public class CampusActivity extends Activity {
     private CampusClassroomRefresh classroomRefresh;
     private boolean roomAttempted,roomLoading;
     private String roomCampus="长安校区",roomDate="",roomToken="",roomError="";
+    private String busLiveRoute="";
     private int roomStart,roomEnd,roomLimit=40;
     private final java.util.Set<String> selectedRoomLocations=new java.util.LinkedHashSet<>();
     private final java.util.Set<String> submittedRoomLocations=new java.util.LinkedHashSet<>();
@@ -635,24 +636,64 @@ public class CampusActivity extends Activity {
             return;
         }
         int nowMins=isBusToday&&busHidePast?nowMinutesShanghai():-1;
-        java.util.LinkedHashMap<String,java.util.ArrayList<JSONObject>> groups=new java.util.LinkedHashMap<>();
+        java.util.ArrayList<JSONObject> visibleTrips=new java.util.ArrayList<>();
+        java.util.LinkedHashSet<String> allRoutes=new java.util.LinkedHashSet<>();
+        int openCount=0;
+        String nextOpenTime="";
         for (int i=0;i<busTrips.length();i++) {
             JSONObject trip=busTrips.optJSONObject(i); if (trip==null) continue;
             if (nowMins>=0) {
                 int tm=busClockMinutes(trip.optString("time"));
                 if (tm>=0 && tm<nowMins) continue;
             }
-            String route=trip.optString("route");
-            java.util.ArrayList<JSONObject> trips=groups.get(route);
-            if (trips==null) { trips=new java.util.ArrayList<>(); groups.put(route,trips); }
-            trips.add(trip);
+            visibleTrips.add(trip);
+            String routeName=trip.optString("route");
+            allRoutes.add(routeName.isEmpty()?"其他班次":routeName);
+            if (trip.optBoolean("open")) {
+                openCount++;
+                if (nextOpenTime.isEmpty()) nextOpenTime=trip.optString("time");
+            }
         }
-        if (groups.isEmpty() && isBusToday && busHidePast) {
+        if (visibleTrips.isEmpty() && isBusToday && busHidePast) {
             CourseUi.gap(live,12);
             live.addView(banner("今天的班次已全部发车。",Ui.SUB,Ui.FILL));
             CourseUi.gap(live,10);
             live.addView(CourseUi.action(this,"显示今日全部班次",false,() -> { busHidePast=false; render(); }),CourseUi.row(dp(42)));
             return;
+        }
+        if (!busLiveRoute.isEmpty() && !allRoutes.contains(busLiveRoute)) busLiveRoute="";
+        CourseUi.gap(live,10);
+        String busSummary=(isBusToday&&busHidePast?"未发车 ":"共 ")+visibleTrips.size()+" 班 · 可购 "+openCount+" 班"
+                +(nextOpenTime.isEmpty()?"":" · 最近可购 "+nextOpenTime);
+        live.addView(text(busSummary,11,openCount>0?Ui.GREEN:Ui.SUB,true));
+        if (allRoutes.size()>1) {
+            CourseUi.gap(live,10);
+            android.widget.HorizontalScrollView routeScroll=new android.widget.HorizontalScrollView(this);
+            routeScroll.setHorizontalScrollBarEnabled(false);
+            LinearLayout routeRow=new LinearLayout(this);
+            java.util.ArrayList<String> routeTabs=new java.util.ArrayList<>();
+            routeTabs.add("");
+            routeTabs.addAll(allRoutes);
+            for (int ri=0;ri<routeTabs.size();ri++) {
+                String rKey=routeTabs.get(ri);
+                String rLabel=rKey.isEmpty()?"全部路线":rKey;
+                boolean selected=rKey.equals(busLiveRoute);
+                TextView chip=smallAction(rLabel,selected?Ui.ON_ACCENT:Ui.TEXT,selected?Ui.ACCENT:Ui.FILL,true,() -> { busLiveRoute=rKey; render(); });
+                LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,-2);
+                if (ri>0) cp.leftMargin=dp(8);
+                routeRow.addView(chip,cp);
+            }
+            routeScroll.addView(routeRow);
+            live.addView(routeScroll);
+        }
+        java.util.LinkedHashMap<String,java.util.ArrayList<JSONObject>> groups=new java.util.LinkedHashMap<>();
+        for (JSONObject trip:visibleTrips) {
+            String route=trip.optString("route");
+            String routeKey=route.isEmpty()?"其他班次":route;
+            if (!busLiveRoute.isEmpty() && !busLiveRoute.equals(routeKey)) continue;
+            java.util.ArrayList<JSONObject> trips=groups.get(route);
+            if (trips==null) { trips=new java.util.ArrayList<>(); groups.put(route,trips); }
+            trips.add(trip);
         }
         boolean firstGroup=true;
         for (java.util.Map.Entry<String,java.util.ArrayList<JSONObject>> group:groups.entrySet()) {
