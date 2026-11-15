@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 74,
-      "versionName": "0.74",
+      "versionCode": 75,
+      "versionName": "0.75",
       "size": 2549731,
-      "sha256": "5b0d7edca851631a5e344fb07d1f7ac31962dc6108f62059c56236b23e6339a2",
+      "sha256": "c01eba7ea8f09c723025b0d8c39a07c63c8771897aa39dce6060c04816768a19",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/5b0d7edca851631a5e344fb07d1f7ac31962dc6108f62059c56236b23e6339a2/offloor.apk",
-      "notes": "v0.74: academic summary copy, expand-all terms, next-exam copy, and timetable idle-day pill"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/c01eba7ea8f09c723025b0d8c39a07c63c8771897aa39dce6060c04816768a19/offloor.apk",
+      "notes": "v0.75: live bus summary + route filter chips, and bookable-first study room ordering"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
