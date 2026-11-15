@@ -1084,6 +1084,25 @@ public class StudyRoomActivity extends Activity {
         repaint[0].run();
         showMembers[0].run();
         action(participants, "＋ 添加同行人（校方通讯录）", () -> searchMember(selected, showMembers[0]));
+        final LinearLayout recentRow = horizontalScroll(participants, 8);
+        final Runnable showRecent = () -> {
+            recentRow.removeAllViews();
+            for (final JSONObject m : recentPartners()) {
+                final String mid = m.optString("id");
+                if (mid.isEmpty() || selected.containsKey(mid)) continue;
+                TextView pChip = chip(recentRow, "＋ " + m.optString("name"), false, () -> {
+                    if (selected.size() >= 30) { toast("最多添加 30 位同行人"); return; }
+                    selected.put(mid, m);
+                    showMembers[0].run();
+                });
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, -2); rp.rightMargin = dp(8);
+                recentRow.addView(pChip, rp);
+            }
+            recentRow.setVisibility(recentRow.getChildCount() > 0 ? View.VISIBLE : View.GONE);
+        };
+        final Runnable prevShowMembers = showMembers[0];
+        showMembers[0] = () -> { prevShowMembers.run(); showRecent.run(); };
+        showRecent.run();
 
         startView.setOnClickListener(v -> pickStart(plan, busySlots, chosen, repaint[0]));
         endView.setOnClickListener(v -> pickEnd(plan, busySlots, chosen, repaint[0]));
@@ -1180,11 +1199,45 @@ public class StudyRoomActivity extends Activity {
                 new AlertDialog.Builder(this, Ui.dialogTheme()).setTitle("选择同行人").setItems(labels, (dialog, index) -> {
                     JSONObject member = found.optJSONObject(index);
                     if (selected.size() >= 30) { toast("最多添加 30 位同行人"); return; }
-                    selected.put(member.optString("id"), member); refresh.run();
+                    selected.put(member.optString("id"), member);
+                    rememberPartner(member);
+                    refresh.run();
                 }).setNegativeButton("返回", null).show();
             });
         }));
         search.show();
+    }
+
+    private String partnerKey() { return "partners_" + (campus == null || campus.owner == null ? "" : campus.owner); }
+
+    private List<JSONObject> recentPartners() {
+        List<JSONObject> out = new ArrayList<>();
+        try {
+            JSONArray arr = new JSONArray(campusPrefs().getString(partnerKey(), "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item != null && !item.optString("id").isEmpty() && !item.optString("name").isEmpty()) out.add(item);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    private void rememberPartner(JSONObject member) {
+        if (member == null || member.optString("id").isEmpty() || member.optString("name").isEmpty()) return;
+        try {
+            JSONArray next = new JSONArray();
+            JSONObject clean = new JSONObject();
+            clean.put("id", member.opt("id"));
+            clean.put("name", member.optString("name"));
+            clean.put("account", member.optString("account"));
+            next.put(clean);
+            String idStr = clean.optString("id");
+            for (JSONObject old : recentPartners()) {
+                if (next.length() >= 6) break;
+                if (!idStr.equals(old.optString("id"))) next.put(old);
+            }
+            campusPrefs().edit().putString(partnerKey(), next.toString()).apply();
+        } catch (Exception ignored) { }
     }
 
     private void submit(JSONObject row, StudyRoomPlan.Room plan, List<StudyRoomPlan.Busy> busySlots, int[] chosen,
