@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 66,
-      "versionName": "0.66",
+      "versionCode": 67,
+      "versionName": "0.67",
       "size": 2541539,
-      "sha256": "328740449b3775c913cd7995c427fe6a8a91c8f0f594cf8af4bfe157228ca0ef",
+      "sha256": "2bd12d5f845bece59042d0328289b2056b7b32b1a6ddf2ce0f6ec95baa4bbd2d",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/328740449b3775c913cd7995c427fe6a8a91c8f0f594cf8af4bfe157228ca0ef/offloor.apk",
-      "notes": "v0.66: skip redundant multi-kind query, add available-only filter and 60s room cache"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/2bd12d5f845bece59042d0328289b2056b7b32b1a6ddf2ce0f6ec95baa4bbd2d/offloor.apk",
+      "notes": "v0.67: add quick duration and theme preset chips in booking sheet"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
