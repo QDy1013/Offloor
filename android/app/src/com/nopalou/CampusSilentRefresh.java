@@ -151,6 +151,7 @@ final class CampusSilentRefresh {
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         ws.setUseWideViewPort(true);
         ws.setLoadWithOverviewMode(true);
+        ws.setBlockNetworkImage(true);
         ws.setJavaScriptCanOpenWindowsAutomatically(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);

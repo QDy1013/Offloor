@@ -754,9 +754,10 @@ async function main() {
             }
             if (url.startsWith('/ic-web/reserve?')) {
                 const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
-                if (!q.get('kindIds') || q.get('kindIds') === '51,71') {
+                if (!q.get('kindIds')) {
                     return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, kindId: 51, labName: '友谊校区图书馆'})], count: 1})};
                 }
+                if (q.get('kindIds') === '51,71') throw new Error('must skip redundant comma kindIds after firstRes succeeds');
                 if (q.get('kindIds') === '51') throw new Error('leaf fallback must skip already-loaded Friendship campus');
                 if (q.get('kindIds') === '71') {
                     return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 701, kindId: 71, labName: '长安校区图书馆'})], count: 1})};

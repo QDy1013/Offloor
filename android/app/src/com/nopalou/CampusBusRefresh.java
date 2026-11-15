@@ -40,6 +40,7 @@ final class CampusBusRefresh {
             ((ViewGroup)host.getWindow().getDecorView()).addView(stage,0,new FrameLayout.LayoutParams(-1,-1));
             web=new WebView(host); stage.addView(web,new FrameLayout.LayoutParams(-1,-1));
             web.getSettings().setJavaScriptEnabled(true); web.getSettings().setDomStorageEnabled(true);
+            web.getSettings().setBlockNetworkImage(true);
             web.getSettings().setAllowFileAccess(false); web.getSettings().setAllowContentAccess(false);
             web.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             web.setWebViewClient(new WebViewClient() {

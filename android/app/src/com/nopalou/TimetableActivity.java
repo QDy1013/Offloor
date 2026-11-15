@@ -220,11 +220,17 @@ public class TimetableActivity extends Activity {
                 FrameLayout.LayoutParams stripe = new FrameLayout.LayoutParams(Math.round((day + 1) * col) - Math.round(day * col), -1);
                 stripe.leftMargin = dp(GUTTER) + Math.round(day * col); addView(today, stripe);
             }
+            org.json.JSONArray times = table.json.optJSONArray("units");
+            String[] unitStarts = new String[units + 1];
+            for (int i = 0; times != null && i < times.length(); i++) {
+                org.json.JSONObject time = times.optJSONObject(i);
+                int num = time == null ? 0 : time.optInt("number");
+                if (num >= 1 && num <= units) unitStarts[num] = time.optString("start");
+            }
             for (int u = 1; u <= units; u++) {
                 LinearLayout unit = CourseUi.column(TimetableActivity.this); unit.setGravity(Gravity.CENTER_HORIZONTAL); unit.setPadding(0, dp(9), 0, 0);
                 TextView label = text(String.format(java.util.Locale.ROOT, "%02d", u), 10, Ui.SUB, true); label.setGravity(Gravity.CENTER); unit.addView(label);
-                org.json.JSONArray times = table.json.optJSONArray("units"); String start = "";
-                for (int i = 0; times != null && i < times.length(); i++) { org.json.JSONObject time = times.optJSONObject(i); if (time != null && time.optInt("number") == u) start = time.optString("start"); }
+                String start = unitStarts[u] == null ? "" : unitStarts[u];
                 if (!start.isEmpty()) { TextView clock = text(start, 8, Ui.MUTE, false); clock.setGravity(Gravity.CENTER); clock.setPadding(0, dp(4), 0, 0); unit.addView(clock); }
                 FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(GUTTER), dp(48)); p.topMargin = dp(top(u)); addView(unit, p);
                 View line = new View(TimetableActivity.this); line.setBackgroundColor(Ui.withAlpha(Ui.LINE, 125));
@@ -267,8 +273,10 @@ public class TimetableActivity extends Activity {
 
         /** 今天这一列画一条「现在」红线：一眼看到下一节课还有多久。每分钟挪一次。 */
         View nowLine;
+        Runnable nowLineTick;
         void paintNowLine(float col) {
             if (nowLine != null) { removeView(nowLine); nowLine = null; }
+            if (nowLineTick != null) { uiTick.removeCallbacks(nowLineTick); nowLineTick = null; }
             if (week != table.currentWeek()) return;
             Calendar now = Calendar.getInstance();
             float y = nowY(now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE));
@@ -285,9 +293,8 @@ public class TimetableActivity extends Activity {
             line.setElevation(dp(2));
             line.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             addView(line, p); nowLine = line;
-            uiTick.removeCallbacksAndMessages(null);
-            uiTick.postDelayed(() -> { if (getWidth() > 0) paintNowLine((getWidth() - dp(GUTTER)) / 7f); },
-                    60_000L - System.currentTimeMillis() % 60_000L);
+            nowLineTick = () -> { if (getWidth() > 0) paintNowLine((getWidth() - dp(GUTTER)) / 7f); };
+            uiTick.postDelayed(nowLineTick, 60_000L - System.currentTimeMillis() % 60_000L);
         }
 
         /** 把当前分钟换算成网格里的 y 像素：在第 u 节开始到第 u+1 节开始之间按比例插值；不在上课时段内返回 -1。 */
