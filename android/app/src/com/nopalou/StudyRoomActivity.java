@@ -944,6 +944,9 @@ public class StudyRoomActivity extends Activity {
         times.addView(startView, new LinearLayout.LayoutParams(0, -2, 1));
         LinearLayout.LayoutParams endParams = new LinearLayout.LayoutParams(0, -2, 1); endParams.leftMargin = dp(8);
         times.addView(endView, endParams);
+        final LinearLayout durBar = new LinearLayout(this); durBar.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams durParams = new LinearLayout.LayoutParams(-1, -2); durParams.topMargin = dp(8);
+        schedule.addView(durBar, durParams);
         final TextView summary = text("", 12, Ui.SUB, false);
         summary.setPadding(0, dp(8), 0, 0); summary.setLineSpacing(dp(3), 1);
         schedule.addView(summary);
@@ -966,6 +969,17 @@ public class StudyRoomActivity extends Activity {
         // ---- 主题与备注 ----
         LinearLayout details = formSection(content, "03  研修内容");
         final EditText title = Ui.field(details, "研修主题", "如：小组讨论、论文写作", null, InputType.TYPE_CLASS_TEXT);
+        LinearLayout themePresets = new LinearLayout(this); themePresets.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2); tp.topMargin = dp(8);
+        details.addView(themePresets, tp);
+        for (final String preset : new String[]{"小组讨论", "课程复习", "论文研讨"}) {
+            TextView pChip = chip(themePresets, preset, false, () -> {
+                title.setText(preset);
+                title.setSelection(preset.length());
+            });
+            LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, -2); pp.rightMargin = dp(8);
+            themePresets.addView(pChip, pp);
+        }
         CourseUi.gap(details, 10);
         details.addView(text("备注（可选）", 12, Ui.SUB, false));
         final EditText memo = new EditText(this);
@@ -1017,6 +1031,18 @@ public class StudyRoomActivity extends Activity {
         repaint[0] = () -> {
             startView.setText("开始  " + StudyRoomPlan.clock(chosen[0]));
             endView.setText("结束  " + StudyRoomPlan.clock(chosen[1]));
+            durBar.removeAllViews();
+            int curDur = chosen[1] - chosen[0];
+            for (final int mins : new int[]{30, 60, 120, 180}) {
+                int candEnd = chosen[0] + mins;
+                if (mins < plan.minMinutes || mins > plan.maxMinutes || (mins % Math.max(1, plan.interval)) != 0) continue;
+                if (!check(plan, busySlots, chosen[0], candEnd, Math.max(plan.minUser, selected.size() + 1)).isEmpty()) continue;
+                String lbl = mins < 60 ? mins + "分钟" : (mins / 60) + "小时";
+                TextView dChip = chip(durBar, lbl, curDur == mins, () -> { chosen[1] = candEnd; repaint[0].run(); });
+                LinearLayout.LayoutParams dpLp = new LinearLayout.LayoutParams(-2, -2); dpLp.rightMargin = dp(8);
+                durBar.addView(dChip, dpLp);
+            }
+            durBar.setVisibility(durBar.getChildCount() > 0 ? View.VISIBLE : View.GONE);
             int peopleAll = selected.size() + 1;
             peopleCount.setText("含本人共 " + peopleAll + " 人");
             problem[0] = check(plan, busySlots, chosen[0], chosen[1], peopleAll);
