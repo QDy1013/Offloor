@@ -43,11 +43,17 @@ public class StudyRoomActivity extends Activity {
     private CampusData campus;
     private Timetable timetable;
     private boolean ready, busy, mine, active, reconciled, pageMore = true, onlyAvailable;
-    private int page = 1, epoch, count = -1, cachedRoomsCount = -1;
-    private long updatedAt, cachedRoomsAt;
-    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "", cachedRoomsDate = "", cachedRoomsDiag = "";
-    private JSONArray rows, cachedRooms;
-    private boolean cachedRoomsMore = true;
+    private int page = 1, epoch, count = -1;
+    private long updatedAt;
+    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "";
+    private JSONArray rows;
+    private static final class CachedRooms {
+        final JSONArray rows; final int count; final boolean more; final String diag; final long at;
+        CachedRooms(JSONArray rows, int count, boolean more, String diag, long at) {
+            this.rows = rows; this.count = count; this.more = more; this.diag = diag; this.at = at;
+        }
+    }
+    private final LinkedHashMap<String, CachedRooms> roomCache = new LinkedHashMap<>();
     /** 本人已有预约，用来提示和自己的安排撞车；本页只读一次。 */
     private JSONArray myBookings;
     /** 校方受理成功后才写入首页的提醒内容。 */
@@ -111,8 +117,15 @@ public class StudyRoomActivity extends Activity {
         super.onStop();
     }
 
-    private void invalidateRoomCache() {
-        cachedRooms = null; cachedRoomsDate = ""; cachedRoomsDiag = ""; cachedRoomsAt = 0; cachedRoomsCount = -1; cachedRoomsMore = true;
+    private void invalidateRoomCache() { roomCache.clear(); }
+
+    private boolean restoreCachedDay() {
+        if (mine || page != 1) return false;
+        CachedRooms hit = roomCache.get(date);
+        if (hit == null || System.currentTimeMillis() - hit.at >= 60_000L) return false;
+        rows = hit.rows; count = hit.count; pageMore = hit.more; queryDiag = hit.diag; updatedAt = hit.at;
+        render();
+        return true;
     }
 
     @Override public void onDestroy() { io.shutdownNow(); super.onDestroy(); }
@@ -296,11 +309,7 @@ public class StudyRoomActivity extends Activity {
     private void switchMode(boolean toMine) {
         if (busy || mine == toMine) return;
         mine = toMine; page = 1; rows = null; count = -1; error = ""; message = "";
-        if (!mine && cachedRooms != null && date.equals(cachedRoomsDate) && System.currentTimeMillis() - cachedRoomsAt < 60_000L) {
-            rows = cachedRooms; count = cachedRoomsCount; pageMore = cachedRoomsMore; queryDiag = cachedRoomsDiag; updatedAt = cachedRoomsAt;
-            render();
-            return;
-        }
+        if (restoreCachedDay()) return;
         query();
     }
 
@@ -330,7 +339,8 @@ public class StudyRoomActivity extends Activity {
                 + " " + day.substring(5).replace('-', '/');
         TextView view = chip(line, label, day.equals(date), () -> {
             if (busy || day.equals(date)) return;
-            date = day; page = 1; rows = null; count = -1; error = ""; query();
+            date = day; page = 1; rows = null; count = -1; error = "";
+            if (!restoreCachedDay()) query();
         });
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
         line.addView(view, p);
@@ -796,8 +806,10 @@ public class StudyRoomActivity extends Activity {
             pageMore = !result.has("more") || result.isNull("more") || result.optBoolean("more", true);
             updatedAt = System.currentTimeMillis();
             if (!mine && page == 1 && rows != null) {
-                cachedRooms = rows; cachedRoomsDate = date; cachedRoomsCount = count;
-                cachedRoomsMore = pageMore; cachedRoomsDiag = queryDiag; cachedRoomsAt = updatedAt;
+                if (roomCache.size() >= 7 && !roomCache.containsKey(date)) {
+                    roomCache.remove(roomCache.keySet().iterator().next());
+                }
+                roomCache.put(date, new CachedRooms(rows, count, pageMore, queryDiag, updatedAt));
             }
         });
     }
@@ -807,7 +819,8 @@ public class StudyRoomActivity extends Activity {
         String[] parts = date.split("-");
         DatePickerDialog dialog = new DatePickerDialog(this, (view, y, m, d) -> {
             date = String.format(Locale.ROOT, "%04d-%02d-%02d", y, m + 1, d);
-            page = 1; rows = null; count = -1; error = ""; query();
+            page = 1; rows = null; count = -1; error = "";
+            if (!restoreCachedDay()) query();
         }, Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) - 1, Integer.parseInt(parts[2]));
         try {
             // 只能选今天到未来 30 天；具体能不能约仍由校方规则判断。

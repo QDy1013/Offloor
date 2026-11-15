@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.71 多日切页与空闲教室详情提速：1）将 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 房间短时缓存升级为按日期键控的 7 天 LRU 缓存（60 秒有效，手动刷新/提交/取消/官方重连自动失效），在「今天 ↔ 明天 ↔ 后天」之间反复比对空位秒切不重新拉取；2）将 [CampusClassroomRefresh.java](android/app/src/com/nopalou/CampusClassroomRefresh.java) 单间教室当日节次占用轮询间隔由 `300ms/400ms` 缩短至 `120ms/150ms`，点开教室详情更快出结果。
+
 v0.70 系统级性能与稳定性优化：1）为 [CampusSilentRefresh.java](android/app/src/com/nopalou/CampusSilentRefresh.java) 与 [CampusBusRefresh.java](android/app/src/com/nopalou/CampusBusRefresh.java) 的隐藏后台 `WebView` 启用 `setBlockNetworkImage(true)`，跳过静默刷新与校车查询期间的无用图片下载，加快同步速度并省电省流量；2）优化 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 课表网格重绘（预索引节次时间表消除循环内重复扫描，并隔离「现在」红线定时器 `nowLineTick`，避免误取消后台数据同步触发的 `reloadTask`）；3）在 [test_study_room.cjs](eval/test_study_room.cjs) 补充跳过冗余多类目逗号探测的回归断言。
 
 v0.69 优化校园校车实时查询体验：在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 查看当日校车实时班次时默认开启「只看未发车」（自动过滤已发车班次，无需从早班一路下翻），并支持一键切换「全部班次」或全部发车后一键查看今日全部班次。

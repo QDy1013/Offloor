@@ -58,10 +58,10 @@ final class CampusClassroomRefresh {
                     try { Object raw=new org.json.JSONTokener(value).nextValue(); if (raw instanceof String) result=new org.json.JSONObject((String)raw); } catch (Exception ignored) { }
                     if (result.has("result")) callback.finished(result.optJSONObject("result"),"");
                     else if (result.optBoolean("error") || android.os.SystemClock.elapsedRealtime()>until) callback.finished(null,"未读到今天的节次状态，请稍后重试");
-                    else handler.postDelayed(this,400);
+                    else handler.postDelayed(this,150);
                 });
             }};
-            handler.postDelayed(poll,300);
+            handler.postDelayed(poll,120);
         } catch (Exception e) { callback.finished(null,"教室详情暂时无法读取"); }
     }
     void stop() {
