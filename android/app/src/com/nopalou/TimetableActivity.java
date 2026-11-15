@@ -154,6 +154,11 @@ public class TimetableActivity extends Activity {
         ImageView next = icon("next", "下一周", () -> changeWeek(week + 1, true));
         next.setEnabled(week < table.maxWeek); next.setAlpha(week < table.maxWeek ? 1f : .25f); navigation.addView(next);
         CourseUi.gap(root,8);
+        View statusPill = liveLessonBanner();
+        if (statusPill != null) {
+            root.addView(statusPill);
+            CourseUi.gap(root, 8);
+        }
         swipeBoard = CourseUi.column(this); root.addView(swipeBoard, new LinearLayout.LayoutParams(-1, 0, 1));
         weekdayHeader(swipeBoard);
 
@@ -328,6 +333,65 @@ public class TimetableActivity extends Activity {
             String[] p = hhmm.trim().split(":");
             return Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]);
         } catch (Exception e) { return -1; }
+    }
+
+    /** 本周实时课表状态条：正在上课 / 下一节课，点击直接打开详情。 */
+    private View liveLessonBanner() {
+        if (table == null || week != table.currentWeek()) return null;
+        org.json.JSONArray units = table.json.optJSONArray("units");
+        if (units == null || units.length() == 0) return null;
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        int dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+        int today = dow == java.util.Calendar.SUNDAY ? 7 : dow - 1;
+        int nowMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE);
+
+        Timetable.Lesson active = null;
+        int activeRemain = 0;
+        Timetable.Lesson next = null;
+        int nextStart = Integer.MAX_VALUE;
+        String nextClock = "";
+
+        for (Timetable.Lesson l : table.lessons) {
+            if (l.weekday != today || !l.weeks.contains(week)) continue;
+            int s = -1, e = -1;
+            String sStr = "";
+            for (int i = 0; i < units.length(); i++) {
+                org.json.JSONObject u = units.optJSONObject(i);
+                if (u == null) continue;
+                int num = u.optInt("number");
+                if (num == l.start) { sStr = u.optString("start"); s = clock(sStr); }
+                if (num == l.end) e = clock(u.optString("end"));
+            }
+            if (s < 0 || e < 0) continue;
+            if (nowMin >= s && nowMin < e) {
+                active = l;
+                activeRemain = e - nowMin;
+                break;
+            }
+            if (s > nowMin && s < nextStart) {
+                next = l;
+                nextStart = s;
+                nextClock = sStr;
+            }
+        }
+
+        Timetable.Lesson target = active != null ? active : next;
+        if (target == null) return null;
+        boolean ongoing = active != null;
+        String place = target.room.isEmpty() ? "" : " · " + target.room;
+        String label = ongoing
+                ? "正在上课 · " + target.name + place + "（还剩 " + activeRemain + " 分钟）"
+                : "下节课 " + nextClock + " · " + target.name + place + "（还有 " + (nextStart - nowMin) + " 分钟）";
+        int bg = ongoing ? Ui.GREEN_BG : Ui.ACCENT_BG;
+        int fg = ongoing ? Ui.GREEN : Ui.ACCENT;
+
+        TextView pill = text(label, 12, fg, true);
+        pill.setSingleLine(true);
+        pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        pill.setPadding(dp(12), dp(8), dp(12), dp(8));
+        pill.setBackground(Ui.ripple(this, Ui.round(this, bg, 12), Ui.press(), 12));
+        pill.setOnClickListener(v -> detail(target));
+        return pill;
     }
 
     /** 课程块：淡色底 + 左侧 3dp 同色细条，色块之间更容易分清。 */

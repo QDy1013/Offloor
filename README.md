@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.72 商业化高频交互打磨：1）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 本周课表顶部新增实时「正在上课 · 还剩 X 分钟 / 下节课 HH:mm · 还有 X 分钟」状态胶囊，点击直达课程详情；2）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 空闲教室查询面板新增「现在起 1 小时 / 现在起 2 小时」一键快捷时段预设并立即触发查询；3）在 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 成绩单页新增跨学期实时课程名/类别搜索栏（就地局部刷新不抢焦点，匹配项自动附带学期标签）。
+
 v0.71 多日切页与空闲教室详情提速：1）将 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 房间短时缓存升级为按日期键控的 7 天 LRU 缓存（60 秒有效，手动刷新/提交/取消/官方重连自动失效），在「今天 ↔ 明天 ↔ 后天」之间反复比对空位秒切不重新拉取；2）将 [CampusClassroomRefresh.java](android/app/src/com/nopalou/CampusClassroomRefresh.java) 单间教室当日节次占用轮询间隔由 `300ms/400ms` 缩短至 `120ms/150ms`，点开教室详情更快出结果。
 
 v0.70 系统级性能与稳定性优化：1）为 [CampusSilentRefresh.java](android/app/src/com/nopalou/CampusSilentRefresh.java) 与 [CampusBusRefresh.java](android/app/src/com/nopalou/CampusBusRefresh.java) 的隐藏后台 `WebView` 启用 `setBlockNetworkImage(true)`，跳过静默刷新与校车查询期间的无用图片下载，加快同步速度并省电省流量；2）优化 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 课表网格重绘（预索引节次时间表消除循环内重复扫描，并隔离「现在」红线定时器 `nowLineTick`，避免误取消后台数据同步触发的 `reloadTask`）；3）在 [test_study_room.cjs](eval/test_study_room.cjs) 补充跳过冗余多类目逗号探测的回归断言。

@@ -8,9 +8,12 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -30,6 +33,7 @@ public class AcademicActivity extends Activity {
     private final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
     private Academic data;
     private boolean loaded, showGrades, finishedOpen;
+    private String gradeQuery = "";
     private final Set<String> openTerms = new HashSet<>();
     private boolean termsInitialised;
     private ScrollView scroll;
@@ -44,6 +48,7 @@ public class AcademicActivity extends Activity {
         showGrades = b != null ? b.getBoolean("grades") : getIntent().getBooleanExtra("grades", false);
         if (b != null) {
             finishedOpen = b.getBoolean("finishedOpen");
+            gradeQuery = b.getString("gradeQuery", "");
             java.util.ArrayList<String> t = b.getStringArrayList("openTerms");
             if (t != null) { openTerms.addAll(t); termsInitialised = true; }
         }
@@ -63,7 +68,7 @@ public class AcademicActivity extends Activity {
         });
     }
     @Override public void onSaveInstanceState(Bundle b) {
-        b.putBoolean("grades", showGrades); b.putBoolean("finishedOpen", finishedOpen);
+        b.putBoolean("grades", showGrades); b.putBoolean("finishedOpen", finishedOpen); b.putString("gradeQuery", gradeQuery);
         b.putStringArrayList("openTerms", new ArrayList<>(openTerms)); super.onSaveInstanceState(b);
     }
     @Override public void onDestroy() { CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
@@ -318,9 +323,75 @@ public class AcademicActivity extends Activity {
         if (data.incomplete("grades")) note(list,"部分学期暂未读到，已保留其他学期成绩，稍后会自动重试。");
         if (terms.isEmpty()) { CourseUi.gap(list, 12); infoCard(list, "教务系统暂未公布成绩", "出分后同步一下就能看到"); return; }
         if (!termsInitialised) { openTerms.add(terms.keySet().iterator().next()); termsInitialised = true; }
-        section(list, "各学期成绩", terms.size() + " 个学期", 24);
-        for (Map.Entry<String, List<Academic.Grade>> t : terms.entrySet()) term(list, t.getKey(), t.getValue());
+        CourseUi.gap(list, 14);
+        LinearLayout searchBar = new LinearLayout(this);
+        searchBar.setGravity(Gravity.CENTER_VERTICAL);
+        searchBar.setBackground(Ui.round(this, Ui.FILL, 14));
+        searchBar.setPadding(dp(14), dp(2), dp(10), dp(2));
+        EditText searchInput = new EditText(this);
+        searchInput.setHint("搜索课程名或类别（跨学期）");
+        searchInput.setSingleLine(true);
+        searchInput.setTextSize(14);
+        searchInput.setTextColor(Ui.TEXT);
+        searchInput.setHintTextColor(Ui.MUTE);
+        searchInput.setBackground(null);
+        searchInput.setPadding(0, dp(10), 0, dp(10));
+        searchInput.setText(gradeQuery);
+        searchInput.setSelection(gradeQuery.length());
+        searchBar.addView(searchInput, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView clearBtn = text("清除", 12, Ui.ACCENT, true);
+        clearBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        clearBtn.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+        clearBtn.setVisibility(gradeQuery.trim().isEmpty() ? View.GONE : View.VISIBLE);
+        searchBar.addView(clearBtn);
+        list.addView(searchBar);
+
+        LinearLayout resultsBox = CourseUi.column(this);
+        list.addView(resultsBox);
+        renderGradeResults(resultsBox, terms);
+
+        clearBtn.setOnClickListener(v -> searchInput.setText(""));
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                gradeQuery = s == null ? "" : s.toString();
+                clearBtn.setVisibility(gradeQuery.trim().isEmpty() ? View.GONE : View.VISIBLE);
+                renderGradeResults(resultsBox, terms);
+            }
+        });
         note(list, "学期绩点按“课程绩点 × 学分”在本机计算，仅供参考，以教务系统为准");
+    }
+    private void renderGradeResults(LinearLayout box, Map<String, List<Academic.Grade>> terms) {
+        box.removeAllViews();
+        String q = gradeQuery.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) {
+            section(box, "各学期成绩", terms.size() + " 个学期", 18);
+            for (Map.Entry<String, List<Academic.Grade>> t : terms.entrySet()) term(box, t.getKey(), t.getValue());
+            return;
+        }
+        List<String> matchTerms = new ArrayList<>();
+        List<Academic.Grade> matches = new ArrayList<>();
+        for (Map.Entry<String, List<Academic.Grade>> t : terms.entrySet()) {
+            for (Academic.Grade g : t.getValue()) {
+                if (g.name.toLowerCase(Locale.ROOT).contains(q) || g.type.toLowerCase(Locale.ROOT).contains(q)) {
+                    matchTerms.add(shortTerm(t.getKey()));
+                    matches.add(g);
+                }
+            }
+        }
+        section(box, "搜索结果", matches.size() + " 门课程", 18);
+        if (matches.isEmpty()) {
+            CourseUi.gap(box, 10);
+            infoCard(box, "未找到匹配课程", "试试其他课程名关键词或点击“清除”");
+            return;
+        }
+        LinearLayout c = card(box, 10);
+        for (int i = 0; i < matches.size(); i++) {
+            if (i > 0) { View div = Ui.hairline(this); LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(-1, 1); dl.leftMargin = dp(18); c.addView(div, dl); }
+            gradeRow(c, matches.get(i), matchTerms.get(i));
+        }
+        CourseUi.gap(c, 4);
     }
     private void gpaHero(LinearLayout list, Map<String, List<Academic.Grade>> terms) {
         LinearLayout c = card(list, 0); c.setPadding(dp(20), dp(18), dp(20), dp(16));
@@ -395,10 +466,14 @@ public class AcademicActivity extends Activity {
         CourseUi.gap(c, 4);
     }
     private void gradeRow(LinearLayout c, Academic.Grade g) {
+        gradeRow(c, g, null);
+    }
+    private void gradeRow(LinearLayout c, Academic.Grade g, String termTag) {
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(18), dp(13), dp(16), dp(13));
         LinearLayout left = CourseUi.column(this); row.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
         TextView n = text(g.name, 15, Ui.TEXT, false); n.setTypeface(Ui.medium()); n.setMaxLines(2); n.setEllipsize(TextUtils.TruncateAt.END); left.addView(n);
         List<String> meta = new ArrayList<>();
+        if (termTag != null && !termTag.isEmpty()) meta.add(termTag);
         if (!g.type.isEmpty()) meta.add(g.type);
         if (g.credits != null) meta.add(trim(g.credits) + " 学分");
         if (g.gp != null) meta.add("绩点 " + formatGpa(g.gp));

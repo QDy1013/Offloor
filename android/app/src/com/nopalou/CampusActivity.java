@@ -393,6 +393,16 @@ public class CampusActivity extends Activity {
         TextView end=CourseUi.action(this,"结束 "+CampusClassroomQuery.time(roomEnd),false,() -> chooseRoomTime(false));
         start.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); end.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
         times.addView(start,new LinearLayout.LayoutParams(0,dp(44),1)); LinearLayout.LayoutParams endParams=new LinearLayout.LayoutParams(0,dp(44),1); endParams.leftMargin=dp(10); times.addView(end,endParams);
+        CourseUi.gap(query,10);
+        LinearLayout presets=new LinearLayout(this); query.addView(presets);
+        TextView oneHour=CourseUi.action(this,"现在起 1 小时",false,() -> quickRoomPreset(1));
+        TextView twoHours=CourseUi.action(this,"现在起 2 小时",false,() -> quickRoomPreset(2));
+        oneHour.setTextSize(13); twoHours.setTextSize(13);
+        oneHour.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,10),Ui.press(),10));
+        twoHours.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,10),Ui.press(),10));
+        presets.addView(oneHour,new LinearLayout.LayoutParams(0,dp(36),1));
+        LinearLayout.LayoutParams twoLp=new LinearLayout.LayoutParams(0,dp(36),1); twoLp.leftMargin=dp(10);
+        presets.addView(twoHours,twoLp);
         CourseUi.gap(query,14); query.addView(CourseUi.action(this,roomLoading?"重新查询此时段":"查询此时段",true,() -> startClassroomQuery(true)),CourseUi.row(dp(48)));
         if (data==null || data.owner.isEmpty()) {
             note("登录校园账号后可查询当日的空闲教室。"); LinearLayout login=card(); login.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48))); return;
@@ -423,6 +433,14 @@ public class CampusActivity extends Activity {
         }
         if (roomLimit<rooms.size()) result.addView(CourseUi.action(this,"继续查看教室",false,() -> { int y=scroll.getScrollY(); roomLimit+=40; render(); scroll.post(() -> scroll.scrollTo(0,y)); }),CourseUi.row(dp(48)));
         if (module.optBoolean("partial")) note("当前为本次已读取的部分结果。");
+    }
+
+    private void quickRoomPreset(int hours) {
+        java.util.Calendar cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+        int nowMin = Math.min(1438, cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE));
+        roomStart = nowMin;
+        roomEnd = Math.min(1439, nowMin + hours * 60);
+        startClassroomQuery(true);
     }
 
     private void showRoomDay(CampusClassroomResult.Room room) {
