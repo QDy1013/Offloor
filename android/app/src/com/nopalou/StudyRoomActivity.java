@@ -603,6 +603,8 @@ public class StudyRoomActivity extends Activity {
             c.addView(text("这一天已经没有可约的时段，换个日期试试", 13, Ui.SUB, false));
             return;
         }
+        c.addView(text("今天还有 " + slots.size() + " 个可约时段", 12, Ui.GREEN, true));
+        CourseUi.gap(c, 6);
         LinearLayout line = horizontalScroll(c, 0);
         for (int i = 0; i < Math.min(CARD_SLOTS, slots.size()); i++) {
             StudyRoomPlan.Slot slot = slots.get(i);

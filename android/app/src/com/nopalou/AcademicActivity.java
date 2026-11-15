@@ -200,7 +200,27 @@ public class AcademicActivity extends Activity {
         else {
             hero(list, upcoming.get(0), today);
             if (upcoming.size() > 1) {
-                section(list, "接下来", upcoming.size() - 1 + " 场", 22);
+                LinearLayout upHead = new LinearLayout(this); upHead.setGravity(Gravity.CENTER_VERTICAL);
+                upHead.setPadding(dp(4), dp(22), dp(4), 0);
+                upHead.addView(text("接下来", 15, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
+                upHead.addView(text((upcoming.size() - 1) + " 场", 12, Ui.MUTE, false));
+                TextView copyAll = text("复制全部待考", 12, Ui.ACCENT, true);
+                copyAll.setPadding(dp(10), dp(5), dp(10), dp(5));
+                copyAll.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+                LinearLayout.LayoutParams cal = new LinearLayout.LayoutParams(-2, -2); cal.leftMargin = dp(8);
+                upHead.addView(copyAll, cal);
+                copyAll.setOnClickListener(v -> {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < upcoming.size(); i++) {
+                        Academic.Exam ex = upcoming.get(i);
+                        if (i > 0) sb.append("\n");
+                        sb.append(ex.course).append(" · ").append(ex.date.isEmpty() ? ex.time : ex.date + " " + ex.start + "–" + ex.end);
+                        if (!ex.location.isEmpty()) sb.append(" · ").append(place(ex.location));
+                    }
+                    copyText("待考日程", sb.toString(), "已复制全部待考安排");
+                });
+                list.addView(upHead);
+                CourseUi.gap(list, 10);
                 for (int i = 1; i < upcoming.size(); i++) timelineRow(list, upcoming.get(i), today);
             }
         }

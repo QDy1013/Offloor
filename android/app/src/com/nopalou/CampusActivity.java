@@ -230,6 +230,13 @@ public class CampusActivity extends Activity {
                 }
             }
         }
+        if ("ecard".equals(s.id) && count>0) {
+            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"卡余额|校园卡余额|余额|当前余额"));
+            if (yuan!=null) {
+                CourseUi.gap(intro,12);
+                intro.addView(text(CampusBalance.networkValue(yuan),26,Ui.TEXT,true));
+            }
+        }
         if (CampusPay.known(s.id)) {
             CourseUi.gap(intro,14);
             intro.addView(CourseUi.action(this,CampusPay.title(s.id),true,
@@ -437,7 +444,27 @@ public class CampusActivity extends Activity {
         }
         java.util.List<CampusClassroomResult.Room> rooms=CampusClassroomResult.atLocations(allRooms,submittedRoomLocations);
         if (rooms.isEmpty()) { if (!roomLoading) note("所选教学楼在本次结果中暂无可展示的空闲教室。"); return; }
-        section("找到 "+rooms.size()+" 间空闲教室"); note(CampusSummary.field(module,"查询条件")+(submittedRoomLocations.isEmpty()?"":" · "+String.join("、",submittedRoomLocations)));
+        LinearLayout roomHead=new LinearLayout(this); roomHead.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rhl=new LinearLayout.LayoutParams(-1,-2); rhl.topMargin=dp(18); rhl.bottomMargin=dp(8);
+        TextView rhTitle=text("找到 "+rooms.size()+" 间空闲教室",14,Ui.SUB,true); rhTitle.setPadding(dp(4),0,0,0);
+        roomHead.addView(rhTitle,new LinearLayout.LayoutParams(0,-2,1));
+        TextView copyRooms=smallAction("复制列表",Ui.ACCENT,Ui.ACCENT_BG,true,() -> {
+            StringBuilder sb=new StringBuilder();
+            String cond=CampusSummary.field(module,"查询条件");
+            if (!cond.isEmpty()) sb.append(cond).append("\n");
+            for (int i=0;i<rooms.size();i++) {
+                if (i>0) sb.append("\n");
+                sb.append(rooms.get(i).name);
+            }
+            try {
+                android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("空闲教室",sb.toString()));
+                toast("已复制空闲教室列表");
+            } catch (RuntimeException e) { toast("复制失败"); }
+        });
+        roomHead.addView(copyRooms);
+        list.addView(roomHead,rhl);
+        note(CampusSummary.field(module,"查询条件")+(submittedRoomLocations.isEmpty()?"":" · "+String.join("、",submittedRoomLocations)));
         LinearLayout result=card();
         for (int i=0;i<Math.min(roomLimit,rooms.size());i++) {
             CampusClassroomResult.Room room=rooms.get(i);
