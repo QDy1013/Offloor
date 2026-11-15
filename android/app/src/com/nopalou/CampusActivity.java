@@ -28,7 +28,7 @@ public class CampusActivity extends Activity {
     private CampusBusRefresh busRefresh;
     private JSONArray busTrips;
     private String busDate=CampusClassroomQuery.today(System.currentTimeMillis()),busError="";
-    private boolean busAttempted,busLoading;
+    private boolean busAttempted,busLoading,busHidePast=true;
     private long busUpdated;
     private CampusClassroomRefresh classroomRefresh;
     private boolean roomAttempted,roomLoading;
@@ -497,6 +497,17 @@ public class CampusActivity extends Activity {
         if (remaining<=5) return Ui.tag(this,"余 "+remaining+" 位",Ui.ORANGE,Ui.ORANGE_BG);
         return Ui.tag(this,"余 "+remaining+" 位",Ui.GREEN,Ui.GREEN_BG);
     }
+    private static int nowMinutesShanghai() {
+        java.util.Calendar cal=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+        return cal.get(java.util.Calendar.HOUR_OF_DAY)*60+cal.get(java.util.Calendar.MINUTE);
+    }
+    private static int busClockMinutes(String value) {
+        if (value==null) return -1;
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2})").matcher(value);
+        if (!m.find()) return -1;
+        int h=Integer.parseInt(m.group(1)),min=Integer.parseInt(m.group(2));
+        return h>=0 && h<=23 && min>=0 && min<=59 ? h*60+min : -1;
+    }
     /** 截止时间只留当天的时分，避免在行内被截断。 */
     private static String busDeadline(String deadline) {
         if (deadline.isEmpty()) return "";
@@ -555,6 +566,11 @@ public class CampusActivity extends Activity {
         LinearLayout dateRow=new LinearLayout(this); dateRow.setGravity(Gravity.CENTER_VERTICAL); dateRow.setBaselineAligned(false);
         TextView date=smallAction(busDateLabel()+"  ▾",Ui.TEXT,Ui.FILL,true,this::chooseBusDate);
         date.setTextSize(13); date.setContentDescription("选择乘车日期"); dateRow.addView(date);
+        boolean isBusToday=busDate.equals(CampusClassroomQuery.today(System.currentTimeMillis()));
+        if (isBusToday) {
+            TextView pastToggle=smallAction(busHidePast?"只看未发车":"全部班次",busHidePast?Ui.ON_ACCENT:Ui.TEXT,busHidePast?Ui.ACCENT:Ui.FILL,true,() -> { busHidePast=!busHidePast; render(); });
+            LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,-2); tp.leftMargin=dp(8); dateRow.addView(pastToggle,tp);
+        }
         if (busUpdated>0) {
             TextView updated=text("更新于 "+new SimpleDateFormat("HH:mm",Locale.CHINA).format(new Date(busUpdated)),11,Ui.MUTE,false);
             updated.setGravity(Gravity.END); dateRow.addView(updated,new LinearLayout.LayoutParams(0,-2,1));
@@ -582,13 +598,25 @@ public class CampusActivity extends Activity {
             live.addView(text("可以换一天再查，或到下方参考时刻表查看固定发车时间。",11,Ui.MUTE,false));
             return;
         }
+        int nowMins=isBusToday&&busHidePast?nowMinutesShanghai():-1;
         java.util.LinkedHashMap<String,java.util.ArrayList<JSONObject>> groups=new java.util.LinkedHashMap<>();
         for (int i=0;i<busTrips.length();i++) {
             JSONObject trip=busTrips.optJSONObject(i); if (trip==null) continue;
+            if (nowMins>=0) {
+                int tm=busClockMinutes(trip.optString("time"));
+                if (tm>=0 && tm<nowMins) continue;
+            }
             String route=trip.optString("route");
             java.util.ArrayList<JSONObject> trips=groups.get(route);
             if (trips==null) { trips=new java.util.ArrayList<>(); groups.put(route,trips); }
             trips.add(trip);
+        }
+        if (groups.isEmpty() && isBusToday && busHidePast) {
+            CourseUi.gap(live,12);
+            live.addView(banner("今天的班次已全部发车。",Ui.SUB,Ui.FILL));
+            CourseUi.gap(live,10);
+            live.addView(CourseUi.action(this,"显示今日全部班次",false,() -> { busHidePast=false; render(); }),CourseUi.row(dp(42)));
+            return;
         }
         boolean firstGroup=true;
         for (java.util.Map.Entry<String,java.util.ArrayList<JSONObject>> group:groups.entrySet()) {
