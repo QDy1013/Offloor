@@ -675,11 +675,11 @@
         const kinds = [...out.kindIds], labs = [...out.labIds], rooms = [...out.roomIds];
         const devs = [...out.devIds], leaves = [...out.leafIds], parents = [...out.parentIds];
         const singleAttempts = [];
-        if (kinds.length) {
+        if (kinds.length && (!agg.items.length || kinds.length === 1)) {
             singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds.join(','), labId: ''});
             if (kinds.length === 1) singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: kinds[0]});
         }
-        if (leaves.length && (kinds.length !== leaves.length || leaves.some(x => !out.kindIds.has(x)))) {
+        if (leaves.length && !agg.items.length && (kinds.length !== leaves.length || leaves.some(x => !out.kindIds.has(x)))) {
             singleAttempts.push({sysKind: 1, resvDates: key, page, pageSize: 40, kindIds: leaves.join(','), labId: ''});
         }
         if (labs.length === 1) {

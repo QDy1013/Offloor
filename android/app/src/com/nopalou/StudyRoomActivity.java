@@ -42,11 +42,12 @@ public class StudyRoomActivity extends Activity {
     private StudyRoomSession session;
     private CampusData campus;
     private Timetable timetable;
-    private boolean ready, busy, mine, active, reconciled, pageMore = true;
-    private int page = 1, epoch, count = -1;
-    private long updatedAt;
-    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "";
-    private JSONArray rows;
+    private boolean ready, busy, mine, active, reconciled, pageMore = true, onlyAvailable;
+    private int page = 1, epoch, count = -1, cachedRoomsCount = -1;
+    private long updatedAt, cachedRoomsAt;
+    private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "", cachedRoomsDate = "", cachedRoomsDiag = "";
+    private JSONArray rows, cachedRooms;
+    private boolean cachedRoomsMore = true;
     /** 本人已有预约，用来提示和自己的安排撞车；本页只读一次。 */
     private JSONArray myBookings;
     /** 校方受理成功后才写入首页的提醒内容。 */
@@ -104,9 +105,14 @@ public class StudyRoomActivity extends Activity {
 
     @Override public void onStop() {
         active=false; ++epoch; ready=false; busy=false; rows=null; reconciled=false;
+        invalidateRoomCache();
         if (form != null) { form.dismiss(); form = null; }
         if (session != null) { session.stop(); session = null; }
         super.onStop();
+    }
+
+    private void invalidateRoomCache() {
+        cachedRooms = null; cachedRoomsDate = ""; cachedRoomsDiag = ""; cachedRoomsAt = 0; cachedRoomsCount = -1; cachedRoomsMore = true;
     }
 
     @Override public void onDestroy() { io.shutdownNow(); super.onDestroy(); }
@@ -199,7 +205,7 @@ public class StudyRoomActivity extends Activity {
         header.addView(text("研修室", 24, Ui.TEXT, true));
         if (ready) {
             View spacer = new View(this); header.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
-            header.addView(CourseUi.icon(this, "sync", "刷新校方数据", () -> { if (!busy) { rows = null; query(); } }));
+            header.addView(CourseUi.icon(this, "sync", "刷新校方数据", () -> { if (!busy) { if (!mine) invalidateRoomCache(); rows = null; query(); } }));
         }
         root.addView(header);
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
@@ -289,7 +295,13 @@ public class StudyRoomActivity extends Activity {
 
     private void switchMode(boolean toMine) {
         if (busy || mine == toMine) return;
-        mine = toMine; page = 1; rows = null; count = -1; error = ""; message = ""; query();
+        mine = toMine; page = 1; rows = null; count = -1; error = ""; message = "";
+        if (!mine && cachedRooms != null && date.equals(cachedRoomsDate) && System.currentTimeMillis() - cachedRoomsAt < 60_000L) {
+            rows = cachedRooms; count = cachedRoomsCount; pageMore = cachedRoomsMore; queryDiag = cachedRoomsDiag; updatedAt = cachedRoomsAt;
+            render();
+            return;
+        }
+        query();
     }
 
     /** 快选日期条：今天到第 7 天，再远交给日期选择器。 */
@@ -357,6 +369,17 @@ public class StudyRoomActivity extends Activity {
         if (rows == null) return;
         LinearLayout line = horizontalScroll(body, 12);
         addCampusChip(line, "", "全部 " + rows.length(), activeCampus.isEmpty());
+        int usableTotal = 0;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            if (r != null && r.optBoolean("available")) usableTotal++;
+        }
+        TextView availChip = chip(line, "只看可约 " + usableTotal, onlyAvailable, () -> {
+            onlyAvailable = !onlyAvailable;
+            render();
+        });
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, -2); ap.rightMargin = dp(8);
+        line.addView(availChip, ap);
         List<String> keys = new ArrayList<>();
         keys.add("长安校区");
         keys.add("友谊校区");
@@ -385,10 +408,13 @@ public class StudyRoomActivity extends Activity {
             return;
         }
         if (!activeCampus.isEmpty()) {
-            List<JSONObject> items = grouped.get(activeCampus);
+            List<JSONObject> items = filterAvailable(grouped.get(activeCampus));
             if (items != null && !items.isEmpty()) {
                 campusHeading(activeCampus, items);
                 for (JSONObject row : items) roomCard(row);
+            } else if (onlyAvailable && grouped.get(activeCampus) != null && !grouped.get(activeCampus).isEmpty()) {
+                campusHeading(activeCampus, java.util.Collections.emptyList());
+                emptyFilteredCard();
             } else {
                 campusHeading(activeCampus, java.util.Collections.emptyList());
                 emptyCampusCard(activeCampus);
@@ -396,10 +422,15 @@ public class StudyRoomActivity extends Activity {
             return;
         }
         if (rows.length() == 0) { emptyCard(); return; }
+        int shown = 0;
         for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
-            campusHeading(entry.getKey(), entry.getValue());
-            for (JSONObject row : entry.getValue()) roomCard(row);
+            List<JSONObject> items = filterAvailable(entry.getValue());
+            if (items.isEmpty()) continue;
+            shown += items.size();
+            campusHeading(entry.getKey(), items);
+            for (JSONObject row : items) roomCard(row);
         }
+        if (onlyAvailable && shown == 0) { emptyFilteredCard(); return; }
         if (!grouped.containsKey("长安校区") || !grouped.containsKey("友谊校区")) {
             String missing = !grouped.containsKey("长安校区") && !grouped.containsKey("友谊校区")
                     ? "长安校区与友谊校区" : (!grouped.containsKey("长安校区") ? "长安校区" : "友谊校区");
@@ -410,6 +441,22 @@ public class StudyRoomActivity extends Activity {
                 note.addView(text(queryDiag, 12, Ui.MUTE, false));
             }
         }
+    }
+
+    private List<JSONObject> filterAvailable(List<JSONObject> items) {
+        if (items == null) return java.util.Collections.emptyList();
+        if (!onlyAvailable) return items;
+        List<JSONObject> out = new ArrayList<>();
+        for (JSONObject row : items) if (row != null && row.optBoolean("available")) out.add(row);
+        return out;
+    }
+
+    private void emptyFilteredCard() {
+        LinearLayout c = card();
+        c.addView(text("当前筛选下暂无可预约的研修室", 15, Ui.TEXT, true));
+        CourseUi.gap(c, 6);
+        c.addView(text("已隐藏不可预约房间，可切回显示全部查看具体原因。", 12, Ui.SUB, false));
+        action(c, "显示全部房间", () -> { onlyAvailable = false; render(); });
     }
 
     private void emptyCampusCard(String campusName) {
@@ -676,6 +723,7 @@ public class StudyRoomActivity extends Activity {
 
     private void reconnectFromOfficial() {
         if (!active) return;
+        invalidateRoomCache();
         if (session == null) { connect(); return; }
         ready = false; rows = null; reconciled = false; error = ""; busy = true; int token = ++epoch;
         render();
@@ -747,6 +795,10 @@ public class StudyRoomActivity extends Activity {
             count = result.has("count") ? result.optInt("count", -1) : -1;
             pageMore = !result.has("more") || result.isNull("more") || result.optBoolean("more", true);
             updatedAt = System.currentTimeMillis();
+            if (!mine && page == 1 && rows != null) {
+                cachedRooms = rows; cachedRoomsDate = date; cachedRoomsCount = count;
+                cachedRoomsMore = pageMore; cachedRoomsDiag = queryDiag; cachedRoomsAt = updatedAt;
+            }
         });
     }
 
@@ -1204,6 +1256,7 @@ public class StudyRoomActivity extends Activity {
         if (!markWrite(true)) { toast("无法保存操作保护状态，本次未提交"); return false; }
         if (staged != null) staged.run();
         reconciled = false;
+        invalidateRoomCache();
         boolean sent = call(method,payload,result -> {
             // 只有校方明确受理后才把提醒写进首页；结果未知时宁可少一条提醒。
             if (result.optBoolean("success")) {
