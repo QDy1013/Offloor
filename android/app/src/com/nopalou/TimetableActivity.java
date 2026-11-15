@@ -350,9 +350,11 @@ public class TimetableActivity extends Activity {
         Timetable.Lesson next = null;
         int nextStart = Integer.MAX_VALUE;
         String nextClock = "";
+        int todayCount = 0;
 
         for (Timetable.Lesson l : table.lessons) {
             if (l.weekday != today || !l.weeks.contains(week)) continue;
+            todayCount++;
             int s = -1, e = -1;
             String sStr = "";
             for (int i = 0; i < units.length(); i++) {
@@ -376,7 +378,13 @@ public class TimetableActivity extends Activity {
         }
 
         Timetable.Lesson target = active != null ? active : next;
-        if (target == null) return null;
+        if (target == null) {
+            String doneText = todayCount == 0 ? "今天没有课程安排" : "今日课程已全部结束";
+            TextView pill = text(doneText, 12, Ui.SUB, false);
+            pill.setPadding(dp(12), dp(8), dp(12), dp(8));
+            pill.setBackground(Ui.round(this, Ui.FILL, 12));
+            return pill;
+        }
         boolean ongoing = active != null;
         String place = target.room.isEmpty() ? "" : " · " + target.room;
         String label = ongoing

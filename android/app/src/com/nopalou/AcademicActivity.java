@@ -242,6 +242,7 @@ public class AcademicActivity extends Activity {
         if (!e.status.isEmpty() && !e.status.matches("未(结束|开始)")) {
             CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, on, Ui.withAlpha(android.graphics.Color.WHITE, 30)), new LinearLayout.LayoutParams(-2, -2));
         }
+        c.setOnClickListener(v -> copyText("考试安排", e.course + " · " + (e.date.isEmpty() ? e.time : e.date + " " + e.start + "–" + e.end) + (e.location.isEmpty() ? "" : " · " + place(e.location)), "已复制下一场考试信息"));
     }
     private TextView infoLine(String s, float size, int color, boolean bold) {
         TextView t = text(s, size, color, bold); t.setLineSpacing(dp(2), 1f); return t;
@@ -366,7 +367,24 @@ public class AcademicActivity extends Activity {
         box.removeAllViews();
         String q = gradeQuery.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty()) {
-            section(box, "各学期成绩", terms.size() + " 个学期", 18);
+            LinearLayout headRow = new LinearLayout(this); headRow.setGravity(Gravity.CENTER_VERTICAL);
+            headRow.setPadding(dp(4), dp(18), dp(4), 0);
+            headRow.addView(text("各学期成绩", 15, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
+            headRow.addView(text(terms.size() + " 个学期", 12, Ui.MUTE, false));
+            if (terms.size() > 1) {
+                boolean allOpen = openTerms.size() >= terms.size();
+                TextView toggleAll = text(allOpen ? "全部收起" : "全部展开", 12, Ui.ACCENT, true);
+                toggleAll.setPadding(dp(10), dp(5), dp(10), dp(5));
+                toggleAll.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+                LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2); tl.leftMargin = dp(8);
+                headRow.addView(toggleAll, tl);
+                toggleAll.setOnClickListener(v -> {
+                    if (openTerms.size() >= terms.size()) openTerms.clear();
+                    else openTerms.addAll(terms.keySet());
+                    renderGradeResults(box, terms);
+                });
+            }
+            box.addView(headRow);
             for (Map.Entry<String, List<Academic.Grade>> t : terms.entrySet()) term(box, t.getKey(), t.getValue());
             return;
         }
@@ -423,7 +441,30 @@ public class AcademicActivity extends Activity {
             trend.setContentDescription("学期绩点走势，" + TextUtils.join("，", describe(labels, values)));
             c.addView(trend, new LinearLayout.LayoutParams(-1, dp(values.size() > 4 ? 112 : 96)));
         }
-        if (data.gpa != null) { CourseUi.gap(c, 12); c.addView(text("总绩点来自教务系统学生画像", 11, Ui.MUTE, false)); }
+        CourseUi.gap(c, 12);
+        LinearLayout foot = new LinearLayout(this); foot.setGravity(Gravity.CENTER_VERTICAL);
+        foot.addView(text(data.gpa != null ? "总绩点来自教务系统学生画像" : "成绩摘要", 11, Ui.MUTE, false), new LinearLayout.LayoutParams(0, -2, 1));
+        if (data.hasGrades) {
+            TextView copySummary = text("复制摘要", 12, Ui.ACCENT, true);
+            copySummary.setPadding(dp(10), dp(5), dp(10), dp(5));
+            copySummary.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+            copySummary.setOnClickListener(v -> {
+                StringBuilder sb = new StringBuilder();
+                sb.append("总绩点：").append(data.gpa == null ? "—" : formatGpa(data.gpa))
+                        .append(" · 已修 ").append(trim(credits)).append(" 学分 · ").append(courses).append(" 门课程");
+                for (int i = 0; i < labels.size(); i++) sb.append("\n").append(labels.get(i)).append("：").append(formatGpa(values.get(i)));
+                copyText("绩点摘要", sb.toString(), "绩点摘要已复制");
+            });
+            foot.addView(copySummary);
+        }
+        c.addView(foot);
+    }
+    private void copyText(String label, String value, String okToast) {
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(label, value));
+            toast(okToast);
+        } catch (RuntimeException e) { toast("复制失败"); }
     }
     private static List<String> describe(List<String> l, List<Double> v) {
         List<String> out = new ArrayList<>(); for (int i = 0; i < l.size(); i++) out.add(l.get(i) + " " + formatGpa(v.get(i))); return out;

@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.74 教务与课表闭环打磨：1）在 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 新增「全部展开 / 全部收起」学期切换、成绩总览卡「复制摘要」一键复制绩点与各学期走势，以及点击「下一场考试」主卡一键复制时间地点；2）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 本周无课或当日课程结束后展示柔和提示胶囊（「今天没有课程安排 / 今日课程已全部结束」）。
+
 v0.73 校园服务余额与低余额预警视觉强化：在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 宿舍电费与校园网详情页中，复用 `CampusBalance` 与用户配置的提醒阈值，为电费低余额与校园网余额新增醒目大字金额展示与橙色预警胶囊，打开服务页即可一眼判断是否需要充值。
 
 v0.72 商业化高频交互打磨：1）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 本周课表顶部新增实时「正在上课 · 还剩 X 分钟 / 下节课 HH:mm · 还有 X 分钟」状态胶囊，点击直达课程详情；2）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 空闲教室查询面板新增「现在起 1 小时 / 现在起 2 小时」一键快捷时段预设并立即触发查询；3）在 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 成绩单页新增跨学期实时课程名/类别搜索栏（就地局部刷新不抢焦点，匹配项自动附带学期标签）。
