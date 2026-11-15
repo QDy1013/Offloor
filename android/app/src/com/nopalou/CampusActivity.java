@@ -201,7 +201,8 @@ public class CampusActivity extends Activity {
         if (m!=null && m.optBoolean("partial")) { CourseUi.gap(intro,8); intro.addView(text("部分信息已读取，剩余内容会自动重试。",12,Ui.SUB,false)); }
         if (count>0 && !"ok".equals(m.optString("state"))) { CourseUi.gap(intro,8); intro.addView(text("以下为上次成功读取的数据，本次没有覆盖。",12,Ui.SUB,false)); }
         if ("electric".equals(s.id) && count>0) {
-            double price=CampusChanges.price(CampusChanges.prefs(this));
+            android.content.SharedPreferences prefs=CampusChanges.prefs(this);
+            double price=CampusChanges.price(prefs);
             Double kwh=ChangeDiff.firstNumber(CampusSummary.field(m,"剩余电量|当前电量|电量余额"));
             String note=CampusBalance.electricNote(kwh,price);
             if (!note.isEmpty()) {
@@ -209,6 +210,23 @@ public class CampusActivity extends Activity {
                 intro.addView(text(CampusBalance.electricValue(kwh,price),26,Ui.TEXT,true));
                 CourseUi.gap(intro,6);
                 intro.addView(text(note+" · 仅供参考，以校方账单为准",12,Ui.SUB,false));
+                double threshold=CampusChanges.electricThreshold(prefs);
+                if (CampusBalance.electricLow(kwh,price,threshold)) {
+                    CourseUi.gap(intro,10);
+                    intro.addView(Ui.tag(this,CampusBalance.electricAlert(kwh,price,threshold),Ui.ORANGE,Ui.ORANGE_BG),new LinearLayout.LayoutParams(-2,-2));
+                }
+            }
+        }
+        if ("network".equals(s.id) && count>0) {
+            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"账户余额|余额|当前余额"));
+            if (yuan!=null) {
+                CourseUi.gap(intro,12);
+                intro.addView(text(CampusBalance.networkValue(yuan),26,Ui.TEXT,true));
+                double threshold=CampusChanges.networkThreshold(CampusChanges.prefs(this));
+                if (CampusBalance.networkLow(yuan,threshold)) {
+                    CourseUi.gap(intro,10);
+                    intro.addView(Ui.tag(this,CampusBalance.networkAlert(yuan,threshold),Ui.ORANGE,Ui.ORANGE_BG),new LinearLayout.LayoutParams(-2,-2));
+                }
             }
         }
         if (CampusPay.known(s.id)) {
