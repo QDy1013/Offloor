@@ -713,14 +713,17 @@
             return res.missed;
         };
         // 按「叶子类目 → 补充 kindIds → 校区区域 labIds → 未命中叶子改用 labId/roomIds/devIds」高命中顺序并发补查。
-        let missedLeaves = await runPlan(out.leaves, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.kindId || leaf.id, labId: leaf.labId || ''}));
+        const missingCampusItems = (list, idOf) => {
+            if (!(agg.campuses.size > 0 && !hasBothCampuses(agg.campuses))) return list;
+            const filtered = list.filter(x => { const c = out.idCampus.get(idOf(x)); return !c || !agg.campuses.has(c); });
+            return filtered.length ? filtered : list;
+        };
+        const leafPlan = missingCampusItems(out.leaves, leaf => leaf.kindId || leaf.id);
+        let missedLeaves = await runPlan(leafPlan, leaf => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: leaf.kindId || leaf.id, labId: leaf.labId || ''}));
         if (kinds.length && (!agg.items.length || !hasBothCampuses(agg.campuses))) {
             const extraKinds = kinds.filter(k => !out.leafIds.has(k));
             const rawList = extraKinds.length ? extraKinds : (missedLeaves.length ? kinds : []);
-            const needKinds = agg.campuses.size > 0 && !hasBothCampuses(agg.campuses)
-                ? rawList.filter(k => { const c = out.idCampus.get(k); return !c || !agg.campuses.has(c); })
-                : rawList;
-            const kList = needKinds.length ? needKinds : rawList;
+            const kList = missingCampusItems(rawList, k => k);
             let missedKinds = await runPlan(kList, k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k, labId: ''}));
             for (const build of [
                 k => ({sysKind: 1, resvDates: key, page, pageSize: 30, kindIds: k}),

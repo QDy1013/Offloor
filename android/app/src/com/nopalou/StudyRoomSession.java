@@ -198,7 +198,16 @@ final class StudyRoomSession {
         bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
         bar.setPadding(Ui.dp(host,12),Ui.dp(host,8),Ui.dp(host,12),Ui.dp(host,8));
         String label=backLabel==null||backLabel.isEmpty()?"返回研修室并重新连接":backLabel;
-        bar.addView(CourseUi.action(host,label,true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-1,Ui.dp(host,44)));
+        if ("返回我的预约".equals(label)) {
+            android.widget.TextView tip=new android.widget.TextView(host);
+            tip.setText("已登录校方平台 · 点底部「预约管理」核验");
+            tip.setTextSize(12); tip.setTextColor(Ui.SUB);
+            tip.setPadding(Ui.dp(host,4),0,Ui.dp(host,8),0);
+            bar.addView(tip,new android.widget.LinearLayout.LayoutParams(0,-2,1));
+            bar.addView(CourseUi.action(host,label,true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-2,Ui.dp(host,40)));
+        } else {
+            bar.addView(CourseUi.action(host,label,true,dialog::dismiss),new android.widget.LinearLayout.LayoutParams(-1,Ui.dp(host,44)));
+        }
         root.addView(bar,new android.widget.LinearLayout.LayoutParams(-1,-2));
         root.addView(Ui.hairline(host),new android.widget.LinearLayout.LayoutParams(-1,1));
         root.addView(web,new android.widget.LinearLayout.LayoutParams(-1,0,1));

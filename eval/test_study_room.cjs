@@ -744,6 +744,32 @@ async function main() {
         assert.equal(arrCfgCap.mode, '0');
     });
 
+    h = harness({
+        handle: async (url) => {
+            if (url.startsWith('/ic-web/roomMenu')) {
+                return {ok: true, json: async () => ({code: 0, data: [
+                    {kindId: 51, labId: 5001, sysKind: 1, name: '友谊校区研修间（1-4人）'},
+                    {kindId: 71, labId: 7001, sysKind: 1, name: '长安校区研修间（2-8人）'}
+                ]})};
+            }
+            if (url.startsWith('/ic-web/reserve?')) {
+                const q = new URL('https://ic.nwpu.edu.cn' + url).searchParams;
+                if (!q.get('kindIds') || q.get('kindIds') === '51,71') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 501, kindId: 51, labName: '友谊校区图书馆'})], count: 1})};
+                }
+                if (q.get('kindIds') === '51') throw new Error('leaf fallback must skip already-loaded Friendship campus');
+                if (q.get('kindIds') === '71') {
+                    return {ok: true, json: async () => ({code: 0, data: [rawRoom({devId: 701, kindId: 71, labName: '长安校区图书馆'})], count: 1})};
+                }
+            }
+        }
+    });
+    const leafSkipRes = await h.api.run('query', {date: DATE}, 'owner');
+    check('query skips already-loaded campus in leaf plan too', () => {
+        assert.equal(leafSkipRes.rooms.length, 2);
+        assert.ok(leafSkipRes.rooms.some(r => r.location.includes('长安校区')));
+    });
+
     console.log(checks + ' study room checks passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
