@@ -13,14 +13,14 @@ public class Step43Test {
    // ---- 第一次导入没有基线：不提醒 ----
    check("首次不提醒",ChangeDiff.diff(null,L(ChangeDiff.grade("1","高数","","90",4.0,5.0))).isEmpty());
 
-   // ---- 名字有空白、全角、大小写差异不算变化（翱翔助手 #49 的教训） ----
+   // ---- 课程名存在空白、全角、大小写差异时做归一化，不误判为变化 ----
    List<ChangeDiff.Item> a=L(ChangeDiff.grade("2025-1","数据结构","","92",4.0,3.5),ChangeDiff.grade("2025-1","大学英语","","85",3.5,2.0));
    List<ChangeDiff.Item> b=L(ChangeDiff.grade("2025-1"," 数据结构 ","","92",4.0,3.5),ChangeDiff.grade("2025-1","大学英语","","85",3.50,2.0000));
    check("空白和数字写法不同不算变化",ChangeDiff.diff(a,b).isEmpty());
    check("全角括号归一",ChangeDiff.norm("大学物理（Ⅰ）").equals(ChangeDiff.norm("大学物理(Ⅰ)"))||ChangeDiff.norm("大学物理（Ⅰ）").contains("物理"));
    check("全角字母转半角",ChangeDiff.norm("ＡＢＣ  课").equals("abc 课"));
 
-   // ---- 成绩构成说明文字不参与比较（#4 的教训） ----
+   // ---- 成绩构成说明文字不参与比较，避免成绩未变时误发提醒 ----
    ChangeDiff.Item g1=ChangeDiff.grade("2025-1","线代","","88",3.7,4.0);
    ChangeDiff.Item g2=ChangeDiff.grade("2025-1","线代","","88",3.7,4.0);
    check("同成绩签名一致",g1.signature.equals(g2.signature));

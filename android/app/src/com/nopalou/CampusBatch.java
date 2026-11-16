@@ -202,8 +202,8 @@ final class CampusBatch {
                 if (service.id.equals("_academic")) { beginAcademic(); return; }
                 if (service.id.equals("electric") && "yktapp.nwpu.edu.cn".equals(Uri.parse(url).getHost()) && !electric) {
                     electric=true; String room=activity.getSharedPreferences("campus-binding",0).getString("room","");
-                    // 手动关联过房间：按房间查；否则直接读“交电费”页面显示的本账号宿舍电量（翱翔助手的做法），
-                    // 读不到再走逐级匹配。
+                    // 手动关联过房间：按房间查；否则优先直读“交电费”页面显示的本账号绑定宿舍电量，
+                    // 读不到再退回逐级匹配。
                     if (!room.isEmpty()) { try { electric(3,new JSONObject(room)); return; } catch (Exception ignored) { } }
                     electricPage(); return;
                 }
