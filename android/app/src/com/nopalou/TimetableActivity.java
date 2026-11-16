@@ -32,6 +32,8 @@ public class TimetableActivity extends Activity {
     static int colorIndex(String name) { return (name.hashCode() & Integer.MAX_VALUE) % FILLS.length; }
     Timetable table;
     int week;
+    boolean agendaMode;
+    int agendaDay = -1;
     int savedScrollY;
     ScrollView timetableScroll;
     LinearLayout swipeBoard;
@@ -120,7 +122,19 @@ public class TimetableActivity extends Activity {
         if (getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest"))
             toolbar.addView(Ui.tag(this, "测试版", Ui.SUB, Ui.FILL));
         CampusSyncBanner.add(this,toolbar);
-        if (table != null) toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
+        if (table != null) {
+            LinearLayout modeSwitch = new LinearLayout(this);
+            modeSwitch.setPadding(dp(3), dp(3), dp(3), dp(3));
+            modeSwitch.setBackground(Ui.round(this, Ui.FILL, 12));
+            TextView weekTab = modeChip("周视图", !agendaMode, () -> { if (agendaMode) { agendaMode = false; render(); } });
+            TextView dayTab = modeChip("日程", agendaMode, () -> { if (!agendaMode) { agendaMode = true; render(); } });
+            modeSwitch.addView(weekTab);
+            modeSwitch.addView(dayTab);
+            LinearLayout.LayoutParams msp = new LinearLayout.LayoutParams(-2, -2);
+            msp.rightMargin = dp(4);
+            toolbar.addView(modeSwitch, msp);
+            toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
+        }
         toolbar.addView(icon("more", "课表设置", this::settings));
         if (table == null) { empty(root); addNavigation(root, null); return; }
 
@@ -160,6 +174,11 @@ public class TimetableActivity extends Activity {
             CourseUi.gap(root, 8);
         }
         swipeBoard = CourseUi.column(this); root.addView(swipeBoard, new LinearLayout.LayoutParams(-1, 0, 1));
+        if (agendaMode) {
+            renderAgenda(swipeBoard);
+            addNavigation(root, swipeStart);
+            return;
+        }
         weekdayHeader(swipeBoard);
 
         ScrollView scroll = new ScrollView(this); scroll.setVerticalScrollBarEnabled(false);
@@ -361,6 +380,141 @@ public class TimetableActivity extends Activity {
             String[] p = hhmm.trim().split(":");
             return Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]);
         } catch (Exception e) { return -1; }
+    }
+
+    private TextView modeChip(String label, boolean active, Runnable click) {
+        TextView t = text(label, 11, active ? Ui.ON_ACCENT : Ui.SUB, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(10), dp(5), dp(10), dp(5));
+        t.setBackground(Ui.ripple(this, active ? Ui.round(this, Ui.ACCENT, 9) : null, Ui.press(), 9));
+        Ui.pressScale(t, 0.96f);
+        t.setOnClickListener(v -> click.run());
+        return t;
+    }
+
+    /** 日程模式：顶部 7 天圆点选择器 + 竖向时间轴大卡片流，适合单手快速浏览当日课程。 */
+    private void renderAgenda(LinearLayout parent) {
+        Calendar nowCal = Calendar.getInstance();
+        int todayWeekday = nowCal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY ? 7 : nowCal.get(Calendar.DAY_OF_WEEK) - 1;
+        if (agendaDay < 1 || agendaDay > 7) agendaDay = todayWeekday;
+        boolean isCurrentWeek = week == table.currentWeek();
+        int nowMin = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
+
+        // 统计每天在当前周有几门课
+        int[] dayCounts = new int[8];
+        for (Timetable.Lesson l : table.lessons) {
+            if (l.weeks.contains(week) && l.weekday >= 1 && l.weekday <= 7) dayCounts[l.weekday]++;
+        }
+
+        LinearLayout strip = new LinearLayout(this);
+        strip.setPadding(dp(2), dp(4), dp(2), dp(8));
+        String[] names = {"一", "二", "三", "四", "五", "六", "日"};
+        for (int d = 1; d <= 7; d++) {
+            final int day = d;
+            boolean selected = day == agendaDay;
+            LinearLayout cell = CourseUi.column(this);
+            cell.setGravity(Gravity.CENTER);
+            cell.setPadding(dp(2), dp(8), dp(2), dp(8));
+            cell.setBackground(Ui.ripple(this, selected ? Ui.round(this, Ui.ACCENT, 14) : Ui.round(this, Ui.CARD, 14), Ui.press(), 14));
+            Ui.pressScale(cell, 0.95f);
+            cell.addView(text(names[d - 1], 11, selected ? Ui.ON_ACCENT : Ui.SUB, true), new LinearLayout.LayoutParams(-2, -2));
+            TextView dateText = text(date(d).substring(3), 13, selected ? Ui.ON_ACCENT : Ui.TEXT, true);
+            dateText.setPadding(0, dp(3), 0, dp(4));
+            cell.addView(dateText, new LinearLayout.LayoutParams(-2, -2));
+            View dot = new View(this);
+            dot.setBackground(Ui.round(this, dayCounts[d] == 0 ? Color.TRANSPARENT : (selected ? Ui.ON_ACCENT : Ui.ACCENT), 99));
+            cell.addView(dot, new LinearLayout.LayoutParams(dp(5), dp(5)));
+            cell.setOnClickListener(v -> { agendaDay = day; render(); });
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (d > 1) cp.leftMargin = dp(4);
+            strip.addView(cell, cp);
+        }
+        parent.addView(strip);
+
+        // 取出当天课程并按开始节次排序
+        java.util.ArrayList<Timetable.Lesson> dayLessons = new java.util.ArrayList<>();
+        for (Timetable.Lesson l : table.lessons) {
+            if (l.weekday == agendaDay && l.weeks.contains(week)) dayLessons.add(l);
+        }
+        java.util.Collections.sort(dayLessons, (a, b) -> Integer.compare(a.start, b.start));
+
+        org.json.JSONArray units = table.json.optJSONArray("units");
+        ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
+        LinearLayout list = CourseUi.column(this);
+        list.setPadding(dp(2), dp(4), dp(2), dp(88));
+        sv.addView(list);
+        parent.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        if (dayLessons.isEmpty()) {
+            LinearLayout empty = CourseUi.column(this);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(20), dp(36), dp(20), dp(36));
+            empty.setBackground(Ui.round(this, Ui.CARD, 20));
+            empty.addView(text("周" + names[agendaDay - 1] + "没有课程安排", 16, Ui.TEXT, true), new LinearLayout.LayoutParams(-2, -2));
+            CourseUi.gap(empty, 6);
+            empty.addView(text("点上方星期条查看其他天，或右上角切回周视图", 12, Ui.SUB, false), new LinearLayout.LayoutParams(-2, -2));
+            list.addView(empty);
+            return;
+        }
+
+        for (Timetable.Lesson l : dayLessons) {
+            String sClock = "", eClock = "";
+            for (int i = 0; units != null && i < units.length(); i++) {
+                org.json.JSONObject u = units.optJSONObject(i);
+                if (u == null) continue;
+                int num = u.optInt("number");
+                if (num == l.start) sClock = u.optString("start");
+                if (num == l.end) eClock = u.optString("end");
+            }
+            int sMin = clock(sClock), eMin = clock(eClock);
+            boolean ongoing = isCurrentWeek && agendaDay == todayWeekday && sMin >= 0 && eMin >= 0 && nowMin >= sMin && nowMin < eMin;
+            boolean finished = isCurrentWeek && (agendaDay < todayWeekday || (agendaDay == todayWeekday && eMin >= 0 && nowMin >= eMin));
+            int ci = colorIndex(l.name);
+
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+            rlp.bottomMargin = dp(10);
+
+            LinearLayout timeCol = CourseUi.column(this);
+            timeCol.setGravity(Gravity.END);
+            timeCol.setPadding(0, 0, dp(10), 0);
+            timeCol.addView(text(sClock.isEmpty() ? ("第" + l.start + "节") : sClock, 13, ongoing ? Ui.GREEN : Ui.TEXT, true), new LinearLayout.LayoutParams(-2, -2));
+            timeCol.addView(text(eClock.isEmpty() ? ("第" + l.end + "节") : eClock, 11, Ui.MUTE, false), new LinearLayout.LayoutParams(-2, -2));
+            row.addView(timeCol, new LinearLayout.LayoutParams(dp(56), -2));
+
+            LinearLayout card = CourseUi.column(this);
+            card.setPadding(dp(16), dp(14), dp(16), dp(14));
+            android.graphics.drawable.Drawable face = courseFace(fill(ci), ink(ci));
+            if (ongoing && face instanceof android.graphics.drawable.LayerDrawable) {
+                android.graphics.drawable.Drawable base = ((android.graphics.drawable.LayerDrawable) face).getDrawable(0);
+                if (base instanceof android.graphics.drawable.GradientDrawable) {
+                    ((android.graphics.drawable.GradientDrawable) base).setStroke(Math.max(2, dp(1.5f)), ink(ci));
+                }
+            }
+            card.setBackground(Ui.ripple(this, face, Ui.press(), 16));
+            Ui.pressScale(card, 0.98f);
+            card.setAlpha(finished ? 0.56f : 1f);
+            card.setOnClickListener(v -> detail(l));
+
+            LinearLayout head = new LinearLayout(this);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+            TextView cname = text(l.name, 16, ink(ci), true);
+            cname.setMaxLines(2); cname.setEllipsize(TextUtils.TruncateAt.END);
+            head.addView(cname, new LinearLayout.LayoutParams(0, -2, 1));
+            if (ongoing) {
+                head.addView(Ui.tag(this, "还剩 " + (eMin - nowMin) + " 分钟", Ui.GREEN, Ui.GREEN_BG));
+            } else if (finished) {
+                head.addView(Ui.tag(this, "已结束", Ui.SUB, Ui.withAlpha(ink(ci), 24)));
+            }
+            card.addView(head);
+            CourseUi.gap(card, 6);
+            String subLine = (l.room.isEmpty() ? "地点待定" : l.room) + (l.teachers.isEmpty() ? "" : " · " + l.teachers) + " · 第 " + l.start + (l.end > l.start ? "–" + l.end : "") + " 节";
+            card.addView(text(subLine, 12, Ui.withAlpha(ink(ci), 210), false));
+            row.addView(card, new LinearLayout.LayoutParams(0, -2, 1));
+            list.addView(row, rlp);
+        }
     }
 
     /** 本周实时课表状态条：正在上课 / 下一节课，点击直接打开详情。 */

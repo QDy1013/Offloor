@@ -437,17 +437,36 @@ public class AcademicActivity extends Activity {
     private void gpaHero(LinearLayout list, Map<String, List<Academic.Grade>> terms) {
         LinearLayout c = card(list, 0); c.setPadding(dp(20), dp(18), dp(20), dp(16));
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) c.getLayoutParams(); lp.topMargin = dp(2);
-        LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.BOTTOM); c.addView(top);
-        LinearLayout left = CourseUi.column(this); top.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
-        left.addView(text("总绩点", 12, Ui.SUB, true));
-        TextView big = text(data.gpa == null ? "—" : formatGpa(data.gpa), 44, Ui.TEXT, true);
-        big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); big.setIncludeFontPadding(false); big.setPadding(0, dp(6), 0, 0);
-        left.addView(big);
+        LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); c.addView(top);
+        LinearLayout left = CourseUi.column(this); left.setGravity(Gravity.CENTER_HORIZONTAL);
+        top.addView(left, new LinearLayout.LayoutParams(-2, -2));
+        left.addView(new GpaGaugeView(this, data.gpa), new LinearLayout.LayoutParams(dp(116), dp(86)));
         double credits = Academic.credits(data.grades); int courses = data.grades.size();
-        LinearLayout stats = new LinearLayout(this); top.addView(stats);
+        LinearLayout stats = new LinearLayout(this); stats.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        top.addView(stats, new LinearLayout.LayoutParams(0, -2, 1));
         stats.addView(stat(trim(credits), "已修学分"));
-        View gap = new View(this); stats.addView(gap, new LinearLayout.LayoutParams(dp(18), 1));
+        View gap = new View(this); stats.addView(gap, new LinearLayout.LayoutParams(dp(20), 1));
         stats.addView(stat(String.valueOf(courses), "门课程"));
+
+        if (!data.grades.isEmpty()) {
+            int exc = 0, good = 0, mid = 0, other = 0;
+            for (Academic.Grade g : data.grades) {
+                int[] b = band(g.score);
+                if (b[0] == Ui.GREEN) exc++;
+                else if (b[0] == Ui.ACCENT) good++;
+                else if (b[0] == Ui.TEXT) mid++;
+                else other++;
+            }
+            CourseUi.gap(c, 16);
+            c.addView(new GradeDistBar(this, exc, good, mid, other), new LinearLayout.LayoutParams(-1, dp(7)));
+            CourseUi.gap(c, 8);
+            List<String> distLabels = new ArrayList<>();
+            if (exc > 0) distLabels.add("优 " + exc);
+            if (good > 0) distLabels.add("良 " + good);
+            if (mid > 0) distLabels.add("中 " + mid);
+            if (other > 0) distLabels.add("其他 " + other);
+            if (!distLabels.isEmpty()) c.addView(text("成绩分布 · " + TextUtils.join(" · ", distLabels), 11, Ui.SUB, false));
+        }
 
         List<String> labels = new ArrayList<>(); List<Double> values = new ArrayList<>();
         List<String> keys = new ArrayList<>(terms.keySet());
@@ -656,6 +675,70 @@ public class AcademicActivity extends Activity {
                 canvas.drawText(formatGpa(values.get(i)), cx, top - 6 * d, value);
                 label.setColor(last ? Ui.TEXT : Ui.MUTE);
                 canvas.drawText(labels.get(i), cx, h - 4 * d, label);
+            }
+        }
+    }
+
+    /** 220° 弧形总绩点仪表盘。 */
+    private static final class GpaGaugeView extends View {
+        private final Double gpa;
+        private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint arc = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint valPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint lblPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF oval = new RectF();
+        GpaGaugeView(Context c, Double gpa) {
+            super(c);
+            this.gpa = gpa;
+            float d = getResources().getDisplayMetrics().density;
+            track.setStyle(Paint.Style.STROKE); track.setStrokeCap(Paint.Cap.ROUND); track.setStrokeWidth(7 * d); track.setColor(Ui.FILL);
+            arc.setStyle(Paint.Style.STROKE); arc.setStrokeCap(Paint.Cap.ROUND); arc.setStrokeWidth(7 * d); arc.setColor(Ui.ACCENT);
+            valPaint.setColor(Ui.TEXT); valPaint.setTextAlign(Paint.Align.CENTER); valPaint.setTextSize(24 * d);
+            valPaint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); valPaint.setFontFeatureSettings("tnum");
+            lblPaint.setColor(Ui.SUB); lblPaint.setTextAlign(Paint.Align.CENTER); lblPaint.setTextSize(11 * d);
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            float w = getWidth(), h = getHeight(), d = getResources().getDisplayMetrics().density;
+            float size = Math.min(w, h) - 10 * d;
+            float cx = w / 2f, cy = h / 2f + 4 * d;
+            oval.set(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f);
+            canvas.drawArc(oval, 160f, 220f, false, track);
+            if (gpa != null && gpa > 0) {
+                float sweep = (float) Math.max(0.04, Math.min(1.0, gpa / 4.3)) * 220f;
+                canvas.drawArc(oval, 160f, sweep, false, arc);
+            }
+            canvas.drawText(gpa == null ? "—" : formatGpa(gpa), cx, cy + 5 * d, valPaint);
+            canvas.drawText("总绩点", cx, cy + 23 * d, lblPaint);
+        }
+    }
+
+    /** 成绩等级分布分段彩条（优 / 良 / 中 / 其他）。 */
+    private static final class GradeDistBar extends View {
+        private final int exc, good, mid, other;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF seg = new RectF();
+        GradeDistBar(Context c, int exc, int good, int mid, int other) {
+            super(c); this.exc = exc; this.good = good; this.mid = mid; this.other = other;
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            int total = exc + good + mid + other;
+            if (total <= 0) return;
+            float w = getWidth(), h = getHeight(), r = h / 2f;
+            float d = getResources().getDisplayMetrics().density;
+            float gap = 2 * d;
+            int[] counts = {exc, good, mid, other};
+            int[] colors = {Ui.GREEN, Ui.ACCENT, Ui.MUTE, Ui.ORANGE};
+            int nonZero = 0;
+            for (int c : counts) if (c > 0) nonZero++;
+            float avail = Math.max(1f, w - Math.max(0, nonZero - 1) * gap);
+            float x = 0;
+            for (int i = 0; i < counts.length; i++) {
+                if (counts[i] <= 0) continue;
+                float sw = Math.max(h, avail * counts[i] / total);
+                paint.setColor(colors[i]);
+                seg.set(x, 0, Math.min(w, x + sw), h);
+                canvas.drawRoundRect(seg, r, r, paint);
+                x += sw + gap;
             }
         }
     }
