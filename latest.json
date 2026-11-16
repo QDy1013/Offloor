@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 76,
-      "versionName": "0.76",
+      "versionCode": 77,
+      "versionName": "0.77",
       "size": 2549731,
-      "sha256": "83f7d932b0e63e94999e9df34d0a2d4f6b6bc4ee5f7eabb406893319ef8f9539",
+      "sha256": "f3f9932b84af5c5551a749fc3302acfba7b180415bd2c3b12a5eafb7b9bb0d4d",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/83f7d932b0e63e94999e9df34d0a2d4f6b6bc4ee5f7eabb406893319ef8f9539/offloor.apk",
-      "notes": "v0.76: ecard hero balance, classroom list copy, study room slot count, and copy all upcoming exams"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/f3f9932b84af5c5551a749fc3302acfba7b180415bd2c3b12a5eafb7b9bb0d4d/offloor.apk",
+      "notes": "v0.77: past/ongoing timetable styling, low-balance overview badges, booking hero card, and tabular numerals"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
