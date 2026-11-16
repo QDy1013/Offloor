@@ -522,9 +522,49 @@ public class StudyRoomActivity extends Activity {
             return;
         }
         if (rows.length() == 0) { emptyCard(); return; }
+        if (mine) upcomingBookingHero();
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.optJSONObject(i); if (row == null) continue;
             if (mine) bookingCard(row); else roomCard(row);
+        }
+    }
+
+    private void upcomingBookingHero() {
+        JSONObject best = null;
+        long bestAt = Long.MAX_VALUE;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null) continue;
+            int st = row.optInt("state", -1);
+            if (st != 2 && st != 4) continue;
+            long at = StudyRoomPlan.stamp(row.optString("begin"));
+            if (st == 4) { best = row; break; }
+            if (at > 0 && at < bestAt) { bestAt = at; best = row; }
+        }
+        if (best == null) return;
+        final JSONObject picked = best;
+        LinearLayout hero = CourseUi.column(this);
+        hero.setPadding(dp(20), dp(18), dp(20), dp(18));
+        hero.setBackground(Ui.heroSurface(this, 22));
+        Ui.lift(hero, 6f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = dp(12);
+        body.addView(hero, lp);
+        int st = picked.optInt("state", -1);
+        hero.addView(text(st == 4 ? "当前使用中的研修室" : "下一场研修室预约", 12, Ui.HERO_SUB, true));
+        CourseUi.gap(hero, 6);
+        hero.addView(text(picked.optString("name", "研修室"), 20, Ui.ON_HERO, true));
+        String begin = picked.optString("begin"), end = picked.optString("end");
+        long beginsAt = StudyRoomPlan.stamp(begin);
+        String day = beginsAt > 0 ? StudyRoomPlan.day(beginsAt) : (begin.length() >= 10 ? begin.substring(0, 10) : date);
+        CourseUi.gap(hero, 6);
+        hero.addView(text(StudyRoomPlan.relative(day, System.currentTimeMillis()) + " " + hhmm(begin) + "–" + hhmm(end), 14, Ui.ON_HERO, true));
+        String where = picked.optString("location");
+        if (!where.isEmpty()) { CourseUi.gap(hero, 4); hero.addView(text(where, 12, Ui.HERO_SUB, false)); }
+        String hint = countdown(begin, end);
+        if (!hint.isEmpty()) {
+            CourseUi.gap(hero, 10);
+            hero.addView(Ui.tag(this, hint, Ui.ON_HERO, Ui.withAlpha(android.graphics.Color.WHITE, 28)), new LinearLayout.LayoutParams(-2, -2));
         }
     }
 

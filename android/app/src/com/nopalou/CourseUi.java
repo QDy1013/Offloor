@@ -21,6 +21,7 @@ final class CourseUi {
         t.setTypeface(bold?Ui.medium():android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL),android.graphics.Typeface.NORMAL);
         t.getPaint().setTextSkewX(0); t.setTextScaleX(1); t.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         t.setTextAlignment(android.view.View.TEXT_ALIGNMENT_GRAVITY);
+        t.setFontFeatureSettings("tnum");
         return t;
     }
     static TextView action(Context c, String value, boolean primary, Runnable click) {

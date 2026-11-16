@@ -140,18 +140,34 @@ public class CampusActivity extends Activity {
         TextView caption=text("校园账户",14,Ui.ON_HERO,true); caption.setPadding(dp(12),0,dp(12),dp(14)); account.addView(caption);
         LinearLayout values=new LinearLayout(this); values.setBaselineAligned(false); account.addView(values);
         String[] ids={"network","card","electric"};
+        android.content.SharedPreferences alertPrefs=CampusChanges.prefs(this);
+        double elecPrice=CampusChanges.price(alertPrefs);
         for (String id:ids) {
             JSONObject module=data==null?null:data.module(id); boolean present=CampusData.count(module)>0;
             CampusServices.Service service=CampusServices.byId(id);
-            CampusSummary summary=CampusSummary.of(id,module,System.currentTimeMillis(),CampusChanges.price(CampusChanges.prefs(this)));
+            CampusSummary summary=CampusSummary.of(id,module,System.currentTimeMillis(),elecPrice);
             LinearLayout item=CourseUi.column(this); item.setPadding(dp(10),dp(10),dp(6),dp(12));
             item.setBackground(Ui.ripple(this,null,Ui.withAlpha(android.graphics.Color.WHITE,24),16));
             item.addView(text(service.title,12,Ui.HERO_SUB,false)); CourseUi.gap(item,9);
             TextView value=text(summary.value,present?20:13,Ui.ON_HERO,true); value.setMinHeight(dp(28)); value.setMaxLines(2); value.setEllipsize(android.text.TextUtils.TruncateAt.END); item.addView(value);
             CourseUi.gap(item,9);
-            String freshness=present?new SimpleDateFormat("M/d HH:mm",Locale.CHINA).format(new Date(module.optLong("updated"))):"等待同步";
-            if (present && !"ok".equals(module.optString("state"))) freshness="上次数据";
-            item.addView(text(freshness,10,Ui.HERO_SUB,false));
+            boolean lowAlert=false;
+            if (present) {
+                if ("electric".equals(id)) {
+                    Double kwh=ChangeDiff.firstNumber(CampusSummary.field(module,"剩余电量|当前电量|电量余额"));
+                    lowAlert=CampusBalance.electricLow(kwh,elecPrice,CampusChanges.electricThreshold(alertPrefs));
+                } else if ("network".equals(id)) {
+                    Double yuan=ChangeDiff.firstNumber(CampusSummary.field(module,"账户余额|余额|当前余额"));
+                    lowAlert=CampusBalance.networkLow(yuan,CampusChanges.networkThreshold(alertPrefs));
+                }
+            }
+            if (lowAlert) {
+                item.addView(Ui.tag(this,"余额偏低",Ui.ORANGE,Ui.ORANGE_BG),new LinearLayout.LayoutParams(-2,-2));
+            } else {
+                String freshness=present?new SimpleDateFormat("M/d HH:mm",Locale.CHINA).format(new Date(module.optLong("updated"))):"等待同步";
+                if (present && !"ok".equals(module.optString("state"))) freshness="上次数据";
+                item.addView(text(freshness,10,Ui.HERO_SUB,false));
+            }
             item.setContentDescription(service.title+"，"+summary.value+"，查看详情"); item.setFocusable(true);
             item.setOnClickListener(v -> openModule(id));
             values.addView(item,new LinearLayout.LayoutParams(0,-2,1));

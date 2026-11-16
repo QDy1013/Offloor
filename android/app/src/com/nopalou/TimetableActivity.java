@@ -227,11 +227,23 @@ public class TimetableActivity extends Activity {
             }
             org.json.JSONArray times = table.json.optJSONArray("units");
             String[] unitStarts = new String[units + 1];
+            int[] unitStartMins = new int[units + 1];
+            int[] unitEndMins = new int[units + 1];
+            java.util.Arrays.fill(unitStartMins, -1);
+            java.util.Arrays.fill(unitEndMins, -1);
             for (int i = 0; times != null && i < times.length(); i++) {
                 org.json.JSONObject time = times.optJSONObject(i);
                 int num = time == null ? 0 : time.optInt("number");
-                if (num >= 1 && num <= units) unitStarts[num] = time.optString("start");
+                if (num >= 1 && num <= units) {
+                    unitStarts[num] = time.optString("start");
+                    unitStartMins[num] = clock(unitStarts[num]);
+                    unitEndMins[num] = clock(time.optString("end"));
+                }
             }
+            boolean isCurrentWeek = week == table.currentWeek();
+            Calendar nowCal = Calendar.getInstance();
+            int todayWeekday = nowCal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY ? 7 : nowCal.get(Calendar.DAY_OF_WEEK) - 1;
+            int nowMinutes = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
             for (int u = 1; u <= units; u++) {
                 LinearLayout unit = CourseUi.column(TimetableActivity.this); unit.setGravity(Gravity.CENTER_HORIZONTAL); unit.setPadding(0, dp(9), 0, 0);
                 TextView label = text(String.format(java.util.Locale.ROOT, "%02d", u), 10, Ui.SUB, true); label.setGravity(Gravity.CENTER); unit.addView(label);
@@ -249,7 +261,20 @@ public class TimetableActivity extends Activity {
                 int color = colorIndex(first.name);
                 LinearLayout card = CourseUi.column(TimetableActivity.this);
                 card.setPadding(dp(6), dp(7), dp(3), dp(5));
-                card.setBackground(Ui.ripple(TimetableActivity.this, courseFace(fill(color), ink(color)), Ui.press(), 9));
+                int blockStartMin = block.start >= 1 && block.start <= units ? unitStartMins[block.start] : -1;
+                int blockEndMin = block.end >= 1 && block.end <= units ? unitEndMins[block.end] : -1;
+                boolean pastBlock = isCurrentWeek && (block.weekday < todayWeekday
+                        || (block.weekday == todayWeekday && blockEndMin >= 0 && nowMinutes >= blockEndMin));
+                boolean ongoingBlock = isCurrentWeek && block.weekday == todayWeekday
+                        && blockStartMin >= 0 && blockEndMin >= 0 && nowMinutes >= blockStartMin && nowMinutes < blockEndMin;
+                android.graphics.drawable.Drawable face = courseFace(fill(color), ink(color));
+                if (ongoingBlock && face instanceof android.graphics.drawable.LayerDrawable) {
+                    android.graphics.drawable.Drawable base = ((android.graphics.drawable.LayerDrawable) face).getDrawable(0);
+                    if (base instanceof android.graphics.drawable.GradientDrawable) {
+                        ((android.graphics.drawable.GradientDrawable) base).setStroke(Math.max(2, dp(1.5f)), ink(color));
+                    }
+                }
+                card.setBackground(Ui.ripple(TimetableActivity.this, face, Ui.press(), 9));
                 Ui.pressScale(card, 0.95f);
                 boolean overlap = block.lessons.size() > 1;
                 TextView name = text(overlap ? block.lessons.size() + "门课程\n时段重叠" : first.name, 10, ink(color), true);
@@ -265,11 +290,14 @@ public class TimetableActivity extends Activity {
                 FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(Math.max(1, right - left - dp(4)), dp(top(block.end) + 53 - top(block.start)) - dp(4));
                 p.leftMargin = left + dp(2);
                 p.topMargin = dp(top(block.start)) + dp(2); addView(card, p);
+                float targetAlpha = pastBlock ? 0.52f : 1f;
                 if (firstPaint) {
                     // 首次打开：课程块按顺序轻轻浮现，不是一下子全部蹦出来。
                     card.setAlpha(0f); card.setScaleX(0.92f); card.setScaleY(0.92f);
-                    card.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(Math.min(index, 14) * 18L)
+                    card.animate().alpha(targetAlpha).scaleX(1f).scaleY(1f).setStartDelay(Math.min(index, 14) * 18L)
                             .setDuration(220).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                } else {
+                    card.setAlpha(targetAlpha);
                 }
                 index++;
             }
@@ -398,6 +426,7 @@ public class TimetableActivity extends Activity {
         pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
         pill.setPadding(dp(12), dp(8), dp(12), dp(8));
         pill.setBackground(Ui.ripple(this, Ui.round(this, bg, 12), Ui.press(), 12));
+        Ui.pressScale(pill, 0.98f);
         pill.setOnClickListener(v -> detail(target));
         return pill;
     }

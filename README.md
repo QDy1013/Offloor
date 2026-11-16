@@ -1,5 +1,7 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
+v0.77 UI 质感与视觉层次升级：1）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 本周课表中自动柔化已结束课程块（52% 透明度）并为当前正在上的课程块增加主题色描边高亮；2）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 账户总览三栏卡片中直接展示电费/校园网「余额偏低」橙色角标；3）在 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java)「我的预约」顶部新增深墨渐变「当前使用中 / 下一场研修室预约」主卡；4）在 [CourseUi.java](android/app/src/com/nopalou/CourseUi.java) 全局启用等宽数字（`tnum`）对齐时间、绩点与金额，并为 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 操作胶囊统一补全轻按微缩反馈。
+
 v0.76 实用细节与一键分享升级：1）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 为校园卡详情页新增大字余额展示，并在空闲教室结果标题旁新增「复制列表」一键分享空闲教室清单；2）在 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 研修室卡片上直接展示「今天还有 N 个可约时段」提示；3）在 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 待考日程新增「复制全部待考」一键复制全部待考科目、时间与地点。
 
 v0.75 校车与研修室浏览效率升级：1）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 实时校车区新增「未发车/可购班次与最近可购时间」摘要条，并在多条路线时提供横向路线快捷筛选胶囊；2）在 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 全部房间视图中稳定优先展示「可预约」研修室，无需先翻越暂不可约房间。

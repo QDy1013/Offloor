@@ -207,6 +207,7 @@ public class AcademicActivity extends Activity {
                 TextView copyAll = text("复制全部待考", 12, Ui.ACCENT, true);
                 copyAll.setPadding(dp(10), dp(5), dp(10), dp(5));
                 copyAll.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+                Ui.pressScale(copyAll, 0.96f);
                 LinearLayout.LayoutParams cal = new LinearLayout.LayoutParams(-2, -2); cal.leftMargin = dp(8);
                 upHead.addView(copyAll, cal);
                 copyAll.setOnClickListener(v -> {
@@ -363,6 +364,7 @@ public class AcademicActivity extends Activity {
         TextView clearBtn = text("清除", 12, Ui.ACCENT, true);
         clearBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
         clearBtn.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+        Ui.pressScale(clearBtn, 0.96f);
         clearBtn.setVisibility(gradeQuery.trim().isEmpty() ? View.GONE : View.VISIBLE);
         searchBar.addView(clearBtn);
         list.addView(searchBar);
@@ -396,6 +398,7 @@ public class AcademicActivity extends Activity {
                 TextView toggleAll = text(allOpen ? "全部收起" : "全部展开", 12, Ui.ACCENT, true);
                 toggleAll.setPadding(dp(10), dp(5), dp(10), dp(5));
                 toggleAll.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+                Ui.pressScale(toggleAll, 0.96f);
                 LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2); tl.leftMargin = dp(8);
                 headRow.addView(toggleAll, tl);
                 toggleAll.setOnClickListener(v -> {
@@ -468,6 +471,7 @@ public class AcademicActivity extends Activity {
             TextView copySummary = text("复制摘要", 12, Ui.ACCENT, true);
             copySummary.setPadding(dp(10), dp(5), dp(10), dp(5));
             copySummary.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 10), Ui.press(), 10));
+            Ui.pressScale(copySummary, 0.96f);
             copySummary.setOnClickListener(v -> {
                 StringBuilder sb = new StringBuilder();
                 sb.append("总绩点：").append(data.gpa == null ? "—" : formatGpa(data.gpa))
