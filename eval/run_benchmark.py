@@ -268,7 +268,7 @@ def main() -> None:
     model = Model(ROOT / "engine" / "model.json")
     report = {
         "ood_dataset": {
-            "path": str(args.ood.relative_to(ROOT)),
+            "path": args.ood.relative_to(ROOT).as_posix(),
             "total": len(ood_rows),
             "action_todo_exam": sum(1 for r in ood_rows if r["label"] == "action" and not r["jielong"]),
             "jielong": sum(1 for r in ood_rows if r["jielong"]),

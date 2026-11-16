@@ -131,14 +131,15 @@ async function main() {
         assert.match(session, /else if \(!result\.optString\("error"\)\.isEmpty\(\)\) fail\(result\.optString\("error"\)\)/);
     });
     const mainActivity = fs.readFileSync(path.join(app, 'src/com/nopalou/MainActivity.java'), 'utf8');
+    const homeCardSheets = fs.readFileSync(path.join(app, 'src/com/nopalou/HomeCardSheets.java'), 'utf8');
     check('manual draft preserves all editable fields across activity recreation', () => {
         assert.match(mainActivity, /state\.putBundle\("manualCardDraft", manualDraftState\.get\(\)\)/);
         assert.match(mainActivity, /restoreManualDraft = b\.getBundle\("manualCardDraft"\)/);
         assert.match(mainActivity, /else showManualCardForm\(card, draft\)/);
-        for (const field of ['cardId', 'title', 'place', 'notes']) assert.ok(mainActivity.includes('saved.putString("' + field + '"'));
-        for (const field of ['title', 'place', 'notes']) assert.ok(mainActivity.includes('draft.getString("' + field + '"'));
-        assert.match(mainActivity, /saved\.putLong\("deadline", deadline\[0\]\)/);
-        assert.match(mainActivity, /deadline\[0\] = draft\.getLong\("deadline", 0\)/);
+        for (const field of ['cardId', 'title', 'place', 'notes']) assert.ok(homeCardSheets.includes('saved.putString("' + field + '"'));
+        for (const field of ['title', 'place', 'notes']) assert.ok(homeCardSheets.includes('draft.getString("' + field + '"'));
+        assert.match(homeCardSheets, /saved\.putLong\("deadline", deadline\[0\]\)/);
+        assert.match(homeCardSheets, /deadline\[0\] = draft\.getLong\("deadline", 0\)/);
         assert.match(mainActivity, /if \(!id\.isEmpty\(\) && card == null\)/);
     });
     // ---------- 体验改进：不可约原因、状态码、时段计算与冲突提示 ----------

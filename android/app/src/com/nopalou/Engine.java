@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -344,7 +345,7 @@ public class Engine {
 
     public Profile getProfile() { return profile; }
 
-    private final List<String> timetableCourses = new ArrayList<>();
+    private volatile List<String> timetableCourses = Collections.emptyList();
     private static final Pattern TRAILING_COURSE_SUFFIX =
             Pattern.compile("(?:（[^）]{1,8}）|\\([^)]{1,8}\\))$");
 
@@ -365,11 +366,11 @@ public class Engine {
 
     /** 同步已导入课表中的课程名作为运行期课程上下文，不写入或篡改个人档案存档。 */
     public void setTimetableCourses(java.util.Collection<String> courses) {
-        timetableCourses.clear();
-        if (courses != null) timetableCourses.addAll(normalizeCourseNames(courses));
+        timetableCourses = courses == null ? Collections.emptyList()
+                : Collections.unmodifiableList(normalizeCourseNames(courses));
     }
 
-    /** 供 AI 复核使用的有效档案：在手动档案基础上合并已导入课表的课程列表（上限 24 门）。 */
+    /** 供 AI 复核使用的有效档案：在手动档案基础上合并已导入课表的课程列表（上限 40 项）。 */
     public Profile effectiveProfile() {
         Profile copy = new Profile();
         copy.name = profile.name;
@@ -378,7 +379,7 @@ public class Engine {
         copy.groupNo = profile.groupNo;
         copy.className = profile.className;
         List<String> merged = new ArrayList<>(Arrays.asList(meCourses()));
-        copy.courses = merged.size() > 24 ? new ArrayList<>(merged.subList(0, 24)) : merged;
+        copy.courses = merged.size() > 40 ? new ArrayList<>(merged.subList(0, 40)) : merged;
         return copy;
     }
 

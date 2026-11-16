@@ -91,6 +91,11 @@ public final class Step61Test {
         StudyPlanner.GapSuggestion gap = StudyPlanner.findStudyGap(days, Collections.singletonList(urgentNet), now);
         check("finds today 11:30-13:30 gap before 14:00 class",
                 gap != null && gap.isToday && gap.startMinute == 11 * 60 + 30 && gap.endMinute == 13 * 60 + 30);
+        StudyPlanner.GapSuggestion subSecondGap = StudyPlanner.findStudyGap(
+                days, Collections.singletonList(urgentNet), now + 5_000L);
+        check("rounds past sub-minute boundary up to 11:45 so slot stays in the future",
+                subSecondGap != null && subSecondGap.isToday
+                        && subSecondGap.startMinute == 11 * 60 + 45 && subSecondGap.endMinute == 13 * 60 + 45);
         check("infers friendship campus from today's rooms", "友谊校区".equals(gap.campus));
         check("links urgent card and course theme",
                 gap.targetCard == urgentNet && "计算机网络复习".equals(gap.studyTheme()));

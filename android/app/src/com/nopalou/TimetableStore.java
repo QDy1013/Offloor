@@ -43,8 +43,13 @@ final class TimetableStore {
         }
         // 基线是“上一次保存的课表”，不是第一次导入的那份
         CampusChanges.timetable(c, previous, t);
+        EngineHolder.syncTimetable(t);
         TodayWidget.refresh(c);
     }
-    static synchronized void clear(Context c) { file(c).delete(); TodayWidget.refresh(c); }
+    static synchronized void clear(Context c) {
+        file(c).delete();
+        EngineHolder.syncTimetable(null);
+        TodayWidget.refresh(c);
+    }
     static synchronized void stampOwner(Context c,String owner) throws Exception { AccountFiles.stamp(c,"timetable.json",owner); }
 }

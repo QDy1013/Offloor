@@ -371,6 +371,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         timetableIo.shutdownNow();
         uiHandler.removeCallbacksAndMessages(null);
         if (manualCardDialog != null) { manualCardDialog.dismiss(); manualCardDialog = null; manualDraftState = null; }
+        if (groupDialog != null) { groupDialog.dismiss(); groupDialog = null; groupBody = null; }
+        if (setupDialog != null) { setupDialog.dismiss(); setupDialog = null; setupBody = null; setupDone = null; }
         if (usageNoticeDialog != null) {
             usageNoticeDialog.setOnDismissListener(null);
             usageNoticeDialog.dismiss();

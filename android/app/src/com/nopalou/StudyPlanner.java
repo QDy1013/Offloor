@@ -194,6 +194,8 @@ final class StudyPlanner {
         Calendar cal = Calendar.getInstance(StudyRoomPlan.CHINA);
         cal.setTimeInMillis(now);
         int nowMinute = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE);
+        // 当前分钟已过整分时向上推进 1 分钟再取 15 分钟刻度，避免推荐“恰好落在几秒前”的起始时刻
+        if (cal.get(Calendar.SECOND) > 0 || cal.get(Calendar.MILLISECOND) > 0) nowMinute++;
 
         List<String> allCourses = new ArrayList<>();
         Map<String, DayCourses> byDate = new HashMap<>();

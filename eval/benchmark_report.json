@@ -1,6 +1,6 @@
 {
   "ood_dataset": {
-    "path": "eval\\strict_ood.jsonl",
+    "path": "eval/strict_ood.jsonl",
     "total": 100,
     "action_todo_exam": 50,
     "jielong": 10,
