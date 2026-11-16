@@ -42,7 +42,12 @@ public class EngineEval {
     }
 
     public static void main(String[] args) throws Exception {
-        boolean timing = args.length > 1 && "--timing".equals(args[1]);
+        boolean timing = false;
+        boolean countEscalations = false;
+        for (int i = 1; i < args.length; i++) {
+            if ("--timing".equals(args[i])) timing = true;
+            if ("--escalations".equals(args[i])) countEscalations = true;
+        }
         List<Long> durations = new ArrayList<>();
         List<Long> nonNoise = new ArrayList<>();
         ZoneId zone = ZoneId.systemDefault();
@@ -51,6 +56,10 @@ public class EngineEval {
             engine = new Engine(model);
         }
         engine.setProfile(Engine.Profile.demo());
+        final int[] escalations = {0};
+        if (countEscalations) {
+            engine.escalator = esc -> escalations[0]++;
+        }
         StringJoiner jielongSources = new StringJoiner(",");
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in, StandardCharsets.US_ASCII))) {
@@ -81,6 +90,7 @@ public class EngineEval {
         System.out.println(engine.nIn + "\t" + engine.nNoise + "\t" + engine.nLevel3 + "\t" + engine.nPromoted);
         System.out.println(jielongSources);
         if (timing) printTiming(durations, nonNoise);
+        if (countEscalations) System.out.println("ESCALATIONS\t" + escalations[0]);
         for (Engine.Card card : engine.all()) {
             String deadline = card.deadline == 0 ? "" :
                     LocalDateTime.ofInstant(Instant.ofEpochMilli(card.deadline), zone).toString();

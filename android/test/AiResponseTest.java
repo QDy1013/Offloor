@@ -54,6 +54,10 @@ public final class AiResponseTest {
         check("无时刻的完整日期按日末",AiClient.fmt(AiClient.parseTime("2026-11-09")).equals("2026-11-09 23:59"));
         check("同账号的快照可见",AccountFiles.visible(new JSONObject().put(AccountFiles.OWNER,"a"),"a"));
         check("账号切换后旧快照立即不可见",!AccountFiles.visible(new JSONObject().put(AccountFiles.OWNER,"a"),"b"));
+        engine.setTimetableCourses(Collections.singletonList("大学物理（Ⅰ）"));
+        JSONObject req = AiClient.buildJudgeRequest(sent, engine.effectiveProfile(), true, 1800000000000L, null);
+        check("课表课程注入 AI 请求画像", req.getJSONObject("me").getJSONArray("courses").toString().contains("大学物理"));
+        check("AI 请求附带匹配到的课程名", "大学物理".equals(req.getJSONArray("messages").getJSONObject(0).optString("matched_course")));
         System.out.println("PASS " + checks);
     }
 }

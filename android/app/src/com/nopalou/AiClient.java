@@ -121,45 +121,55 @@ final class AiClient implements AutoCloseable {
             + "- bring：考试要带的东西，没有写空串\n"
             + "- confidence：0~1，你对 todo 判断的把握\n"
             + "- note：不超过 20 字的理由\n"
+            + "如果消息带有 matched_course，说明它命中了用户已导入课表中的该课程，请优先在 title 中保留课程名或清晰对应关系。\n"
             + "只输出 JSON：{\"items\":[{\"id\":\"…\",\"todo\":true,\"kind\":\"todo\",\"title\":\"…\",\"deadline\":\"…\","
             + "\"time_sure\":true,\"place\":\"\",\"channel\":\"\",\"bring\":\"\",\"confidence\":0.9,\"note\":\"…\"}]}，"
             + "每条输入消息都要有一项，id 原样返回。";
 
+    static JSONObject buildJudgeRequest(List<Engine.Escalation> items, Engine.Profile profile, boolean local, long now,
+                                      Map<String, Engine.Escalation> byId) throws JSONException {
+        JSONObject req = new JSONObject();
+        req.put("now", fmt(now));
+        JSONObject me = new JSONObject();
+        List<String> myCourses = profile == null ? new ArrayList<>() : Engine.clean(profile.courses);
+        if (profile != null) {
+            if (!Engine.blank(profile.className)) me.put("class", profile.className.trim());
+            if (!Engine.blank(profile.groupNo)) me.put("group", profile.groupNo.trim());
+            JSONArray courses = new JSONArray();
+            for (String c : myCourses) courses.put(c);
+            if (courses.length() > 0) me.put("courses", courses);
+        }
+        req.put("me", me);
+        JSONArray arr = new JSONArray();
+        for (int i = 0; i < items.size(); i++) {
+            Engine.Escalation e = items.get(i);
+            String id = String.valueOf(i + 1);
+            if (byId != null) byId.put(id, e);
+            JSONObject o = new JSONObject();
+            o.put("id", id);
+            o.put("send_time", fmt(e.msg.ts) + " 周" + "一二三四五六日".charAt(weekdayIndex(e.msg.ts)));
+            o.put("group", nz(e.msg.groupName));
+            o.put("sender", nz(e.msg.sender));
+            // 本机模型上下文只有 4096 token，一批 3 条：正文和前文都截短些
+            o.put("text", clip(e.msg.text, local ? 400 : 1200));
+            String matched = StudyPlanner.matchCourse(null, e.msg.groupName, e.msg.text, myCourses);
+            if (!matched.isEmpty()) o.put("matched_course", matched);
+            JSONArray ctx = new JSONArray();
+            int from = local ? Math.max(0, e.context.size() - 3) : 0;   // 本机只带最近 3 条
+            for (String s : e.context.subList(from, e.context.size())) ctx.put(clip(s, local ? 80 : 120));
+            if (ctx.length() > 0) o.put("earlier_messages", ctx);
+            o.put("local_guess", e.label);
+            arr.put(o);
+        }
+        req.put("messages", arr);
+        return req;
+    }
+
     List<Engine.AiVerdict> judge(List<Engine.Escalation> items, Engine.Profile profile, long now) throws IOException {
         if (items.isEmpty()) return new ArrayList<>();
         try {
-            JSONObject req = new JSONObject();
-            req.put("now", fmt(now));
-            JSONObject me = new JSONObject();
-            if (profile != null) {
-                if (!Engine.blank(profile.className)) me.put("class", profile.className.trim());
-                if (!Engine.blank(profile.groupNo)) me.put("group", profile.groupNo.trim());
-                JSONArray courses = new JSONArray();
-                for (String c : Engine.clean(profile.courses)) courses.put(c);
-                if (courses.length() > 0) me.put("courses", courses);
-            }
-            req.put("me", me);
-            JSONArray arr = new JSONArray();
             Map<String, Engine.Escalation> byId = new HashMap<>();
-            for (int i = 0; i < items.size(); i++) {
-                Engine.Escalation e = items.get(i);
-                String id = String.valueOf(i + 1);
-                byId.put(id, e);
-                JSONObject o = new JSONObject();
-                o.put("id", id);
-                o.put("send_time", fmt(e.msg.ts) + " 周" + "一二三四五六日".charAt(weekdayIndex(e.msg.ts)));
-                o.put("group", nz(e.msg.groupName));
-                o.put("sender", nz(e.msg.sender));
-                // 本机模型上下文只有 4096 token，一批 3 条：正文和前文都截短些
-                o.put("text", clip(e.msg.text, cfg.local ? 400 : 1200));
-                JSONArray ctx = new JSONArray();
-                int from = cfg.local ? Math.max(0, e.context.size() - 3) : 0;   // 本机只带最近 3 条
-                for (String s : e.context.subList(from, e.context.size())) ctx.put(clip(s, cfg.local ? 80 : 120));
-                if (ctx.length() > 0) o.put("earlier_messages", ctx);
-                o.put("local_guess", e.label);
-                arr.put(o);
-            }
-            req.put("messages", arr);
+            JSONObject req = buildJudgeRequest(items, profile, cfg.local, now, byId);
             JSONArray msgs = new JSONArray()
                     .put(new JSONObject().put("role", "system").put("content", JUDGE_SYSTEM))
                     .put(new JSONObject().put("role", "user").put("content", req.toString()));

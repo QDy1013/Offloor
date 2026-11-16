@@ -62,8 +62,8 @@ import java.util.function.LongConsumer;
  * 卡片 = 事由 + 截止 + 方式 + 来源；点开能回到原文和上下文。
  */
 public class MainActivity extends Activity implements Engine.SelectedListener {
-    private static final int PAGE_SIZE = 30;
-    private static final int REQUEST_REMINDER_PERMISSION = 8420;
+    static final int PAGE_SIZE = 30;
+    static final int REQUEST_REMINDER_PERMISSION = 8420;
 
     Engine engine;
     LinearLayout cardList;
@@ -103,9 +103,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private static boolean aiBackfilled;
     TextView empty;
     boolean accessChecked;
-    private boolean retryNotifOnResume;
+    boolean retryNotifOnResume;
     private static String storageIssueShown;
-    private DemoScenario demo;
+    DemoScenario demo;
     private Button demoButton;
     private Button demoUpdate;
     private LinearLayout demoTools;
@@ -116,7 +116,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView stateFilter;
     /** 「新增」放在「全部」左侧；默认仍为「全部」，不隐藏没写日期的事项。 */
     private TextView newCardsTab;
-    private boolean newCardsOnly;
+    boolean newCardsOnly;
     private NewCardTracker newCardTracker;
     private static final String[] WINDOW_LABELS = {"全部", "今天起", "今天", "明天", "待确认"};
     private static final Engine.CardWindow[] WINDOW_TABS = {Engine.CardWindow.ANY, Engine.CardWindow.UPCOMING,
@@ -127,15 +127,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView scanChip;
     /** 已经提示过的自动扫描时间，避免每次回到前台都重复提示。 */
     private static long scanNoticeShownAt = 0L;
-    private EditText searchField;
+    EditText searchField;
     private TextView searchClear;
-    private ScrollView listScroll;
+    ScrollView listScroll;
     private TextView headline;
     /** Compact daily overview; task content remains the main focus. */
     private LinearLayout hero;
     private AlertDialog usageNoticeDialog;
-    private android.app.Dialog manualCardDialog;
-    private java.util.function.Supplier<Bundle> manualDraftState;
+    android.app.Dialog manualCardDialog;
+    java.util.function.Supplier<Bundle> manualDraftState;
     private Bundle restoreManualDraft;
     private boolean restoreUsageNotice;
     private boolean startupNoticeHandled;
@@ -149,10 +149,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private static final Map<String, Drawable.ConstantState> sourceIconCache = new HashMap<>();
     /** 查询失败也缓存，避免每次 render 反复向 PackageManager 要图标。 */
     private static final java.util.Set<String> sourceIconMiss = new java.util.HashSet<>();
-    private String keywords = "";
-    private Engine.CardScope scope = Engine.CardScope.ALL;
-    private Engine.CardWindow window = Engine.CardWindow.ANY;
-    private int visibleLimit = PAGE_SIZE;
+    String keywords = "";
+    Engine.CardScope scope = Engine.CardScope.ALL;
+    Engine.CardWindow window = Engine.CardWindow.ANY;
+    int visibleLimit = PAGE_SIZE;
+    android.app.Dialog groupDialog;
+    LinearLayout groupBody;
+    android.app.Dialog setupDialog;
+    LinearLayout setupBody;
+    Button setupDone;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private boolean resumed;
     private boolean renderQueued;
@@ -1247,7 +1252,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         }
     }
 
-    private void showAllCards() {
+    void showAllCards() {
         newCardsOnly = false;
         scope = Engine.CardScope.ALL;
         window = Engine.CardWindow.ANY;
@@ -1522,201 +1527,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return Ui.sheet(this, content, footer);
     }
 
-    /**
-     * 「自动读取自检」：把 HealthCheck 的结论原样摆在用户面前。
-     * 没问题就给一句让人放心的确认；有问题就逐条列出，并只给最该点的那一个按钮。
-     */
-    void showHealthCheck() {
-        // 四项输入全部来自真实状态：权限、服务连接、电池放行、最近一次收到消息的时间。
-        HealthCheck.Result r = HealthCheck.evaluate(WatchdogJob.accessEnabled(this),
-                EngineHolder.listenerConnected, WatchdogJob.batteryIgnored(this),
-                EngineHolder.lastReceivedAt, System.currentTimeMillis());
+    /** 「自动读取自检」：委托 HomeOpsSheets 展示检查结果与处理入口。 */
+    void showHealthCheck() { HomeOpsSheets.showHealthCheck(this); }
 
-        // 正文按「结论 + 保活说明」两个部分拼，先建好 StringBuilder。
-        StringBuilder body = new StringBuilder();
-        // 没有问题：用一句话说清三项都正常。
-        if (r.issues.isEmpty()) {
-            body.append("通知读取权限已开，服务已连接，电池不受限。");
-        } else {
-            // 有问题：每个问题占一行，前面带「· 」，顺序就是规则顺序。
-            for (int i = 0; i < r.issues.size(); i++) {
-                // 第一条不加换行，后面每条先换行再写。
-                if (i > 0) body.append("\n");
-                body.append("· ").append(r.issues.get(i).text);
-            }
-        }
-        // 收到过消息才补一行「最近一次自动收到」，没收到过就不提，避免显示 0。
-        if (EngineHolder.lastReceivedAt > 0) {
-            body.append("\n最近一次自动收到：").append(ago(EngineHolder.lastReceivedAt));
-        } else {
-            body.append("\n尚未收到可读取的消息，可以发一条测试通知检查。");
-        }
-        body.append("\n\n仅能整理系统实际展示的通知文字。免打扰、折叠或被隐藏的消息，以及历史聊天和图片内部文字，不保证自动获取；可主动分享文字或截图补充。");
-        // 保活说明固定接在正文末尾，原「让它一直在后台运行」的四行内容一字不改。
-        body.append("\n\n保持自动读取不被系统杀掉：\n")
-                .append("1. 在系统设置里允许「Offloor」自启动和后台运行（vivo：设置 > 应用与权限 > 权限管理 > 自启动）。\n")
-                .append("2. 电池设置里把「Offloor」设为不限制或允许后台高耗电。\n")
-                .append("3. 在最近任务里不要上滑清掉它；可以长按卡片锁定。\n")
-                .append("4. 重启手机后打开一次 App，确认状态是「已连接」。");
-
-        if (!EngineHolder.listenerConnected && WatchdogJob.accessEnabled(this)) {
-            if (NotifRecovery.failed()) {
-                body.append("\n\n自动恢复尚未成功。请在系统「通知使用权」里关闭再开启 Offloor，然后返回应用；无需清空数据或重新安装。");
-            } else if (NotifRecovery.running()) {
-                body.append("\n\n正在检查系统连接结果，请稍等；发出请求不代表已经连接。");
-            }
-        }
-        // 三个问题标记先取出来，再决定两个按钮分别放哪个动作。
-        boolean needAccess = hasFix(r, "NOTIF_ACCESS");
-        boolean needRebind = hasFix(r, "REBIND");
-        boolean needBattery = hasFix(r, "BATTERY");
-
-        // 标题直接用 HealthCheck 给的一句话结论（正常 / 发现 N 个问题）。
-        AlertDialog.Builder builder = alert()
-                .setTitle(r.summary())
-                .setMessage(body.toString())
-                // 负按钮固定是「知道了」，只关窗不做动作。
-                .setNegativeButton("知道了", null);
-
-        // 正按钮只放一个，按权限 > 重连 > 电池的优先级依次降级。
-        if (needAccess) {
-            builder.setPositiveButton("去开启", (d, w) -> {
-                try {
-                    // 跳到系统的通知使用权页面，用户在那里打开本 App 的开关。
-                    startActivity(new Intent(
-                            "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-                } catch (Exception ignored) {
-                    // 个别设备没有这个页面，给提示不让点击崩掉。
-                    Toast.makeText(this, "这台手机没有通知使用权页面，请到系统设置里手动找",
-                            Toast.LENGTH_LONG).show();
-                }
-            });
-        } else if (needRebind) {
-            if (NotifRecovery.failed()) {
-                builder.setPositiveButton("重开通知权限", (d, w) -> {
-                    retryNotifOnResume = true;
-                    try { startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); }
-                    catch (Exception e) {
-                        Toast.makeText(this, "请到系统设置的通知使用权中，关闭再开启 Offloor", Toast.LENGTH_LONG).show();
-                    }
-                });
-            } else {
-                builder.setPositiveButton("重新连接", (d, w) -> {
-                    NotifRecovery.request(this, true);
-                    Toast.makeText(this, "正在恢复通知读取，将检查连接结果", Toast.LENGTH_SHORT).show();
-                });
-            }
-        } else if (needBattery) {
-            builder.setPositiveButton("去电池设置", (d, w) -> openBatterySettings());
-        }
-
-        // 电池问题不是正按钮时，降级放到中性按钮，保证两个按钮以内还能处理它。
-        if (needBattery && (needAccess || needRebind)) {
-            builder.setNeutralButton("电池设置", (d, w) -> openBatterySettings());
-        }
-
-        // 一次性弹出完整结论。
-        builder.show();
-    }
-
-    /** 结果里是否含某个处理标记；fix 可能是 null，这里一律按字符串比较避免空指针。 */
-    boolean hasFix(HealthCheck.Result r, String fix) {
-        // 逐条比对 fix 字段，命中就返回 true。
-        for (int i = 0; i < r.issues.size(); i++) {
-            // equals 的方向固定成常量在前，null 也不会抛异常。
-            if (fix.equals(r.issues.get(i).fix)) return true;
-        }
-        // 一条都没命中说明不需要这个动作。
-        return false;
-    }
-
-    /** 打开系统的电池优化页面；没有这个页面的设备给一句提示，不让点击崩掉。 */
-    void openBatterySettings() {
-        // 直接弹系统授权框；不支持时 SetupGuide 会退回电池优化列表或应用详情页。
-        SetupGuide.requestBattery(this);
-    }
-
-    /** 相对时间：自检里沿用状态条那套写法，两处口径保持一致。 */
-    String ago(long ms) {
-        // 直接复用主界面的 relativeTime，避免出现两种说法。
-        return relativeTime(ms);
-    }
-
-    /**
-     * 「诊断日志」：最近 30 条自动读取的流水，配合顶部累计计数，
-     * 用户和评委不用连电脑就能看出是哪一步卡住了。
-     */
-    void showDiagLog() {
-        // 最近 30 条，最新的在前。
-        List<DiagLog.Entry> list = DiagLog.recent(30);
-        // 时间只显示到秒，日志看的是顺序不是日期。
-        SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-        // 正文整体放进一个 TextView，用等宽字保证每行对得齐。
-        StringBuilder body = new StringBuilder();
-        // 第一行固定是各类累计数，不受 50 条容量限制。
-        body.append("累计 收到 ").append(DiagLog.count("收到"))
-                .append(" / 跳过 ").append(DiagLog.count("跳过"))
-                .append(" / 出错 ").append(DiagLog.count("出错"))
-                .append(" / 连接 ").append(DiagLog.count("连接"))
-                .append(" / 断开 ").append(DiagLog.count("断开"))
-                .append(" / 重连 ").append(DiagLog.count("重连"));
-        // 一条日志都没有时只留一句说明，不留空白页。
-        if (list.isEmpty()) {
-            body.append("\n\n还没有记录");
-        } else {
-            // 逐条拼成「时间 类别 明细」的等宽一行。
-            for (int i = 0; i < list.size(); i++) {
-                // 取出这一条日志。
-                DiagLog.Entry e = list.get(i);
-                // 明细里的换行会把一行撑成多行，先压成一个空格。
-                String detail = e.detail == null ? "" : e.detail.replace('\n', ' ').replace('\r', ' ');
-                // 太长就截断，后面加省略号，保证一行能读完。
-                if (detail.length() > 40) detail = detail.substring(0, 40) + "…";
-                // 每条日志单独占一行，时间、类别、明细之间各空一格。
-                body.append('\n').append(fmt.format(new java.util.Date(e.time)))
-                        .append(' ').append(e.kind).append(' ').append(detail);
-            }
-        }
-
-        // 等宽小字：日志对齐才好扫，字号压到 12 不抢注意力。
-        TextView text = new TextView(this);
-        text.setText(body.toString());
-        text.setTypeface(Typeface.MONOSPACE);
-        text.setTextSize(12);
-        // 四周 20dp 内边距，和别的弹窗保持同一种呼吸感。
-        text.setPadding(dp(this, 20), dp(this, 20), dp(this, 20), dp(this, 20));
-        // 日志可能很长，套一层 ScrollView 让它自己滚。
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(text);
-
-        // 学习平台通知的完整原文：用来校准解析规则，可一键复制发给开发者。只存本机。
-        StringBuilder samples = new StringBuilder();
-        for (DiagLog.Entry e : DiagLog.recent(50)) {
-            if (!"平台".equals(e.kind)) continue;
-            if (samples.length() > 0) samples.append("\n\n");
-            samples.append(new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new java.util.Date(e.time)))
-                    .append('\n').append(e.detail);
-        }
-        if (samples.length() > 0) {
-            text.append("\n\n—— 学习平台通知原文 ——\n" + samples);
-        }
-
-        AlertDialog.Builder b = alert()
-                .setTitle("诊断日志")
-                .setView(scroll)
-                .setPositiveButton("关闭", null);
-        if (samples.length() > 0) {
-            String copied = samples.toString();
-            b.setNeutralButton("复制平台原文", (d, w) -> {
-                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) {
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("学习平台通知原文", copied));
-                    Toast.makeText(this, "已复制学习平台通知原文", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-        b.show();
-    }
+    /** 「诊断日志」：委托 HomeOpsSheets 展示读取计数与流水。 */
+    void showDiagLog() { HomeOpsSheets.showDiagLog(this); }
 
     @Override
     public void onCardsChanged() {
@@ -2420,268 +2235,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return Ui.BLUE;
     }
 
-    /**
-     * 事项详情（底部面板）：来源 → 标题 → 截止时间块 → 关键信息 → 快捷操作 → 原始消息，
-     * 底部固定一个「标记完成」主按钮。
-     */
-    void showSource(Engine.Card c) {
-        android.app.Dialog[] holder = new android.app.Dialog[1];
-        long now = System.currentTimeMillis();
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-
-        LinearLayout head = new LinearLayout(this);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(sourceMark(c, 18));
-        TextView from = uiText(joinDistinct(sourceName(c), c.groupName), 13, Ui.SUB, true);
-        from.setSingleLine(true);
-        from.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams fromLp = new LinearLayout.LayoutParams(0, -2, 1);
-        fromLp.leftMargin = dp(this, 8);
-        head.addView(from, fromLp);
-        TextView close = uiText("×", 22, Ui.SUB, false);
-        close.setGravity(Gravity.CENTER);
-        close.setContentDescription("关闭详情");
-        close.setBackground(Ui.ripple(this, Ui.disc(this, Ui.FILL), Ui.press(), 18));
-        close.setOnClickListener(v -> holder[0].dismiss());
-        head.addView(close, lp(dp(this, 36), dp(this, 36)));
-        LinearLayout.LayoutParams headLp = lp(-1, -2);
-        headLp.topMargin = dp(this, 12);
-        content.addView(head, headLp);
-
-        TextView kindTag = kindTag(c.kind);
-        if (kindTag != null) {
-            LinearLayout.LayoutParams kLp = lp(-2, -2);
-            kLp.topMargin = dp(this, 18);
-            content.addView(kindTag, kLp);
-        }
-        TextView title = uiText(c.displayTitle(), 22, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        title.setLineSpacing(dp(this, 4), 1f);
-        title.setTextIsSelectable(true);
-        LinearLayout.LayoutParams titleLp = lp(-1, -2);
-        titleLp.topMargin = dp(this, kindTag == null ? 18 : 10);
-        content.addView(title, titleLp);
-
-        // 截止时间块
-        String deadline = c.deadlineHint() != null ? c.deadlineHint() + " · 时刻待确认"
-                : c.deadline == 0 ? "时间待确认" : (c.needsConfirm ? "候选时间：" : "") + dateTimeLabel(c.deadline);
-        boolean unsure = c.needsConfirm || c.deadline == 0 || c.deadlineHint() != null;
-        int urgency = TodayView.urgency(c.deadline, c.needsConfirm, c.done, now);
-        int tone = c.done ? Ui.SUB : unsure ? Ui.AMBER_TX : urgency >= 1 ? Ui.urgencyColor(urgency) : Ui.ACCENT;
-        int toneBg = c.done ? Ui.FILL : unsure ? Ui.AMBER_BG : urgency >= 1 ? Ui.urgencyBg(urgency) : Ui.ACCENT_BG;
-        LinearLayout dueBox = new LinearLayout(this);
-        dueBox.setOrientation(LinearLayout.VERTICAL);
-        dueBox.setPadding(dp(this, 16), dp(this, 14), dp(this, 16), dp(this, 14));
-        dueBox.setBackground(Ui.round(this, toneBg, 16));
-        dueBox.addView(uiText(c.done ? "已完成" : "exam".equals(c.kind) ? "考试时间" : "截止时间", 12, Ui.withAlpha(tone, 200), true));
-        TextView dueValue = uiText(deadline, 18, tone, true);
-        dueValue.setPadding(0, dp(this, 6), 0, 0);
-        dueBox.addView(dueValue);
-        if (!c.done && !unsure && c.deadline > 0) {
-            TextView cd = uiText(TodayView.countdown(c.deadline, now), 13, tone, false);
-            cd.setPadding(0, dp(this, 4), 0, 0);
-            dueBox.addView(cd);
-        }
-        if (unsure && !TextUtils.isEmpty(c.reason)) {
-            TextView why = uiText(c.reason, 12, tone, false);
-            why.setLineSpacing(dp(this, 2), 1f);
-            why.setPadding(0, dp(this, 6), 0, 0);
-            dueBox.addView(why);
-        }
-        LinearLayout.LayoutParams dueLp = lp(-1, -2);
-        dueLp.topMargin = dp(this, 18);
-        content.addView(dueBox, dueLp);
-
-        Engine shown = demo == null ? engine : demo.engine;
-        if (unsure && shown.all().contains(c)) {
-            Button editNow = button("核对标题和时间", v -> { holder[0].dismiss(); showCardEdit(c); });
-            LinearLayout.LayoutParams editLp = lp(-1, dp(this, 44)); editLp.topMargin = dp(this, 10);
-            content.addView(editNow, editLp);
-            if (c.deadline > 0 && !c.changes.hasPending()) {
-                Button confirmTime = button("确认这个候选时间", v -> {
-                    if (shown.editCard(c, c.displayTitle(), c.deadline)) {
-                        if (demo == null) EngineHolder.saveAsync(this);
-                        holder[0].dismiss(); showSource(c);
-                    }
-                });
-                content.addView(confirmTime, lp(-1, dp(this, 44)));
-            }
-        }
-        for (Engine.Msg change : c.changes.pending()) {
-            TextView changeText = uiText("待关联的变更 · " + (change.sender == null ? "来源未知" : change.sender)
-                    + "\n" + change.text, 13, Ui.AMBER_TX, false);
-            changeText.setPadding(0, dp(this, 16), 0, dp(this, 8));
-            changeText.setTextIsSelectable(true); content.addView(changeText);
-            Button applyChange = button("revoke".equals(Engine.detectRevision(change.text))
-                    ? "按这条通知取消本事项" : "这条变更对应本事项", v -> {
-                if (shown.resolvePendingChange(c, change.id)) {
-                    if (demo == null) EngineHolder.saveAsync(this);
-                    holder[0].dismiss();
-                    if (shown.all().contains(c)) showSource(c);
-                    else Toast.makeText(this, "已归入已移除卡片，可查看记录或恢复", Toast.LENGTH_LONG).show();
-                } else Toast.makeText(this, "原文时间仍不明确，请手动核对", Toast.LENGTH_LONG).show();
-            });
-            content.addView(applyChange, lp(-1, dp(this, 44)));
-            Button ignoreChange = button("忽略这条变更", v -> {
-                if (shown.ignorePendingChange(c, change.id)) {
-                    if (demo == null) EngineHolder.saveAsync(this);
-                    holder[0].dismiss(); showSource(c);
-                }
-            });
-            content.addView(ignoreChange, lp(-1, dp(this, 44)));
-        }
-
-        // 关键信息
-        LinearLayout info = new LinearLayout(this);
-        info.setOrientation(LinearLayout.VERTICAL);
-        infoRow(info, "提交到", c.channel);
-        infoRow(info, "地点", c.place);
-        if ("manual".equals(c.sourcePackageName())) infoRow(info, "备注", c.manualNotes);
-        infoRow(info, "携带", c.bring);
-        infoRow(info, "发送者", TextUtils.isEmpty(c.sender) ? "未知" : c.sender);
-        LinearLayout.LayoutParams infoLp = lp(-1, -2);
-        infoLp.topMargin = dp(this, 8);
-        content.addView(info, infoLp);
-
-        // 快捷操作
-        LinearLayout actions = new LinearLayout(this);
-        Intent sourceIntent = SourceLaunch.intentFor(this, c.sourcePackageName());
-        if (sourceIntent != null) {
-            Button open = button("打开" + sourceName(c), v -> {
-                try {
-                    holder[0].dismiss();
-                    startActivity(sourceIntent);
-                } catch (Exception unavailable) {
-                    Toast.makeText(this, "来源应用暂时无法打开", Toast.LENGTH_SHORT).show();
-                }
-            });
-            actions.addView(open, new LinearLayout.LayoutParams(0, dp(this, 46), 1));
-        }
-        Button copy = button("复制", v -> {
-            String summary = c.displayTitle() + "\n截止：" + deadline + (TextUtils.isEmpty(c.channel) ? "" : "\n提交到：" + c.channel)
-                    + "\n来源：" + sourceName(c) + " · " + c.groupName;
-            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("事项摘要", summary));
-                Toast.makeText(this, "已复制事项摘要", Toast.LENGTH_SHORT).show();
-            }
-        });
-        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, dp(this, 46), 1);
-        copyLp.leftMargin = sourceIntent == null ? 0 : dp(this, 8);
-        actions.addView(copy, copyLp);
-        Button calendar = button("加入日历", v -> {
-            holder[0].dismiss();
-            addToCalendar(c);
-        });
-        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(0, dp(this, 46), 1);
-        calLp.leftMargin = dp(this, 8);
-        actions.addView(calendar, calLp);
-        for (int i = 0; i < actions.getChildCount(); i++) {
-            ((Button) actions.getChildAt(i)).setTextSize(13);
-            actions.getChildAt(i).setPadding(dp(this, 6), 0, dp(this, 6), 0);
-        }
-        LinearLayout.LayoutParams actionsLp = lp(-1, -2);
-        actionsLp.topMargin = dp(this, 12);
-        content.addView(actions, actionsLp);
-
-        // 原始消息
-        TextView section = uiText("来源与处理记录", 13, Ui.SUB, true);
-        section.setPadding(dp(this, 2), dp(this, 26), 0, dp(this, 10));
-        content.addView(section);
-        StringBuilder original = new StringBuilder(TaskTrace.text(c));
-        original.append("\n\n记录范围：当前来源与最近 20 条处理记录；旧版本未记录的操作不补写。");
-        if (c.context != null && !c.context.isEmpty()) {
-            original.append("\n\n相关上下文");
-            for (String line : c.context) original.append("\n· ").append(line);
-        }
-        LinearLayout quote = new LinearLayout(this);
-        quote.setBackground(Ui.round(this, Ui.BG, 14));
-        quote.setPadding(dp(this, 14), dp(this, 14), dp(this, 14), dp(this, 14));
-        View bar = new View(this);
-        bar.setBackground(Ui.round(this, Ui.LINE, 2));
-        quote.addView(bar, lp(dp(this, 3), -1));
-        TextView source = uiText(original.toString(), 14, Ui.TEXT, false);
-        source.setTextIsSelectable(true);
-        source.setLineSpacing(dp(this, 5), 1.05f);
-        LinearLayout.LayoutParams srcLp = new LinearLayout.LayoutParams(0, -2, 1);
-        srcLp.leftMargin = dp(this, 12);
-        quote.addView(source, srcLp);
-        content.addView(quote, lp(-1, -2));
-        if (sourceIntent != null) {
-            TextView note = uiText("打开" + sourceName(c) + "后，到对应群聊查看上下文", 12, Ui.MUTE, false);
-            note.setPadding(dp(this, 2), dp(this, 8), 0, 0);
-            content.addView(note);
-        }
-
-        // 次要操作：文字链接
-        LinearLayout links = new LinearLayout(this);
-        links.setGravity(Gravity.CENTER);
-        TextView edit = linkText("修正信息", Ui.ACCENT);
-        edit.setOnClickListener(v -> {
-            holder[0].dismiss();
-            showCardEdit(c);
-        });
-        links.addView(edit, new LinearLayout.LayoutParams(0, dp(this, 44), 1));
-        TextView remove = linkText("移除事项", Ui.RED);
-        remove.setOnClickListener(v -> alert().setTitle("移除这条事项？").setMessage("可在「更多 → 已移除的卡片」中恢复。")
-                .setNegativeButton("保留", null).setPositiveButton("移除", (d, w) -> {
-                    if (shown.dismissCard(c, System.currentTimeMillis())) {
-                        holder[0].dismiss();
-                        render();
-                        if (demo == null) EngineHolder.saveAsync(this);
-                    }
-                }).show());
-        links.addView(remove, new LinearLayout.LayoutParams(0, dp(this, 44), 1));
-        String gid = engine.groupKeyOf(c);
-        if (demo == null && !TextUtils.isEmpty(gid)) {
-            boolean platform = Engine.PlatformNotice.isPlatform(c.sourcePackageName());
-            String gname = platform ? sourceName(c) : (TextUtils.isEmpty(c.groupName) ? sourceName(c) : c.groupName);
-            String mode = engine.groupMode(gid);
-            TextView manage = linkText(Engine.MODE_NORMAL.equals(mode) ? "管理这个群" : "群：" + modeLabel(mode), Ui.SUB);
-            manage.setOnClickListener(v -> {
-                holder[0].dismiss();
-                chooseGroupMode(gid, gname, c.sourcePackageName(), mode);
-            });
-            links.addView(manage, new LinearLayout.LayoutParams(0, dp(this, 44), 1));
-        }
-        LinearLayout.LayoutParams linksLp = lp(-1, -2);
-        linksLp.topMargin = dp(this, 14);
-        content.addView(links, linksLp);
-
-        LinearLayout footer = new LinearLayout(this);
-        footer.setPadding(0, dp(this, 12), 0, 0);
-        Button complete = stylePrimary(button(c.done ? "恢复为待办" : "标记完成", v -> {
-            holder[0].dismiss();
-            toggleDone(c);
-        }));
-        footer.addView(complete, new LinearLayout.LayoutParams(-1, dp(this, 52)));
-        holder[0] = showSheet(content, footer);
-    }
-
-    private void infoRow(LinearLayout parent, String label, String value) {
-        if (TextUtils.isEmpty(value) || value.trim().isEmpty()) return;
-        if (parent.getChildCount() > 0) parent.addView(Ui.hairline(this));
-        LinearLayout row = new LinearLayout(this);
-        row.setPadding(dp(this, 2), dp(this, 12), dp(this, 2), dp(this, 12));
-        TextView l = uiText(label, 14, Ui.MUTE, false);
-        row.addView(l, lp(dp(this, 64), -2));
-        TextView v = uiText(value.trim(), 14, Ui.TEXT, false);
-        v.setLineSpacing(dp(this, 3), 1f);
-        v.setTextIsSelectable(true);
-        row.addView(v, new LinearLayout.LayoutParams(0, -2, 1));
-        parent.addView(row, lp(-1, -2));
-    }
-
-    private TextView linkText(String text, int color) {
-        TextView t = uiText(text, 14, color, true);
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(this, 4), 0, dp(this, 4), 0);
-        t.setSingleLine(true);
-        t.setEllipsize(TextUtils.TruncateAt.END);
-        t.setBackground(Ui.ripple(this, null, Ui.press(), 10));
-        return t;
-    }
+    /** 卡片详情与来源溯源：委托 HomeCardSheets 构建。 */
+    void showSource(Engine.Card c) { HomeCardSheets.showSource(this, c); }
 
     /** 标记完成 / 恢复成待办；标记完成时底部给 4 秒撤销。 */
     void toggleDone(Engine.Card c) {
@@ -2733,92 +2288,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 .withEndAction(() -> undoBar.setVisibility(View.GONE)).start();
     }
 
-    void showRemovedCards() {
-        Engine shown = demo == null ? engine : demo.engine;
-        List<Engine.Card> removed = shown.removedCards();
-        if (removed.isEmpty()) {
-            alert().setTitle("已移除的卡片")
-                    .setMessage("这里是空的。误移除的卡片可以从这里恢复。")
-                    .setPositiveButton("知道了", null).show();
-            return;
-        }
-        String[] titles = new String[removed.size()];
-        for (int i = 0; i < removed.size(); i++) {
-            Engine.Card card = removed.get(i);
-            titles[i] = card.displayTitle() + "\n" + sourceName(card) + " · " + card.groupName;
-            if (card.cancelled) titles[i] = "已被来源取消 · " + titles[i];
-        }
-        alert()
-                .setTitle("已移除的卡片（" + removed.size() + "）")
-                .setItems(titles, (dialog, which) -> {
-                    Engine.Card card = removed.get(which);
-                    alert()
-                            .setTitle(card.displayTitle())
-                            .setMessage("来源：" + sourceName(card) + " · " + card.groupName + "\n截止时间：" + dateTimeLabel(card.deadline)
-                                    + "\n移除时间：" + dateTimeLabel(card.removedAt)
-                                    + "\n\n原消息：\n" + card.sourceText
-                                    + "\n\n恢复后请核对时间，移除期间的群消息变更可能未应用到这张卡。")
-                            .setPositiveButton("恢复", (d, w) -> {
-                                if (shown.restoreCard(card)) {
-                                    if (demo == null) EngineHolder.saveAsync(this);
-                                    showAllCards();
-                                    Toast.makeText(this, "已恢复，请核对事项时间", Toast.LENGTH_SHORT).show();
-                                } else {
-                                    Toast.makeText(this, "当前已有同一张卡或更新的接龙，保留当前版本", Toast.LENGTH_LONG).show();
-                                }
-                            })
-                            .setNegativeButton("返回列表", (d, w) -> showRemovedCards())
-                            .show();
-                })
-                .setNeutralButton("清空已移除", (dialog, which) -> alert()
-                        .setTitle("清空已移除的卡片？")
-                        .setMessage("这些卡片将无法恢复。")
-                        .setPositiveButton("清空", (d, w) -> {
-                            shown.clearRemovedCards();
-                            if (demo == null) EngineHolder.saveAsync(this);
-                        })
-                        .setNegativeButton("取消", (d, w) -> showRemovedCards())
-                        .show())
-                .setNegativeButton("关闭", null)
-                .show();
-    }
+    /** 已移除的卡片管理：委托 HomeOpsSheets 构建。 */
+    void showRemovedCards() { HomeOpsSheets.showRemovedCards(this); }
 
-    private void showDeadlineReminderSettings() {
-        boolean enabled = ReminderReceiver.isEnabled(this);
-        String state = enabled
-                ? (ReminderReceiver.canNotify(this) ? "已开启" : "已开启，系统通知权限待确认")
-                : "已关闭";
-        alert()
-                .setTitle("到期提醒 · " + state)
-                .setMessage("给时间已确认的未完成事项安排提醒。提前两小时进入提醒窗口，实际送达时间受系统调度影响。通知栏只提示有待办即将到期。")
-                .setPositiveButton(enabled ? "关闭提醒" : "开启提醒", (dialog, which) -> {
-                    if (enabled) {
-                        ReminderReceiver.setEnabled(this, engine, false);
-                    } else if (Build.VERSION.SDK_INT >= 33
-                            && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                            != PackageManager.PERMISSION_GRANTED) {
-                        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_REMINDER_PERMISSION);
-                    } else {
-                        enableDeadlineReminder();
-                    }
-                })
-                .setNeutralButton("系统设置", (dialog, which) -> openAppNotifications())
-                .setNegativeButton("返回", null)
-                .show();
-    }
+    /** 到期提醒设置：委托 HomeOpsSheets 构建。 */
+    void showDeadlineReminderSettings() { HomeOpsSheets.showDeadlineReminderSettings(this); }
 
-    private void openAppNotifications() {
-        Intent settings;
-        if (Build.VERSION.SDK_INT >= 26) {
-            settings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-        } else {
-            settings = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
-        }
-        startActivity(settings);
-    }
-
-    private void enableDeadlineReminder() {
+    void enableDeadlineReminder() {
         ReminderReceiver.setEnabled(this, engine, true);
         Toast.makeText(this, ReminderReceiver.canNotify(this) ? "已开启到期提醒" : "请在系统设置中允许通知",
                 Toast.LENGTH_SHORT).show();
@@ -2837,8 +2313,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     // ---------- 按群管理 ----------
-    private android.app.Dialog groupDialog;
-    private LinearLayout groupBody;
 
     String groupMenuHint() {
         int focus = 0, ignore = 0;
@@ -2855,478 +2329,28 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return Engine.MODE_FOCUS.equals(mode) ? "重点关注" : Engine.MODE_IGNORE.equals(mode) ? "不用管" : "普通";
     }
 
-    /** 群列表：每行是来源图标、群名、来源 · 卡片数 · 最近消息，右侧是当前处理方式；点一行改设置。 */
-    void showGroupManager() {
-        if (groupDialog != null && groupDialog.isShowing()) {
-            fillGroups();
-            return;
-        }
-        groupBody = new LinearLayout(this);
-        groupBody.setOrientation(LinearLayout.VERTICAL);
-        fillGroups();
-        groupDialog = showSheet(groupBody, null);
-        groupDialog.setOnDismissListener(d -> groupDialog = null);
-    }
+    /** 群列表与按群处理模式：委托 HomeOpsSheets 构建。 */
+    void showGroupManager() { HomeOpsSheets.showGroupManager(this); }
 
-    void fillGroups() {
-        if (groupBody == null) return;
-        groupBody.removeAllViews();
-        TextView title = uiText("按群管理", 21, Ui.TEXT, false);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        LinearLayout.LayoutParams tLp = lp(-1, -2);
-        tLp.topMargin = dp(this, 16);
-        groupBody.addView(title, tLp);
-        TextView intro = uiText("重点关注：放宽识别，同学发的作业通知、讨论里定下的时间也会出卡。\n"
-                + "不用管：这个群的消息不再出卡，已有的卡移到「已移除的卡片」。", 13, Ui.SUB, false);
-        intro.setLineSpacing(dp(this, 4), 1f);
-        LinearLayout.LayoutParams iLp = lp(-1, -2);
-        iLp.topMargin = dp(this, 8);
-        iLp.bottomMargin = dp(this, 8);
-        groupBody.addView(intro, iLp);
+    void fillGroups() { HomeOpsSheets.fillGroups(this); }
 
-        List<Engine.GroupInfo> list = engine.groupList();
-        if (list.isEmpty()) {
-            TextView none = uiText("还没有收到过群消息。开启自动读取后，收到消息的群会出现在这里。", 14, Ui.MUTE, false);
-            none.setLineSpacing(dp(this, 4), 1f);
-            none.setPadding(0, dp(this, 24), 0, dp(this, 24));
-            groupBody.addView(none);
-            return;
-        }
-        long now = System.currentTimeMillis();
-        String lastSection = null;
-        for (Engine.GroupInfo g : list) {
-            String section = modeLabel(g.mode);
-            if (!section.equals(lastSection)) {
-                TextView s = uiText(section, 12, Ui.MUTE, true);
-                s.setPadding(dp(this, 2), dp(this, 18), 0, dp(this, 4));
-                groupBody.addView(s);
-                lastSection = section;
-            }
-            groupBody.addView(groupRow(g, now), lp(-1, -2));
-        }
-    }
-
-    private View groupRow(Engine.GroupInfo g, long now) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumHeight(dp(this, 60));
-        row.setPadding(dp(this, 2), dp(this, 10), dp(this, 2), dp(this, 10));
-        row.setBackground(Ui.ripple(this, null, Ui.press(), 12));
-        String app = appNameFor(g.pkg);
-        row.addView(sourceMark(app, g.pkg, 22));
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        TextView name = uiText(g.name, 15, Engine.MODE_IGNORE.equals(g.mode) ? Ui.MUTE : Ui.TEXT, true);
-        name.setSingleLine(true);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        col.addView(name);
-        int cards = engine.cardCount(g.id);
-        StringBuilder sub = new StringBuilder(g.isPlatform() ? "学习平台通知" : app);
-        if (cards > 0) sub.append(" · ").append(cards).append(" 张卡");
-        if (g.lastTs > 0) sub.append(" · ").append(relativeTime(Math.min(g.lastTs, now)));
-        TextView s = uiText(sub.toString(), 12, Ui.MUTE, false);
-        s.setSingleLine(true);
-        s.setEllipsize(TextUtils.TruncateAt.END);
-        s.setPadding(0, dp(this, 5), 0, 0);
-        col.addView(s);
-        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, -2, 1);
-        cLp.leftMargin = dp(this, 12);
-        cLp.rightMargin = dp(this, 10);
-        row.addView(col, cLp);
-        int fg = Engine.MODE_FOCUS.equals(g.mode) ? Ui.ACCENT : Engine.MODE_IGNORE.equals(g.mode) ? Ui.MUTE : Ui.SUB;
-        int bg = Engine.MODE_FOCUS.equals(g.mode) ? Ui.ACCENT_BG : Ui.FILL;
-        row.addView(Ui.tag(this, modeLabel(g.mode) + " ▾", fg, bg));
-        row.setOnClickListener(v -> chooseGroupMode(g.id, g.name, g.pkg, g.mode));
-        return row;
-    }
-
-    /** 改一个群的处理方式；设成不用管时先确认，因为已有的卡会一起移走。 */
     void chooseGroupMode(String gid, String name, String pkg, String current) {
-        String[] modes = {Engine.MODE_FOCUS, Engine.MODE_NORMAL, Engine.MODE_IGNORE};
-        String[] labels = {"重点关注 · 放宽识别，宁可多出卡",
-                "普通 · 按默认规则识别",
-                "不用管 · 这个群不再出卡"};
-        int checked = Engine.MODE_FOCUS.equals(current) ? 0 : Engine.MODE_IGNORE.equals(current) ? 2 : 1;
-        alert().setTitle(name).setSingleChoiceItems(labels, checked, (d, which) -> {
-            d.dismiss();
-            String mode = modes[which];
-            if (mode.equals(current)) return;
-            int existing = engine.cardCount(gid);
-            if (Engine.MODE_IGNORE.equals(mode) && existing > 0) {
-                alert().setTitle("「" + name + "」不用管？")
-                        .setMessage("这个群现有的 " + existing + " 张卡会移到「已移除的卡片」，之后的消息不再出卡。随时可以改回来。")
-                        .setNegativeButton("取消", null)
-                        .setPositiveButton("不用管", (dd, w) -> applyGroupMode(gid, name, pkg, mode))
-                        .show();
-            } else {
-                applyGroupMode(gid, name, pkg, mode);
-            }
-        }).setNegativeButton("取消", null).show();
+        HomeOpsSheets.chooseGroupMode(this, gid, name, pkg, current);
     }
 
-    private void applyGroupMode(String gid, String name, String pkg, String mode) {
-        int removed = engine.setGroupMode(gid, name, pkg, mode, System.currentTimeMillis());
-        EngineHolder.saveAsync(this);
-        render();
-        if (groupDialog != null && groupDialog.isShowing()) fillGroups();
-        String msg = Engine.MODE_IGNORE.equals(mode)
-                ? (removed > 0 ? "已设为不用管，移走 " + removed + " 张卡" : "已设为不用管")
-                : Engine.MODE_FOCUS.equals(mode) ? "已设为重点关注" : "已恢复普通";
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-    }
+    /** 首次安装保活与权限引导：委托 HomeOpsSheets 构建。 */
+    void showSetupGuide() { HomeOpsSheets.showSetupGuide(this); }
 
-    private android.app.Dialog setupDialog;
-    private LinearLayout setupBody;
-    private Button setupDone;
+    void fillSetup() { HomeOpsSheets.fillSetup(this); }
 
-    /**
-     * 首次安装引导：「让自动整理一直在线」清单。
-     * 通知使用权是必需项；电池不受限、自启动是推荐项（国产系统默认会杀后台）；到期提醒可选。
-     * 每一步点了就跳到对应系统页面，回到 App 时自动刷新完成状态。
-     */
-    void showSetupGuide() {
-        if (setupDialog != null && setupDialog.isShowing()) {
-            fillSetup();
-            return;
-        }
-        setupBody = new LinearLayout(this);
-        setupBody.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout footer = new LinearLayout(this);
-        footer.setPadding(0, dp(this, 12), 0, 0);
-        setupDone = stylePrimary(button("稍后再说", v -> {
-            if (!SetupGuide.allRecommendedDone(this)) SetupGuide.snooze(this);
-            if (setupDialog != null) setupDialog.dismiss();
-        }));
-        footer.addView(setupDone, new LinearLayout.LayoutParams(-1, dp(this, 52)));
-        fillSetup();
-        setupDialog = showSheet(setupBody, footer);
-        setupDialog.setOnDismissListener(d -> {
-            setupDialog = null;
-            render();
-        });
-    }
+    /** 修正卡片 / 新建编辑手动卡片 / 写入系统日历：委托 HomeCardSheets 构建。 */
+    void showCardEdit(Engine.Card card) { HomeCardSheets.showCardEdit(this, card); }
 
-    void fillSetup() {
-        if (setupBody == null) return;
-        setupBody.removeAllViews();
-        boolean access = WatchdogJob.accessEnabled(this);
-        boolean battery = WatchdogJob.batteryIgnored(this);
-        boolean autostart = SetupGuide.autostartVisited(this);
-        boolean remind = ReminderReceiver.isEnabled(this) && ReminderReceiver.canNotify(this);
-        int done = (access ? 1 : 0) + (battery ? 1 : 0) + (autostart ? 1 : 0);
-
-        TextView title = uiText("让自动整理一直在线", 20, Ui.TEXT, false);
-        title.setTypeface(Ui.medium());
-        LinearLayout.LayoutParams tLp = lp(-1, -2);
-        tLp.topMargin = dp(this, 16);
-        setupBody.addView(title, tLp);
-        TextView intro = uiText("手机会在后台悄悄关掉不常用的应用。做完下面三步，群里的作业、考试和接龙才能一直自动整理。",
-                13, Ui.SUB, false);
-        intro.setLineSpacing(dp(this, 4), 1f);
-        LinearLayout.LayoutParams iLp = lp(-1, -2);
-        iLp.topMargin = dp(this, 8);
-        setupBody.addView(intro, iLp);
-
-        // 进度条
-        LinearLayout progress = new LinearLayout(this);
-        for (int i = 0; i < 3; i++) {
-            View seg = new View(this);
-            seg.setBackground(Ui.round(this, i < done ? Ui.GREEN : Ui.FILL, 3));
-            LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(0, dp(this, 6), 1);
-            if (i > 0) sLp.leftMargin = dp(this, 6);
-            progress.addView(seg, sLp);
-        }
-        LinearLayout.LayoutParams pLp = lp(-1, -2);
-        pLp.topMargin = dp(this, 18);
-        setupBody.addView(progress, pLp);
-        TextView count = uiText(done == 3 ? "已全部完成" : "已完成 " + done + " / 3", 12, done == 3 ? Ui.GREEN : Ui.MUTE, true);
-        count.setPadding(0, dp(this, 8), 0, dp(this, 6));
-        setupBody.addView(count);
-
-        setupStep(1, "打开通知使用权", "必需 · 只在本机读取群消息通知，不联网", access, "已开启", "去开启",
-                () -> {
-                    try {
-                        startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-                    } catch (Exception e) {
-                        Toast.makeText(this, "请到系统设置里搜索「通知使用权」", Toast.LENGTH_LONG).show();
-                    }
-                });
-        setupStep(2, "允许后台运行", "推荐 · 不受电池优化限制，锁屏后也能收到", battery, "已允许", "允许",
-                () -> SetupGuide.requestBattery(this));
-        setupStep(3, "允许自启动", "推荐 · " + SetupGuide.autostartHint(), autostart, "已去设置", "去设置",
-                () -> SetupGuide.openAutostart(this));
-        setupStep(4, "填写我的档案", "可选 · 姓名、班级、课程，用来判断哪条消息和你有关", ProfileStore.exists(this),
-                "已填写", "去填写", () -> startActivity(new Intent(this, ProfileActivity.class)));
-        setupStep(5, "到期提醒", "可选 · 截止前两小时发一条提醒", remind, "已开启", "开启", () -> {
-            if (ReminderReceiver.isEnabled(this) && ReminderReceiver.canNotify(this)) {
-                showDeadlineReminderSettings();
-            } else if (Build.VERSION.SDK_INT >= 33
-                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_REMINDER_PERMISSION);
-            } else {
-                enableDeadlineReminder();
-                fillSetup();
-            }
-        });
-        setupStep(6, "AI 复核", "可选 · 帮规则找回漏掉的待办、补全时间地点，可以完全在本机运行", AiConfig.ready(this),
-                "已开启", "了解", () -> startActivity(new Intent(this, AiActivity.class)));
-        if (setupDone != null) setupDone.setText(done == 3 ? "全部就绪" : access ? "稍后再说" : "稍后再说（暂时收不到群消息）");
-    }
-
-    private void setupStep(int n, String title, String desc, boolean ok, String okLabel, String action, Runnable run) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(this, 2), dp(this, 14), dp(this, 2), dp(this, 14));
-        row.setBackground(Ui.ripple(this, null, Ui.press(), 12));
-        View mark;
-        if (ok) {
-            mark = new View(this);
-            mark.setBackground(new Ui.CheckCircle(this, Ui.GREEN, Ui.GREEN, 28, true));
-        } else {
-            TextView num = uiText(String.valueOf(n), 14, Ui.TEXT, true);
-            num.setGravity(Gravity.CENTER);
-            GradientDrawable ring = Ui.disc(this, Ui.CARD);
-            ring.setStroke(dp(this, 1.5f), Ui.LINE);
-            num.setBackground(ring);
-            mark = num;
-        }
-        row.addView(mark, lp(dp(this, 28), dp(this, 28)));
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(uiText(title, 16, Ui.TEXT, true));
-        TextView d = uiText(desc, 12, Ui.SUB, false);
-        d.setLineSpacing(dp(this, 2), 1f);
-        d.setPadding(0, dp(this, 5), 0, 0);
-        col.addView(d);
-        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, -2, 1);
-        cLp.leftMargin = dp(this, 14);
-        cLp.rightMargin = dp(this, 10);
-        row.addView(col, cLp);
-        TextView btn = uiText(ok ? okLabel : action, 13, ok ? Ui.GREEN : Ui.ACCENT, true);
-        btn.setGravity(Gravity.CENTER);
-        btn.setPadding(dp(this, 14), 0, dp(this, 14), 0);
-        if (!ok) btn.setBackground(Ui.round(this, Ui.ACCENT_BG, 16));
-        row.addView(btn, lp(-2, dp(this, 34)));
-        row.setOnClickListener(v -> run.run());
-        if (n > 1) setupBody.addView(Ui.hairline(this));
-        setupBody.addView(row, lp(-1, -2));
-    }
-
-    void showCardEdit(Engine.Card card) {
-        if ("manual".equals(card.sourcePackageName())) { showManualCardForm(card); return; }
-        LinearLayout form = dialogForm();
-        EditText title = input(form, "事项标题", false);
-        title.setText(card.displayTitle());
-        Long[] deadline = {null};
-        Button time = button("时间：" + (card.deadlineHint() == null ? dateTimeLabel(card.deadline)
-                : card.deadlineHint() + "（时刻待确认）"), v -> {
-            long initial = deadline[0] == null ? card.deadline : deadline[0];
-            chooseDateTime(initial, value -> {
-                deadline[0] = value;
-                ((Button) v).setText("时间：" + dateTimeLabel(value));
-            });
-        });
-        form.addView(time);
-        form.addView(button("标为时间待确认", v -> {
-            deadline[0] = 0L;
-            time.setText("时间：待设置");
-        }));
-        AlertDialog dialog = alert()
-                .setTitle("修正卡片")
-                .setView(scrollForm(form))
-                .setNegativeButton("取消", null)
-                .setPositiveButton("保存", null)
-                .create();
-        dialog.show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String label = title.getText().toString().trim();
-            if (label.isEmpty()) {
-                title.setError("请输入事项标题");
-                return;
-            }
-            Engine shown = demo == null ? engine : demo.engine;
-            if (shown.editCard(card, label, deadline[0])) {
-                if (demo == null) EngineHolder.saveAsync(this);
-                render();
-            } else {
-                Toast.makeText(this, "这张卡片已移除", Toast.LENGTH_SHORT).show();
-            }
-            dialog.dismiss();
-        });
-    }
-
-    private void showManualCardForm(Engine.Card card) { showManualCardForm(card, null); }
+    private void showManualCardForm(Engine.Card card) { HomeCardSheets.showManualCardForm(this, card, null); }
 
     private void showManualCardForm(Engine.Card card, Bundle draft) {
-        if (manualCardDialog != null) return;
-        Engine shown = demo == null ? engine : demo.engine;
-        LinearLayout form = CourseUi.column(this);
-        form.setFocusableInTouchMode(true);
-        form.setPadding(0, dp(this, 4), 0, dp(this, 20));
-        form.addView(CourseUi.text(this, card == null ? "新建任务卡片" : "编辑任务卡片", 26, Ui.TEXT, true));
-        TextView description = CourseUi.text(this, demo == null ? "把要做的事记下来，安排时间，留好细节。" : "当前为离线演示，卡片仅保留在演示列表。", 13, Ui.SUB, false);
-        description.setPadding(0, dp(this, 8), 0, 0);
-        description.setLineSpacing(dp(this, 3), 1f);
-        form.addView(description);
-        CourseUi.gap(form, 24);
-        form.addView(Ui.sectionLabel(this, "事项内容"));
-        EditText title = Ui.field(form, "事项标题 · 必填", "例如：完成课程报告", null, InputType.TYPE_CLASS_TEXT);
-        title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
-        if (card != null) title.setText(card.displayTitle());
-        CourseUi.gap(form, 24);
-        form.addView(Ui.sectionLabel(this, "时间安排 · 可选"));
-        CourseUi.gap(form, 10);
-        LinearLayout timing = Ui.group(this);
-        timing.setPadding(dp(this, 14), dp(this, 14), dp(this, 14), dp(this, 14));
-        timing.addView(CourseUi.text(this, "截止时间", 15, Ui.TEXT, true));
-        TextView timeHint = CourseUi.text(this, "设置具体时间后沿用到期提醒设置；也可以暂不设置。", 12, Ui.SUB, false);
-        timeHint.setPadding(0, dp(this, 4), 0, dp(this, 12));
-        timeHint.setLineSpacing(dp(this, 2), 1f);
-        timing.addView(timeHint);
-        long[] deadline = {card == null ? 0L : card.deadline};
-        TextView time = CourseUi.action(this, "时间：" + dateTimeLabel(deadline[0]), false, () -> {});
-        time.setTextColor(Ui.ACCENT);
-        time.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 16), Ui.press(), 16));
-        time.setContentDescription("选择截止日期和时间");
-        time.setOnClickListener(v -> chooseDateTime(deadline[0], value -> {
-            deadline[0] = value; time.setText("时间：" + dateTimeLabel(value));
-        }));
-        timing.addView(time, new LinearLayout.LayoutParams(-1, -2));
-        form.addView(timing, new LinearLayout.LayoutParams(-1, -2));
-        CourseUi.gap(form, 24);
-        form.addView(Ui.sectionLabel(this, "补充信息 · 可选"));
-        EditText place = Ui.field(form, "地点", "例如：教学楼 A301", null, InputType.TYPE_CLASS_TEXT);
-        place.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
-        EditText notes = Ui.field(form, "备注", "补充准备事项、材料或其他细节", null,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        notes.setSingleLine(false);
-        notes.setMinLines(3);
-        notes.setMaxLines(6);
-        notes.setGravity(Gravity.TOP | Gravity.START);
-        notes.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});
-        if (card != null) { place.setText(card.place); notes.setText(card.manualNotes); }
-        if (draft != null) {
-            title.setText(draft.getString("title", "")); place.setText(draft.getString("place", ""));
-            notes.setText(draft.getString("notes", "")); deadline[0] = draft.getLong("deadline", 0);
-            time.setText("时间：" + dateTimeLabel(deadline[0]));
-        }
-        manualDraftState = () -> {
-            Bundle saved = new Bundle(); saved.putString("cardId", card == null ? "" : card.id);
-            saved.putString("title", title.getText().toString()); saved.putString("place", place.getText().toString());
-            saved.putString("notes", notes.getText().toString()); saved.putLong("deadline", deadline[0]); return saved;
-        };
-        LinearLayout footer = CourseUi.column(this);
-        footer.addView(Ui.hairline(this));
-        TextView privacy = CourseUi.text(this, demo == null ? "仅保存在本机 · 标题必填，其余可稍后补充" : "仅加入演示列表 · 不影响真实任务", 12, Ui.SUB, false);
-        privacy.setPadding(0, dp(this, 12), 0, dp(this, 12));
-        footer.addView(privacy);
-        LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        TextView cancel = CourseUi.action(this, "取消", false, () -> {});
-        actions.addView(cancel, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView save = CourseUi.action(this, card == null ? "加入任务" : "保存", true, () -> {});
-        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(0, -2, 2f);
-        saveLp.leftMargin = dp(this, 12);
-        actions.addView(save, saveLp);
-        footer.addView(actions, new LinearLayout.LayoutParams(-1, -2));
-        form.requestFocus();
-        android.app.Dialog dialog = Ui.sheet(this, form, footer);
-        manualCardDialog = dialog;
-        dialog.setOnDismissListener(d -> { manualCardDialog = null; manualDraftState = null; });
-        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        cancel.setOnClickListener(v -> dialog.dismiss());
-        save.setOnClickListener(v -> {
-            if (title.getText().toString().trim().isEmpty()) { title.setError("请输入事项标题"); return; }
-            String label = title.getText().toString(), location = place.getText().toString(), detail = notes.getText().toString();
-            long now = System.currentTimeMillis();
-            if (card == null) shown.addManualCard(label, deadline[0], location, detail, now);
-            else if (!shown.editManualCard(card, label, deadline[0], location, detail, now)) {
-                Toast.makeText(this, "这张卡片已移除", Toast.LENGTH_SHORT).show(); dialog.dismiss(); return;
-            }
-            if (demo == null) EngineHolder.saveAsync(this);
-            if (card == null) {
-                keywords = ""; searchField.setText(""); newCardsOnly = false;
-                scope = Engine.CardScope.ALL; window = Engine.CardWindow.ANY; visibleLimit = PAGE_SIZE;
-            }
-            dialog.dismiss(); render();
-            if (card == null) listScroll.smoothScrollTo(0, 0);
-            Toast.makeText(this, card == null ? "已加入任务卡片" : "任务卡片已保存", Toast.LENGTH_SHORT).show();
-        });
+        HomeCardSheets.showManualCardForm(this, card, draft);
     }
 
-    private LinearLayout dialogForm() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(this, 22), dp(this, 6), dp(this, 22), dp(this, 8));
-        return form;
-    }
-
-    private ScrollView scrollForm(LinearLayout form) {
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(form);
-        return scroll;
-    }
-
-    private EditText input(LinearLayout form, String hint, boolean multiline) {
-        EditText field = new EditText(this);
-        field.setHint(hint);
-        field.setInputType(InputType.TYPE_CLASS_TEXT | (multiline ? InputType.TYPE_TEXT_FLAG_MULTI_LINE : 0));
-        if (multiline) {
-            field.setMinLines(3);
-            field.setMaxLines(6);
-        } else {
-            field.setSingleLine(true);
-        }
-        form.addView(field);
-        return field;
-    }
-
-    private String dateTimeLabel(long value) {
-        return value == 0 ? "待设置" : android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", value).toString();
-    }
-
-    private void chooseDateTime(long initial, LongConsumer selected) {
-        Calendar value = Calendar.getInstance();
-        if (initial > 0) value.setTimeInMillis(initial);
-        new DatePickerDialog(this, (date, year, month, day) ->
-                Ui.pickTime(this, "选择时间", value.get(Calendar.HOUR_OF_DAY), value.get(Calendar.MINUTE),
-                        new int[]{9 * 60, 12 * 60, 18 * 60, 20 * 60, 22 * 60, 23 * 60 + 59},
-                        (hour, minute) -> {
-                            value.set(year, month, day, hour, minute, 0);
-                            value.set(Calendar.MILLISECOND, 0);
-                            selected.accept(value.getTimeInMillis());
-                        }),
-                value.get(Calendar.YEAR), value.get(Calendar.MONTH), value.get(Calendar.DAY_OF_MONTH)).show();
-    }
-
-    void addToCalendar(Engine.Card c) {
-        if (c.deadlineHint() != null || c.deadline == 0) {
-            Toast.makeText(this, "请先确认具体截止时间，再加入日历", Toast.LENGTH_LONG).show();
-            showCardEdit(c);
-            return;
-        }
-        try {
-            Intent i = new Intent(Intent.ACTION_INSERT);
-            i.setData(CalendarContract.Events.CONTENT_URI);
-            i.putExtra(CalendarContract.Events.TITLE, "【Offloor】" + c.displayTitle());
-            // 描述不写群消息原文，避免系统日历云同步把原文外泄；只写来源与考试要点。
-            StringBuilder desc = new StringBuilder();
-            desc.append("来源：").append(joinDistinct(sourceName(c), c.groupName, c.sender));
-            if ("exam".equals(c.kind)) {
-                if (!TextUtils.isEmpty(c.place)) desc.append("\n地点：").append(c.place);
-                if (!TextUtils.isEmpty(c.bring)) desc.append("\n带：").append(c.bring);
-            }
-            i.putExtra(CalendarContract.Events.DESCRIPTION, desc.toString());
-            if (c.deadline == 0) {
-                // 没确定时间就不塞"明天此刻"，让日历应用自己让用户选时间。
-                Toast.makeText(this, "这张卡时间还没确定，请在日历里自己选时间", Toast.LENGTH_LONG).show();
-            } else {
-                i.putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, c.calendarStart());
-                if (!"exam".equals(c.kind)) i.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, c.deadline);
-            }
-            startActivity(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "没有日历应用", Toast.LENGTH_SHORT).show();
-        }
-    }
+    void addToCalendar(Engine.Card c) { HomeCardSheets.addToCalendar(this, c); }
 }

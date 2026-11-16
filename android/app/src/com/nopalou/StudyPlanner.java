@@ -122,10 +122,15 @@ final class StudyPlanner {
     }
 
     static String matchCourse(Engine.Card card, Collection<String> courseNames) {
-        if (card == null || courseNames == null || courseNames.isEmpty()) return "";
+        if (card == null) return "";
+        return matchCourse(card.displayTitle(), card.groupName, card.sourceText, courseNames);
+    }
+
+    static String matchCourse(String title, String groupName, String sourceText, Collection<String> courseNames) {
+        if (courseNames == null || courseNames.isEmpty()) return "";
         List<String> normalized = normalizeCourseNames(courseNames);
         normalized.sort((a, b) -> Integer.compare(b.length(), a.length()));
-        String hay = compact(card.displayTitle() + " " + nz(card.groupName) + " " + nz(card.sourceText));
+        String hay = compact(nz(title) + " " + nz(groupName) + " " + nz(sourceText));
         if (hay.isEmpty()) return "";
         for (String name : normalized) {
             String needle = compact(name);
