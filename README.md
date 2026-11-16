@@ -1,6 +1,6 @@
 # 「Offloor」校园事项助手 — 本机识别与可选云端复核
 
-v0.78 大跨步视觉重构：1）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 将校园服务首页重构为 Bento 混排瓷砖网格（双列大图标快捷瓷砖 + 实时校车宽卡）；2）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 新增「周视图 ↔ 日程」双模式切换，日程模式带 7 天课数圆点横条与竖向时间轴大卡片流；3）在 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 新增 220° 总绩点弧形仪表盘 `GpaGaugeView` 与优/良/中成绩等级分段彩条 `GradeDistBar`。
+v0.79 回退 `v0.78` 视觉改版，恢复 `v0.77` 经典界面布局与全部稳定功能。
 
 v0.77 UI 质感与视觉层次升级：1）在 [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 本周课表中自动柔化已结束课程块（52% 透明度）并为当前正在上的课程块增加主题色描边高亮；2）在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 账户总览三栏卡片中直接展示电费/校园网「余额偏低」橙色角标；3）在 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java)「我的预约」顶部新增深墨渐变「当前使用中 / 下一场研修室预约」主卡；4）在 [CourseUi.java](android/app/src/com/nopalou/CourseUi.java) 全局启用等宽数字（`tnum`）对齐时间、绩点与金额，并为 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java) 操作胶囊统一补全轻按微缩反馈。
 

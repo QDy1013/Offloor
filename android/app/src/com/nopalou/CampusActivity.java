@@ -129,37 +129,11 @@ public class CampusActivity extends Activity {
         }
         accountOverview();
         section("校园服务");
-        LinearLayout bentoRow=new LinearLayout(this);
-        bentoRow.setBaselineAligned(false);
-        LinearLayout.LayoutParams brp=new LinearLayout.LayoutParams(-1,-2); brp.bottomMargin=dp(12);
-        bentoRow.addView(bentoTile("classroom","空闲教室","按时段查教学楼空位","立即查空位",Ui.ACCENT,Ui.ACCENT_BG),new LinearLayout.LayoutParams(0,-1,1));
-        LinearLayout.LayoutParams rightTile=new LinearLayout.LayoutParams(0,-1,1); rightTile.leftMargin=dp(12);
-        bentoRow.addView(bentoTile("study","图书馆研修室","约空闲房间与同行人","去约自习",Ui.TEAL,Ui.TEAL_BG),rightTile);
-        list.addView(bentoRow,brp);
+        moduleCard(CampusServices.byId("classroom"));
+        moduleCard(CampusServices.byId("study"));
         moduleCard(CampusServices.byId("bus"));
         TextView foot=text("数据来自校方系统 · 点开查看详情与更新时间",11,Ui.MUTE,false);
         foot.setPadding(dp(4),dp(6),dp(4),dp(10)); list.addView(foot);
-    }
-    private LinearLayout bentoTile(String id,String title,String desc,String cta,int color,int fill) {
-        LinearLayout tile=CourseUi.column(this);
-        tile.setPadding(dp(16),dp(16),dp(16),dp(16));
-        tile.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,20),Ui.press(),20));
-        Ui.lift(tile,1f); Ui.pressScale(tile,.975f); tile.setFocusable(true);
-        android.widget.ImageView icon=new android.widget.ImageView(this);
-        icon.setImageDrawable(new CampusServiceIcon(id,color));
-        icon.setPadding(dp(10),dp(10),dp(10),dp(10));
-        icon.setBackground(Ui.round(this,fill,14));
-        tile.addView(icon,new LinearLayout.LayoutParams(dp(40),dp(40)));
-        CourseUi.gap(tile,12);
-        tile.addView(text(title,16,Ui.TEXT,true));
-        CourseUi.gap(tile,4);
-        TextView sub=text(desc,11,Ui.SUB,false); sub.setMaxLines(2); sub.setLineSpacing(dp(2),1f);
-        tile.addView(sub,new LinearLayout.LayoutParams(-1,0,1));
-        CourseUi.gap(tile,12);
-        tile.addView(Ui.tag(this,cta+" ›",color,fill),new LinearLayout.LayoutParams(-2,-2));
-        tile.setContentDescription(title+"，"+desc);
-        tile.setOnClickListener(v -> openModule(id));
-        return tile;
     }
     private void accountOverview() {
         LinearLayout account=card(); account.setPadding(dp(8),dp(18),dp(8),dp(12)); account.setBackground(Ui.heroSurface(this,24));
