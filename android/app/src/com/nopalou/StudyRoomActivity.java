@@ -46,6 +46,8 @@ public class StudyRoomActivity extends Activity {
     private int page = 1, epoch, count = -1;
     private long updatedAt;
     private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "";
+    private String prefillDate = "", prefillTheme = "";
+    private int prefillStart = -1, prefillEnd = -1;
     private JSONArray rows;
     private static final class CachedRooms {
         final JSONArray rows; final int count; final boolean more; final String diag; final long at;
@@ -79,12 +81,35 @@ public class StudyRoomActivity extends Activity {
             selectedCampus = state.getString("campus", selectedCampus);
             mine = state.getBoolean("mine");
             page = Math.max(1, state.getInt("page", 1));
+            prefillDate = state.getString("prefill_date", "");
+            prefillStart = state.getInt("prefill_start", -1);
+            prefillEnd = state.getInt("prefill_end", -1);
+            prefillTheme = state.getString("prefill_theme", "");
+        } else {
+            Intent in = getIntent();
+            String today = CampusClassroomQuery.today(System.currentTimeMillis());
+            String pd = in.getStringExtra("prefill_date");
+            if (StudyRoomPlan.validDate(pd) && pd.compareTo(today) >= 0
+                    && pd.compareTo(StudyRoomPlan.addDays(today, QUICK_DAYS - 1)) <= 0) {
+                date = pd;
+                prefillDate = pd;
+            }
+            String pc = in.getStringExtra("prefill_campus");
+            if ("长安校区".equals(pc) || "友谊校区".equals(pc)) selectedCampus = pc;
+            int ps = in.getIntExtra("prefill_start", -1), pe = in.getIntExtra("prefill_end", -1);
+            if (ps >= 0 && pe > ps && pe < 1440) { prefillStart = ps; prefillEnd = pe; }
+            String pt = in.getStringExtra("prefill_theme");
+            if (pt != null) prefillTheme = pt.trim();
         }
     }
 
     @Override public void onSaveInstanceState(Bundle state) {
         state.putString("date", date); state.putString("campus", selectedCampus);
         state.putBoolean("mine", mine); state.putInt("page", page);
+        state.putString("prefill_date", prefillDate);
+        state.putInt("prefill_start", prefillStart);
+        state.putInt("prefill_end", prefillEnd);
+        state.putString("prefill_theme", prefillTheme);
         super.onSaveInstanceState(state);
     }
 
@@ -646,11 +671,20 @@ public class StudyRoomActivity extends Activity {
         c.addView(text("今天还有 " + slots.size() + " 个可约时段", 12, Ui.GREEN, true));
         CourseUi.gap(c, 6);
         LinearLayout line = horizontalScroll(c, 0);
+        int[] rec = prefillRange(plan, busySlots);
+        if (rec != null) {
+            TextView recChip = chip(line, "推荐 " + StudyRoomPlan.clock(rec[0]) + "–" + StudyRoomPlan.clock(rec[1]),
+                    true, () -> booking(row, rec[0], rec[1]));
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, -2);
+            rp.rightMargin = dp(8);
+            line.addView(recChip, rp);
+        }
         for (int i = 0; i < Math.min(CARD_SLOTS, slots.size()); i++) {
             StudyRoomPlan.Slot slot = slots.get(i);
+            if (rec != null && slot.start == rec[0] && slot.end == rec[1]) continue;
             slotChip(line, slot.label(), () -> booking(row, slot.start, slot.end));
         }
-        slotChip(line, "更多时段", () -> booking(row, -1, -1));
+        slotChip(line, "更多时段", () -> booking(row, rec != null ? rec[0] : -1, rec != null ? rec[1] : -1));
     }
 
     private String occupiedText(JSONArray occupied) {
@@ -879,6 +913,18 @@ public class StudyRoomActivity extends Activity {
 
     // ---------- 从校方数据还原成计划结构 ----------
 
+    private int[] prefillRange(StudyRoomPlan.Room plan, List<StudyRoomPlan.Busy> busySlots) {
+        if (plan == null || prefillDate.isEmpty() || !prefillDate.equals(date)
+                || prefillStart < 0 || prefillEnd <= prefillStart) return null;
+        int end = Math.min(prefillEnd, prefillStart + plan.maxMinutes);
+        if (end - prefillStart < plan.minMinutes) return null;
+        if (!StudyRoomPlan.inside(plan, prefillStart, end)) return null;
+        long from = StudyRoomPlan.at(date, prefillStart), to = StudyRoomPlan.at(date, end);
+        if (from <= System.currentTimeMillis() || to <= from) return null;
+        if (!StudyRoomPlan.overlaps(busySlots, from, to).isEmpty()) return null;
+        return new int[]{prefillStart, end};
+    }
+
     private StudyRoomPlan.Room plan(JSONObject row) {
         JSONObject rule = row.optJSONObject("rules");
         if (rule == null) return null;
@@ -978,6 +1024,10 @@ public class StudyRoomActivity extends Activity {
         if (slots.isEmpty()) { toast("这一天已经没有可约的时段"); return; }
 
         final int[] chosen = new int[]{presetStart, presetEnd};
+        if (chosen[0] < 0) {
+            int[] rec = prefillRange(plan, busySlots);
+            if (rec != null) { chosen[0] = rec[0]; chosen[1] = rec[1]; }
+        }
         if (chosen[0] < 0 || !StudyRoomPlan.inside(plan, chosen[0], Math.max(chosen[1], chosen[0] + plan.minMinutes))) {
             chosen[0] = slots.get(0).start; chosen[1] = slots.get(0).end;
         } else if (chosen[1] <= chosen[0]) chosen[1] = slots.get(0).end;
@@ -1029,6 +1079,10 @@ public class StudyRoomActivity extends Activity {
         // ---- 主题与备注 ----
         LinearLayout details = formSection(content, "03  研修内容");
         final EditText title = Ui.field(details, "研修主题", "如：小组讨论、论文写作", null, InputType.TYPE_CLASS_TEXT);
+        if (!prefillTheme.isEmpty()) {
+            title.setText(prefillTheme);
+            title.setSelection(prefillTheme.length());
+        }
         LinearLayout themePresets = new LinearLayout(this); themePresets.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2); tp.topMargin = dp(8);
         details.addView(themePresets, tp);

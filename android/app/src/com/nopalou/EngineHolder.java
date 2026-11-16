@@ -175,6 +175,7 @@ public class EngineHolder {
 
         // 档案必须先于任何消息进来之前装上，否则"跟我有关"的判断会用空档案。
         e.setProfile(ProfileStore.load(app));
+        try { syncTimetable(e, TimetableStore.load(app)); } catch (Exception ignored) { }
 
         stateStore = new StateStore(new File(app.getFilesDir(), FILE_NAME));
         StateStore.Loaded restored = stateStore.load(StateFormat::validate);
@@ -204,6 +205,15 @@ public class EngineHolder {
         engine = e;
         AiImages.cleanupCache(app);
         return engine;
+    }
+
+    static void syncTimetable(Timetable table) {
+        syncTimetable(engine, table);
+    }
+
+    static void syncTimetable(Engine target, Timetable table) {
+        if (target == null) return;
+        target.setTimetableCourses(table == null ? null : table.distinctCourseNames());
     }
 
     /** 写盘专用的单线程：界面上的完成、撤销、移除不再在主线程等磁盘。 */

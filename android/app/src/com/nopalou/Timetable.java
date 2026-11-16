@@ -174,6 +174,45 @@ final class Timetable {
         String result = "第" + l.start + "–" + l.end + "节";
         return range == null ? time(l) : result + " · " + range + "（友谊校区" + (SectionTimes.summer(month) ? "夏季" : "冬季") + "作息）";
     }
+    List<String> distinctCourseNames() {
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        for (Lesson l : lessons) {
+            if (l != null && l.name != null && !l.name.trim().isEmpty()) names.add(l.name.trim());
+        }
+        return new ArrayList<>(names);
+    }
+
+    List<TodayPlan.Course> coursesForDay(int week, int weekday) {
+        List<TodayPlan.Course> out = new ArrayList<>();
+        if (week < 1 || week > maxWeek) return out;
+        for (Lesson l : lessons) {
+            if (l.weekday != weekday || !l.weeks.contains(week)) continue;
+            String[] clock = clock(l, week);
+            out.add(new TodayPlan.Course(l.name, l.room, clock[0], clock[1], l.start));
+        }
+        return out;
+    }
+
+    /** 列出从 now 起连续 7 天每天对应的课程；若全在学期范围外则返回空列表。 */
+    List<StudyPlanner.DayCourses> weekAheadCourses(long now) {
+        Calendar start = calendar(firstMonday);
+        String today = StudyRoomPlan.day(now);
+        Calendar base = calendar(today);
+        if (start == null || base == null) return java.util.Collections.emptyList();
+        List<StudyPlanner.DayCourses> days = new ArrayList<>();
+        boolean anyInTerm = false;
+        for (int i = 0; i < 7; i++) {
+            String date = StudyRoomPlan.addDays(today, i);
+            Calendar day = calendar(date);
+            if (day == null) continue;
+            int week = (int) Math.floorDiv(day.getTimeInMillis() - start.getTimeInMillis(), 7L * 86400000L) + 1;
+            int weekday = ((day.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1;
+            if (week >= 1 && week <= maxWeek) anyInTerm = true;
+            days.add(new StudyPlanner.DayCourses(date, coursesForDay(week, weekday)));
+        }
+        return anyInTerm ? days : java.util.Collections.emptyList();
+    }
+
     String encode() throws JSONException {
         if (calendar(firstMonday) == null || !firstMonday.equals(monday(firstMonday)))
             throw new JSONException("请确认第1周周一的日期");

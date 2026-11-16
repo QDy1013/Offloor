@@ -65,6 +65,15 @@ public class TimetableTest {
         ok(TimetableSchool.hostAllowed("ids.snnu.edu.cn", new String[]{"snnu.edu.cn"}), "school subdomain boundary");
         ok(!TimetableSchool.hostAllowed("snnu.edu.cn.evil.test", new String[]{"snnu.edu.cn"}), "lookalike domain rejected");
         ok(!TimetableSchool.hostAllowed("evil.utsp.sxzyckj.com", new String[]{"utsp.sxzyckj.com"}), "vendor host is exact-only");
+
+        ok(layoutTable.distinctCourseNames().size() == 4, "distinct course names collected");
+        ok(layoutTable.coursesForDay(1, 1).size() == 2, "coursesForDay collects week 1 Monday lessons");
+        long week1Tue = StudyRoomPlan.at("2026-09-01", "09:00");
+        java.util.List<StudyPlanner.DayCourses> weekAhead = layoutTable.weekAheadCourses(week1Tue);
+        ok(weekAhead.size() == 7 && weekAhead.get(0).courses.size() == 1 && weekAhead.get(0).courses.get(0).name.equals("D"),
+                "weekAheadCourses aligns term dates");
+        ok(layoutTable.weekAheadCourses(StudyRoomPlan.at("2026-12-01", "09:00")).isEmpty(),
+                "out-of-term weekAheadCourses stays empty");
         System.out.println(checks + " checks passed");
     }
 }

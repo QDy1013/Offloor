@@ -62,6 +62,17 @@ public class CampusActivity extends Activity {
             roomDate=CampusClassroomQuery.today(System.currentTimeMillis());
             int[] range=CampusClassroomQuery.defaultRange(System.currentTimeMillis()); roomStart=range[0]; roomEnd=range[1];
             roomCampus=getSharedPreferences("classroom-live",MODE_PRIVATE).getString("campus","长安校区");
+            Intent in=getIntent();
+            int preStart=in.getIntExtra("prefill_start",-1), preEnd=in.getIntExtra("prefill_end",-1);
+            if (preStart>=0 && preEnd>preStart && preEnd<=1439) {
+                roomStart=preStart; roomEnd=preEnd;
+                in.removeExtra("prefill_start"); in.removeExtra("prefill_end");
+            }
+            String preCampus=in.getStringExtra("prefill_campus");
+            if ("长安校区".equals(preCampus) || "友谊校区".equals(preCampus)) {
+                roomCampus=preCampus;
+                in.removeExtra("prefill_campus");
+            }
             if (!"友谊校区".equals(roomCampus)) roomCampus="长安校区";
             roomAttempted=false; roomToken=""; roomError=""; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLoading=false;
         }

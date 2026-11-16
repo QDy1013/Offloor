@@ -344,6 +344,44 @@ public class Engine {
 
     public Profile getProfile() { return profile; }
 
+    private final List<String> timetableCourses = new ArrayList<>();
+    private static final Pattern TRAILING_COURSE_SUFFIX =
+            Pattern.compile("(?:（[^）]{1,8}）|\\([^)]{1,8}\\))$");
+
+    /** 归一化课程名：保留原名，同时为带（Ⅰ）/(A) 等后缀的课程提取干净主名。 */
+    static List<String> normalizeCourseNames(java.util.Collection<String> raw) {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        if (raw == null) return new ArrayList<>();
+        for (String item : raw) {
+            if (item == null) continue;
+            String trimmed = item.trim();
+            if (trimmed.length() < 2) continue;
+            out.add(trimmed);
+            String base = TRAILING_COURSE_SUFFIX.matcher(trimmed).replaceAll("").trim();
+            if (base.length() >= 3) out.add(base);
+        }
+        return new ArrayList<>(out);
+    }
+
+    /** 同步已导入课表中的课程名作为运行期课程上下文，不写入或篡改个人档案存档。 */
+    public void setTimetableCourses(java.util.Collection<String> courses) {
+        timetableCourses.clear();
+        if (courses != null) timetableCourses.addAll(normalizeCourseNames(courses));
+    }
+
+    /** 供 AI 复核使用的有效档案：在手动档案基础上合并已导入课表的课程列表（上限 24 门）。 */
+    public Profile effectiveProfile() {
+        Profile copy = new Profile();
+        copy.name = profile.name;
+        copy.aliases = new ArrayList<>(nonNull(profile.aliases));
+        copy.studentId = profile.studentId;
+        copy.groupNo = profile.groupNo;
+        copy.className = profile.className;
+        List<String> merged = new ArrayList<>(Arrays.asList(meCourses()));
+        copy.courses = merged.size() > 24 ? new ArrayList<>(merged.subList(0, 24)) : merged;
+        return copy;
+    }
+
     String aiEpoch() { return aiEpoch; }
     boolean acceptsAiEpoch(String epoch) { return epoch != null && aiEpoch.equals(epoch); }
     String profileKey() {
@@ -386,8 +424,9 @@ public class Engine {
     String meClass() { return blank(profile.className) ? "" : profile.className.trim(); }
 
     String[] meCourses() {
-        List<String> c = clean(profile.courses);
-        return c.toArray(new String[0]);
+        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(clean(profile.courses));
+        merged.addAll(timetableCourses);
+        return merged.toArray(new String[0]);
     }
 
     static String stripSpaces(String s) { return s == null ? "" : s.replace(" ", ""); }

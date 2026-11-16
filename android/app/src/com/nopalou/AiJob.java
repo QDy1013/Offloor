@@ -205,7 +205,7 @@ public class AiJob extends JobService {
             try {
                 Engine.Profile profile = AiImages.onMain(() -> {
                     Engine e = EngineHolder.get(app);
-                    return e == null ? null : e.getProfile();
+                    return e == null ? null : e.effectiveProfile();
                 });
                 verdicts = client.judge(items, profile, System.currentTimeMillis());
             } catch (AiClient.BudgetException e) {

@@ -152,13 +152,6 @@ public class TodayWidget extends AppWidgetProvider {
     }
 
     static List<TodayPlan.Course> courses(Timetable t, int week, int weekday) {
-        List<TodayPlan.Course> out = new ArrayList<>();
-        if (week < 1) return out;
-        for (Timetable.Lesson l : t.lessons) {
-            if (l.weekday != weekday || !l.weeks.contains(week)) continue;
-            String[] clock = t.clock(l, week);
-            out.add(new TodayPlan.Course(l.name, l.room, clock[0], clock[1], l.start));
-        }
-        return out;
+        return t == null ? Collections.emptyList() : t.coursesForDay(week, weekday);
     }
 }

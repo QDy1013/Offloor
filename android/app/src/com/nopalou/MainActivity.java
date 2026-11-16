@@ -70,8 +70,21 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView stats;
     /** 顶部副标题（日期 + 问候），render() 时按小时段刷新。 */
     TextView sub;
-    /** 撞车提醒横幅：几天内几件事挤在一起时显示在统计句下方。 */
+    /** 撞车提醒横幅：几天内几件事挤在一起或与课表撞课时显示在统计句下方。 */
     TextView clashBanner;
+    /** 跨源学习闭环卡：结合课表空档与临近待办，一键直达研修室或空闲教室。 */
+    private LinearLayout studyLoopCard;
+    private TextView studyLoopTitle;
+    private TextView studyLoopDetail;
+    private TextView studyLoopPrimary;
+    private TextView studyLoopSecondary;
+    private Timetable timetable;
+    private final java.util.concurrent.ExecutorService timetableIo =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "offloor-timetable-sync");
+                t.setPriority(Thread.NORM_PRIORITY - 1);
+                return t;
+            });
     private TextView updateBanner;
     private final Runnable updateNoticeChanged = this::showUpdateNotice;
     private void showUpdateNotice() {
@@ -249,6 +262,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             engine.listener = this;
             ReminderReceiver.refresh(this, engine);
             render();
+            loadTimetableAsync();
             // 服务连上时会自动扫一遍通知栏；有新事项就在这里轻提示一次。
             NotifListener.ScanResult auto = NotifListener.lastScan;
             if (auto != null && demo == null && NotifListener.lastScanAt > scanNoticeShownAt) {
@@ -349,6 +363,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     @Override
     protected void onDestroy() {
         CampusSilentRefresh.hostDestroyed(this);
+        timetableIo.shutdownNow();
         uiHandler.removeCallbacksAndMessages(null);
         if (manualCardDialog != null) { manualCardDialog.dismiss(); manualCardDialog = null; manualDraftState = null; }
         if (usageNoticeDialog != null) {
@@ -613,6 +628,49 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         LinearLayout.LayoutParams clashLp = lp(-1, -2);
         clashLp.topMargin = dp(this, 16);
         page.addView(clashBanner, clashLp);
+
+        // 跨源学习闭环推荐卡（有课表且存在可用学习空档时展示）
+        studyLoopCard = new LinearLayout(this);
+        studyLoopCard.setOrientation(LinearLayout.VERTICAL);
+        studyLoopCard.setPadding(dp(this, 16), dp(this, 14), dp(this, 16), dp(this, 14));
+        studyLoopCard.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.LINE, 18, 0.75f));
+        Ui.lift(studyLoopCard, 1f);
+        LinearLayout loopHead = new LinearLayout(this);
+        loopHead.setGravity(Gravity.CENTER_VERTICAL);
+        loopHead.addView(Ui.tag(this, "学习闭环", Ui.ACCENT, Ui.ACCENT_BG));
+        studyLoopTitle = uiText("", 14, Ui.TEXT, true);
+        studyLoopTitle.setMaxLines(2);
+        studyLoopTitle.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams loopTitleLp = new LinearLayout.LayoutParams(0, -2, 1);
+        loopTitleLp.leftMargin = dp(this, 8);
+        loopHead.addView(studyLoopTitle, loopTitleLp);
+        studyLoopCard.addView(loopHead, lp(-1, -2));
+        studyLoopDetail = uiText("", 12, Ui.SUB, false);
+        studyLoopDetail.setMaxLines(2);
+        studyLoopDetail.setEllipsize(TextUtils.TruncateAt.END);
+        studyLoopDetail.setLineSpacing(dp(this, 2), 1f);
+        LinearLayout.LayoutParams loopDetailLp = lp(-1, -2);
+        loopDetailLp.topMargin = dp(this, 6);
+        studyLoopCard.addView(studyLoopDetail, loopDetailLp);
+        LinearLayout loopActions = new LinearLayout(this);
+        loopActions.setGravity(Gravity.CENTER_VERTICAL);
+        studyLoopPrimary = uiText("约研修室", 13, Ui.ACCENT, true);
+        studyLoopPrimary.setGravity(Gravity.CENTER);
+        studyLoopPrimary.setBackground(Ui.ripple(this, Ui.round(this, Ui.ACCENT_BG, 12), Ui.press(), 12));
+        studyLoopSecondary = uiText("找空教室", 13, Ui.TEXT, true);
+        studyLoopSecondary.setGravity(Gravity.CENTER);
+        studyLoopSecondary.setBackground(Ui.ripple(this, Ui.round(this, Ui.FILL, 12), Ui.press(), 12));
+        loopActions.addView(studyLoopPrimary, new LinearLayout.LayoutParams(0, dp(this, 36), 1));
+        LinearLayout.LayoutParams secLp = new LinearLayout.LayoutParams(0, dp(this, 36), 1);
+        secLp.leftMargin = dp(this, 8);
+        loopActions.addView(studyLoopSecondary, secLp);
+        LinearLayout.LayoutParams loopActLp = lp(-1, -2);
+        loopActLp.topMargin = dp(this, 10);
+        studyLoopCard.addView(loopActions, loopActLp);
+        studyLoopCard.setVisibility(View.GONE);
+        LinearLayout.LayoutParams studyLoopLp = lp(-1, -2);
+        studyLoopLp.topMargin = dp(this, 12);
+        page.addView(studyLoopCard, studyLoopLp);
 
         // 离线演示条
         demoTools = new LinearLayout(this);
@@ -1697,6 +1755,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         stats.setOnLongClickListener(devStats);
         renderedDay = localDay(now);
         updateClashBanner(shown, now);
+        updateStudyLoop(shown, now);
         if (demo == null) {
             updateNotifStatus();
         } else {
@@ -1800,26 +1859,38 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return layer;
     }
 
-    /** 点击撞车横幅：逐行列出这一组里每张卡的标题和截止时间。 */
+    /** 点击撞车横幅：逐行列出近期事挤在一起或与课表上课撞课的详情。 */
     void showClashDetail() {
-        // 用和 render() 相同的数据源（演示模式取 demo 引擎），结果与横幅一致。
+        long now = System.currentTimeMillis();
         Engine shown = demo == null ? engine : demo.engine;
-        ClashPlan.Clash clash = ClashPlan.nearest(shown.all(), System.currentTimeMillis());
-        // 卡片可能在渲染之后被删掉或改了时间，这时已经不存在撞车，收掉横幅即可。
-        if (clash == null) {
+        ClashPlan.Clash clash = ClashPlan.nearest(shown.all(), now);
+        List<StudyPlanner.LessonClash> lessonClashes = (demo == null && timetable != null)
+                ? StudyPlanner.findLessonClashes(shown.all(), timetable.weekAheadCourses(now), now)
+                : java.util.Collections.emptyList();
+        if (clash == null && lessonClashes.isEmpty()) {
             clashBanner.setVisibility(View.GONE);
             return;
         }
         StringBuilder body = new StringBuilder();
-        for (int i = 0; i < clash.cards.size(); i++) {
-            Engine.Card c = clash.cards.get(i);
-            // 每张卡一行：标题 + 两个空格 + 自然语言截止时间。
-            if (i > 0) body.append("\n");
-            body.append("· ").append(c.displayTitle()).append("  ")
-                    .append(Engine.humanDeadline(c.deadline));
+        if (!lessonClashes.isEmpty()) {
+            body.append("与已导入课表冲突：");
+            int limit = Math.min(lessonClashes.size(), 4);
+            for (int i = 0; i < limit; i++) {
+                body.append("\n· ").append(lessonClashes.get(i).text());
+            }
+            if (lessonClashes.size() > limit) body.append("\n· 另有 ").append(lessonClashes.size() - limit).append(" 项冲突");
+        }
+        if (clash != null) {
+            if (body.length() > 0) body.append("\n\n待办时间相近：");
+            for (int i = 0; i < clash.cards.size(); i++) {
+                Engine.Card c = clash.cards.get(i);
+                if (body.length() > 0 && !(i == 0 && lessonClashes.isEmpty())) body.append("\n");
+                body.append("· ").append(c.displayTitle()).append("  ")
+                        .append(Engine.humanDeadline(c.deadline));
+            }
         }
         alert()
-                .setTitle("这几件事挤在一起")
+                .setTitle(lessonClashes.isEmpty() ? "这几件事挤在一起" : "日程冲突提醒")
                 .setMessage(body.toString())
                 .setPositiveButton("知道了", null)
                 .show();
@@ -2056,6 +2127,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         updateHeadline(shown, now);
         updateWindowTabs(shown, now);
         updateClashBanner(shown, now);
+        updateStudyLoop(shown, now);
         if (demo == null) updateNotifStatus();
     }
 
@@ -2067,12 +2139,79 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     private void updateClashBanner(Engine shown, long now) {
         ClashPlan.Clash clash = ClashPlan.nearest(shown.all(), now);
-        if (clash != null) {
+        StudyPlanner.LessonClash lessonClash = (demo == null && timetable != null)
+                ? StudyPlanner.nearestLessonClash(shown.all(), timetable.weekAheadCourses(now), now)
+                : null;
+        if (lessonClash != null && (clash == null || lessonClash.card.deadline <= clash.start)) {
+            clashBanner.setText("撞课提醒 · " + lessonClash.text() + "  ›");
+            clashBanner.setVisibility(View.VISIBLE);
+        } else if (clash != null) {
             clashBanner.setText("撞车提醒 · " + clash.text() + "  ›");
             clashBanner.setVisibility(View.VISIBLE);
         } else {
             clashBanner.setVisibility(View.GONE);
         }
+    }
+
+    private void loadTimetableAsync() {
+        if (timetableIo.isShutdown()) return;
+        timetableIo.execute(() -> {
+            Timetable loaded = null;
+            try { loaded = TimetableStore.load(getApplicationContext()); } catch (Exception ignored) { }
+            final Timetable table = loaded;
+            uiHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                timetable = table;
+                if (engine != null) EngineHolder.syncTimetable(engine, table);
+                if (resumed) {
+                    long now = System.currentTimeMillis();
+                    Engine shown = demo == null ? engine : demo.engine;
+                    if (shown != null) {
+                        updateClashBanner(shown, now);
+                        updateStudyLoop(shown, now);
+                    }
+                }
+            });
+        });
+    }
+
+    private void updateStudyLoop(Engine shown, long now) {
+        if (studyLoopCard == null) return;
+        if (demo != null || timetable == null) {
+            studyLoopCard.setVisibility(View.GONE);
+            return;
+        }
+        StudyPlanner.GapSuggestion gap = StudyPlanner.findStudyGap(timetable.weekAheadCourses(now), shown.all(), now);
+        if (gap == null) {
+            studyLoopCard.setVisibility(View.GONE);
+            return;
+        }
+        studyLoopTitle.setText(gap.headline());
+        studyLoopDetail.setText(gap.detail(now));
+        studyLoopPrimary.setOnClickListener(v -> {
+            Intent intent = new Intent(this, StudyRoomActivity.class)
+                    .putExtra("prefill_date", gap.date)
+                    .putExtra("prefill_start", gap.startMinute)
+                    .putExtra("prefill_end", gap.endMinute)
+                    .putExtra("prefill_theme", gap.studyTheme());
+            if (!gap.campus.isEmpty()) intent.putExtra("prefill_campus", gap.campus);
+            startActivity(intent);
+        });
+        if (gap.isToday) {
+            studyLoopSecondary.setText("找空教室");
+            studyLoopSecondary.setOnClickListener(v -> {
+                Intent intent = new Intent(this, CampusActivity.class)
+                        .putExtra("module", "classroom")
+                        .putExtra("prefill_start", gap.startMinute)
+                        .putExtra("prefill_end", gap.endMinute);
+                if (!gap.campus.isEmpty()) intent.putExtra("prefill_campus", gap.campus);
+                startActivity(intent);
+            });
+        } else {
+            studyLoopSecondary.setText("明天课表");
+            studyLoopSecondary.setOnClickListener(v -> AppNavigation.openTimetable(this));
+        }
+        studyLoopCard.setVisibility(View.VISIBLE);
     }
 
     /** 首屏入场：逐张从下方 14dp 浮入，间隔 28ms，最多错开 8 张。 */
