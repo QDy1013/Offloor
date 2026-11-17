@@ -205,9 +205,6 @@ final class StudyPlanner {
             for (TodayPlan.Course c : d.courses) if (c != null && !c.name.isEmpty()) allCourses.add(c.name);
         }
 
-        Engine.Card target = pickTargetCard(cards, now);
-        String matchedCourse = matchCourse(target, allCourses);
-
         String[] candidates = {today, tomorrow};
         for (int idx = 0; idx < candidates.length; idx++) {
             String date = candidates[idx];
@@ -219,6 +216,9 @@ final class StudyPlanner {
 
             int[] gap = firstFreeGap(day, cards, winStart, STUDY_DAY_END);
             if (gap == null) continue;
+            // 先确定真正可用的时间，再选择届时尚未截止的事项；截止在空档内仍有时间处理。
+            Engine.Card target = pickTargetCard(cards, now, StudyRoomPlan.at(date, gap[0]));
+            String matchedCourse = matchCourse(target, allCourses);
             String campus = inferCampus(day.courses, days, gap[0], gap[1]);
             return new GapSuggestion(date, isToday, gap[0], gap[1], campus, target, matchedCourse);
         }
@@ -260,13 +260,13 @@ final class StudyPlanner {
         if (b > a) out.add(new int[]{a, b});
     }
 
-    private static Engine.Card pickTargetCard(List<Engine.Card> cards, long now) {
+    private static Engine.Card pickTargetCard(List<Engine.Card> cards, long now, long gapStart) {
         if (cards == null) return null;
         Engine.Card bestTimed = null;
         Engine.Card bestConfirm = null;
         for (Engine.Card c : cards) {
             if (c == null || c.done || "media".equals(c.kind)) continue;
-            if (c.deadline > now && !c.needsConfirm) {
+            if (c.deadline > gapStart && !c.needsConfirm) {
                 if (c.deadline <= now + CLASH_WINDOW_MS
                         && (bestTimed == null || c.deadline < bestTimed.deadline)) {
                     bestTimed = c;

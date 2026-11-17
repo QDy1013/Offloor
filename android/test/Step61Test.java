@@ -137,7 +137,7 @@ public final class Step61Test {
         Engine engine = new Engine(new FileInputStream(new File(root, "app/assets/model.tsv")));
         String beforeKey = engine.profileKey();
         engine.setTimetableCourses(Collections.singletonList("编译原理（Ⅰ）"));
-        check("profileKey remains untouched by runtime timetable courses", beforeKey.equals(engine.profileKey()));
+        check("AI request context changes when timetable courses change", !beforeKey.equals(engine.profileKey()));
         check("saved profile courses remain empty", engine.getProfile().courses.isEmpty());
         check("engine relevance picks up imported course",
                 engine.relevance("周五前交编译原理作业", "编译原理课程群") == 0.8);

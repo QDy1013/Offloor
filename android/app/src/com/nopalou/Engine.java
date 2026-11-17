@@ -366,8 +366,10 @@ public class Engine {
 
     /** 同步已导入课表中的课程名作为运行期课程上下文，不写入或篡改个人档案存档。 */
     public void setTimetableCourses(java.util.Collection<String> courses) {
-        timetableCourses = courses == null ? Collections.emptyList()
-                : Collections.unmodifiableList(normalizeCourseNames(courses));
+        List<String> normalized = normalizeCourseNames(courses);
+        // 同一组课程可能按不同课次顺序导入；稳定顺序避免重复同步使 AI 请求无故失效。
+        Collections.sort(normalized);
+        timetableCourses = Collections.unmodifiableList(normalized);
     }
 
     /** 供 AI 复核使用的有效档案：在手动档案基础上合并已导入课表的课程列表（上限 40 项）。 */
@@ -385,8 +387,12 @@ public class Engine {
 
     String aiEpoch() { return aiEpoch; }
     boolean acceptsAiEpoch(String epoch) { return epoch != null && aiEpoch.equals(epoch); }
+    /** AI 请求的上下文快照；包含运行期课程，但不改变 Profile.encode() 的存档内容。 */
     String profileKey() {
-        try { return StateFormat.digest(profile.encode().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        StringBuilder context = new StringBuilder(profile.encode());
+        // profile 的值已经逐项转义；独立字段避免运行期课程与手动档案混淆。
+        for (String course : timetableCourses) context.append("TIMETABLE_COURSE\t").append(esc(course)).append('\n');
+        try { return StateFormat.digest(context.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
         catch (Exception error) { throw new IllegalStateException(error); }
     }
     String groupVersion(String group) {

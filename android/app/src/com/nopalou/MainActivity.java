@@ -79,6 +79,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private TextView studyLoopPrimary;
     private TextView studyLoopSecondary;
     private Timetable timetable;
+    private int timetableLoadVersion;
+    private final Runnable timetableChanged = () -> { if (this.resumed) loadTimetableAsync(); };
     private final java.util.concurrent.ExecutorService timetableIo =
             java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "offloor-timetable-sync");
@@ -253,6 +255,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         TodayWidget.refresh(this);       // 跨天、下课后回到应用时让桌面小组件跟上
         if (engine == null) return;
         resumed = true;
+        CampusStore.observe(timetableChanged);
         updateAiPill();
         showUpdateNotice();
         UpdateNotice.check(this, updateNoticeChanged);
@@ -335,6 +338,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     protected void onPause() {
         CampusAutoRefresh.pause(this);
         resumed = false;
+        CampusStore.unobserve(timetableChanged);
+        ++timetableLoadVersion;
         uiHandler.removeCallbacks(queuedRender);
         uiHandler.removeCallbacks(searchRefresh);
         uiHandler.removeCallbacks(clockRefresh);
@@ -368,6 +373,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     @Override
     protected void onDestroy() {
         CampusSilentRefresh.hostDestroyed(this);
+        CampusStore.unobserve(timetableChanged);
+        ++timetableLoadVersion;
         timetableIo.shutdownNow();
         uiHandler.removeCallbacksAndMessages(null);
         if (manualCardDialog != null) { manualCardDialog.dismiss(); manualCardDialog = null; manualDraftState = null; }
@@ -1971,22 +1978,21 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void loadTimetableAsync() {
-        if (timetableIo.isShutdown()) return;
+        if (!resumed || timetableIo.isShutdown()) return;
+        final int version = ++timetableLoadVersion;
         timetableIo.execute(() -> {
-            Timetable loaded = null;
-            try { loaded = TimetableStore.load(getApplicationContext()); } catch (Exception ignored) { }
-            final Timetable table = loaded;
+            final Timetable table;
+            try { table = TimetableStore.load(getApplicationContext()); }
+            catch (Exception ignored) { return; }
             uiHandler.post(() -> {
-                if (isFinishing() || isDestroyed()) return;
+                if (!resumed || version != timetableLoadVersion || isFinishing() || isDestroyed()) return;
+                // Engine 上下文由课表保存/清理同步，异步读出的旧快照不能反向覆盖它。
                 timetable = table;
-                if (engine != null) EngineHolder.syncTimetable(engine, table);
-                if (resumed) {
-                    long now = System.currentTimeMillis();
-                    Engine shown = demo == null ? engine : demo.engine;
-                    if (shown != null) {
-                        updateClashBanner(shown, now);
-                        updateStudyLoop(shown, now);
-                    }
+                long now = System.currentTimeMillis();
+                Engine shown = demo == null ? engine : demo.engine;
+                if (shown != null) {
+                    updateClashBanner(shown, now);
+                    updateStudyLoop(shown, now);
                 }
             });
         });
