@@ -119,6 +119,19 @@ public final class Step61Test {
         check("no timetable produces no gap",
                 StudyPlanner.findStudyGap(Collections.emptyList(), Collections.singletonList(urgentNet), now) == null);
 
+        // 课后 17:50-19:50 空档落入 30 分钟步长研修室时，必须向内对齐到 18:00-19:30 并避开冻结间隔
+        StudyRoomPlan.Room room = new StudyRoomPlan.Room(1, 4, 60, 180, 30).period(8 * 60, 22 * 60);
+        int[] aligned = StudyRoomPlan.fitSlot(room, "2026-11-16", Collections.emptyList(),
+                17 * 60 + 50, 19 * 60 + 50, StudyRoomPlan.at("2026-11-16", "17:45"));
+        check("fitSlot aligns post-class 17:50-19:50 onto room 30m grid 18:00-19:30",
+                aligned != null && aligned[0] == 18 * 60 && aligned[1] == 19 * 60 + 30);
+        List<StudyRoomPlan.Busy> frozenBusy = Collections.singletonList(new StudyRoomPlan.Busy(
+                StudyRoomPlan.at("2026-11-16", "17:30"), StudyRoomPlan.at("2026-11-16", "18:30"), "已约", 10));
+        int[] afterFreeze = StudyRoomPlan.fitSlot(room, "2026-11-16", frozenBusy,
+                17 * 60 + 50, 20 * 60 + 30, StudyRoomPlan.at("2026-11-16", "17:45"));
+        check("fitSlot respects freezing buffer before starting prefill",
+                afterFreeze != null && afterFreeze[0] == 19 * 60 && afterFreeze[1] == 20 * 60 + 30);
+
         // ---------- 4. Engine 课表课程注入（不污染个人档案） ----------
         File root = new File(args[0]);
         Engine engine = new Engine(new FileInputStream(new File(root, "app/assets/model.tsv")));

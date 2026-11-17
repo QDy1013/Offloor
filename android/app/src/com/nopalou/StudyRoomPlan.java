@@ -317,6 +317,25 @@ final class StudyRoomPlan {
         return false;
     }
 
+    /**
+     * 把外部建议的连续空档 [targetStart, targetEnd] 对齐到校方网格与房间规则内：
+     * 不早于 targetStart、不晚于 targetEnd、避开占用及冻结间隔、且开始时刻严格晚于 now。
+     */
+    static int[] fitSlot(Room room, String date, List<Busy> busy, int targetStart, int targetEnd, long now) {
+        if (room == null || !room.complete() || targetStart < 0 || targetEnd <= targetStart) return null;
+        for (int start : starts(room, date, busy, now)) {
+            if (start < targetStart) continue;
+            if (start >= targetEnd) break;
+            if (at(date, start) <= now) continue;
+            int bestEnd = -1;
+            for (int end : ends(room, date, busy, start)) {
+                if (end <= targetEnd) bestEnd = end;
+            }
+            if (bestEnd > start) return new int[]{start, bestEnd};
+        }
+        return null;
+    }
+
     /** 与已有事项重叠的条目，按开始时间排序；只要有一笔就说明撞上了。 */
     static List<Busy> overlaps(List<Busy> items, long start, long end) {
         List<Busy> out = new ArrayList<>();

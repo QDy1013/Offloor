@@ -916,13 +916,7 @@ public class StudyRoomActivity extends Activity {
     private int[] prefillRange(StudyRoomPlan.Room plan, List<StudyRoomPlan.Busy> busySlots) {
         if (plan == null || prefillDate.isEmpty() || !prefillDate.equals(date)
                 || prefillStart < 0 || prefillEnd <= prefillStart) return null;
-        int end = Math.min(prefillEnd, prefillStart + plan.maxMinutes);
-        if (end - prefillStart < plan.minMinutes) return null;
-        if (!StudyRoomPlan.inside(plan, prefillStart, end)) return null;
-        long from = StudyRoomPlan.at(date, prefillStart), to = StudyRoomPlan.at(date, end);
-        if (from <= System.currentTimeMillis() || to <= from) return null;
-        if (!StudyRoomPlan.overlaps(busySlots, from, to).isEmpty()) return null;
-        return new int[]{prefillStart, end};
+        return StudyRoomPlan.fitSlot(plan, date, busySlots, prefillStart, prefillEnd, System.currentTimeMillis());
     }
 
     private StudyRoomPlan.Room plan(JSONObject row) {
