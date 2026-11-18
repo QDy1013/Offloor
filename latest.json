@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 79,
-      "versionName": "0.79",
-      "size": 2549731,
-      "sha256": "194fcbfbcf2e7ff042189e42c30d6068424824f721bb648e3643edbf5b312543",
+      "versionCode": 80,
+      "versionName": "0.80",
+      "size": 2562090,
+      "sha256": "b14cb1b51305f16057e39853bd85ce1cc9618b9e51c7b45f0cf1e81e5733ed46",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/194fcbfbcf2e7ff042189e42c30d6068424824f721bb648e3643edbf5b312543/offloor.apk",
-      "notes": "Revert \"v0.78: campus bento tiles, timetable week/agenda switcher, and academic GPA gauge + grade distribution bar\""
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/b14cb1b51305f16057e39853bd85ce1cc9618b9e51c7b45f0cf1e81e5733ed46/offloor.apk",
+      "notes": "v0.80：暖白纸面极简界面重构、研修室/教室交互精简与图标重绘"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
