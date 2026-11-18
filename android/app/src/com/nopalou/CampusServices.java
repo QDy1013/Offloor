@@ -63,7 +63,7 @@ final class CampusServices {
             if (p.matches(".*(?:^|/)(?:logout|delete|remove|submit|save|pay|payment|recharge)(?:/.*|$)")) return false;
             String params = (q == null ? "" : q) + "&" + (u.getRawFragment() == null ? "" : u.getRawFragment());
             params = java.net.URLDecoder.decode(params, "UTF-8").toLowerCase(Locale.ROOT);
-            return !params.matches(".*(?:ticket|token|password|session|secret|cookie|action|operation|method)=.*");
+            return !params.matches(".*(?:ticket|token|password|session|secret|cookie|action|operation|method|synjones-auth)=.*");
         } catch (Exception e) { return false; }
     }
     static boolean isPortal(String value) {

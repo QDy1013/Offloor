@@ -177,11 +177,12 @@ public class CampusActivity extends Activity {
             JSONObject module=data==null?null:data.module(id); boolean present=CampusData.count(module)>0;
             CampusServices.Service service=CampusServices.byId(id);
             CampusSummary summary=CampusSummary.of(id,module,System.currentTimeMillis(),elecPrice);
+            boolean hasBalance=present && !"余额暂未读到".equals(summary.value) && !"电费暂未读到".equals(summary.value);
             LinearLayout item=CourseUi.column(this); item.setPadding(dp(8),dp(8),dp(6),dp(6));
             item.setBackground(Ui.ripple(this,null,Ui.press(),10));
             item.addView(text(service.title,11,Ui.MUTE,false)); CourseUi.gap(item,6);
-            TextView value=text(summary.value,present?18:13,Ui.TEXT,present);
-            if (present) value.setTypeface(Ui.editorialBold());
+            TextView value=text(summary.value,hasBalance?18:13,Ui.TEXT,hasBalance);
+            if (hasBalance) value.setTypeface(Ui.editorialBold());
             value.setMinHeight(dp(24)); value.setMaxLines(2); value.setEllipsize(android.text.TextUtils.TruncateAt.END); item.addView(value);
             CourseUi.gap(item,5);
             boolean lowAlert=false;
@@ -190,15 +191,15 @@ public class CampusActivity extends Activity {
                     Double kwh=ChangeDiff.firstNumber(CampusSummary.field(module,"剩余电量|当前电量|电量余额"));
                     lowAlert=CampusBalance.electricLow(kwh,elecPrice,CampusChanges.electricThreshold(alertPrefs));
                 } else if ("network".equals(id)) {
-                    Double yuan=ChangeDiff.firstNumber(CampusSummary.field(module,"账户余额|余额|当前余额"));
+                    Double yuan=ChangeDiff.firstNumber(CampusSummary.field(module,"账户余额|可用金额|剩余金额|余额|当前余额"));
                     lowAlert=CampusBalance.networkLow(yuan,CampusChanges.networkThreshold(alertPrefs));
                 }
             }
             if (lowAlert) {
                 item.addView(text("余额偏低",11,Ui.ORANGE,true));
             } else {
-                String freshness=present?new SimpleDateFormat("M/d HH:mm",Locale.CHINA).format(new Date(module.optLong("updated"))):"等待同步";
-                if (present && !"ok".equals(module.optString("state"))) freshness="上次数据";
+                String freshness=hasBalance?new SimpleDateFormat("M/d HH:mm",Locale.CHINA).format(new Date(module.optLong("updated"))):"等待同步";
+                if (hasBalance && !"ok".equals(module.optString("state"))) freshness="上次数据";
                 item.addView(text(freshness,10,Ui.MUTE,false));
             }
             item.setContentDescription(service.title+"，"+summary.value+"，查看详情"); item.setFocusable(true);
@@ -273,7 +274,7 @@ public class CampusActivity extends Activity {
             }
         }
         if ("network".equals(s.id) && count>0) {
-            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"账户余额|余额|当前余额"));
+            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"账户余额|可用金额|剩余金额|余额|当前余额"));
             if (yuan!=null) {
                 CourseUi.gap(intro,12);
                 intro.addView(text(CampusBalance.networkValue(yuan),26,Ui.TEXT,true));
@@ -284,8 +285,8 @@ public class CampusActivity extends Activity {
                 }
             }
         }
-        if ("ecard".equals(s.id) && count>0) {
-            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"卡余额|校园卡余额|余额|当前余额"));
+        if ("card".equals(s.id) && count>0) {
+            Double yuan=ChangeDiff.firstNumber(CampusSummary.field(m,"卡余额|校园卡余额|可用金额|剩余金额|卡内金额|主钱包|余额|当前余额"));
             if (yuan!=null) {
                 CourseUi.gap(intro,12);
                 intro.addView(text(CampusBalance.networkValue(yuan),26,Ui.TEXT,true));

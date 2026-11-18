@@ -81,6 +81,16 @@ public class CampusAutoTest {
         check("history and classroom reads share the same host limit",CampusSchedule.next(queue,busy,done,null)==-1);
         CampusData placeholder=CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","1").put("modules",new JSONObject()).put("routes",new JSONObject().put("card",CampusServices.PORTAL+"#/Index")).toString(),100,null);
         check("portal placeholders never replace a service landing page",placeholder.route(CampusServices.byId("card")).equals(CampusServices.byId("card").entry));
+        CampusPortalScan scan=new CampusPortalScan();
+        JSONObject appsOnly=new JSONObject().put("apps",new JSONArray().put(new JSONObject().put("title","一卡通").put("url","https://yktapp.nwpu.edu.cn/"))).put("routes",new JSONObject().put("card","https://yktapp.nwpu.edu.cn/")).put("portalModules",new JSONObject()).put("busy",false);
+        check("slow SSO never skips portal balance wait on arrival",scan.observe(appsOnly,10_000)==CampusPortalScan.Step.WAIT);
+        check("waits while hotdata balances are still empty after 500ms",scan.observe(appsOnly,11_000)==CampusPortalScan.Step.WAIT);
+        JSONObject withBalances=new JSONObject(appsOnly.toString()).put("portalModules",new JSONObject().put("network",module("ok")).put("card",module("ok")));
+        check("advances to catalog as soon as both balances arrive",scan.observe(withBalances,11_200)==CampusPortalScan.Step.CLICK_CATALOG);
+        check("retains earlier portal balances even if catalog tab hides widgets",scan.observe(appsOnly,11_600)==CampusPortalScan.Step.DONE && scan.modules.has("network") && scan.modules.has("card"));
+        check("synjones auth token URLs are never persisted as read URLs",!CampusServices.readUrl("https://yktapp.nwpu.edu.cn/plat?synjones-auth=SECRET") && CampusServices.readUrl("https://yktapp.nwpu.edu.cn/plat"));
+        JSONObject altCard=module("ok").put("fields",new JSONArray().put(new JSONObject().put("label","剩余金额").put("value","19.80 元")));
+        check("summary recognizes alternative balance field labels","19.80 元".equals(CampusSummary.of("card",altCard,0).value));
         System.out.println(count+" checks passed");
     }
 }

@@ -13,12 +13,12 @@
         bus: /^(校车预约|校车查询|校车服务|校车时刻|校车时刻表|通勤车|小车预约)$/, deadlines: /^(我的评教|学生评教|评教任务|选课安排|选课时间)$/,
         affairs: /^(学生工作平台|学工系统|学工服务|综合测评)$/, housing: /^(智慧公寓|住宿信息|学生公寓|我的宿舍)$/
     };
-    const central = /^(?:翱翔门户|统一身份认证|统一认证|统一登录|校园统一认证|CAS)(?:账号)?(?:登[录陆])?(?:入口)?$/i;
+    const central = /^(?:翱翔门户|统一身份认证|统一认证|统一登录|校园统一认证|CAS)(?:账号|平台|系统)?(?:登[录陆])?(?:入口)?$/i;
     function visible(e) {
         return !!e && (!e.getClientRects || e.getClientRects().length > 0) && (!root.getComputedStyle || root.getComputedStyle(e).visibility !== 'hidden');
     }
-    function candidates(doc) { return Array.from(doc.querySelectorAll('a,button,[role="button"],[data-url],[data-href],.app-item,.application-item,.service-item,span,p')).filter(visible); }
-    function label(e) { return text(e.getAttribute('title') || e.getAttribute('aria-label') || e.innerText || e.textContent); }
+    function candidates(doc) { return Array.from(doc.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[onclick],[data-url],[data-href],.app-item,.application-item,.service-item,span,p')).filter(visible); }
+    function label(e) { return text(e.getAttribute('title') || e.getAttribute('aria-label') || e.innerText || e.textContent || e.value); }
     function safe(value, base) { return root.NwpuCampus ? root.NwpuCampus.safeUrl(value, base) : ''; }
     function portalInfo(doc, url) {
         const out = root.NwpuCampus ? root.NwpuCampus.discover(doc, url) : {};

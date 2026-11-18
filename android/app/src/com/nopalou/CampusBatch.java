@@ -141,7 +141,7 @@ final class CampusBatch {
         String host="",lastPhase="";
         int generation;
         long started,deadline,loaded,lastPreview;
-        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry,timetableDone,timetableFailed;
+        boolean probing,writing,injected,portalRetry,electric,querying,profileSaved,academicInjected,electricRetry,cardSso,timetableDone,timetableFailed;
         long timetableDeadline;
         int academicRevision;
         int mainHttpStatus;
@@ -175,8 +175,10 @@ final class CampusBatch {
             // browser distinct so an old request cannot fail the next module in this lane.
             if (generation>0) { WebView old=web; web=null; old.stopLoading(); stage.removeView(old); old.destroy(); createWeb(); }
             this.service=service; this.host=host; generation++; collection=new CampusReadSession(); auth.reset(); handoffs.clear();
-            probing=false; writing=false; portalRetry=false; electric=false; electricRetry=false; querying=false; profileSaved=false; academicInjected=false; academicRevision=-1; academicPending=null; academicPreview=0; lastPhase="";
-            started=SystemClock.elapsedRealtime(); lastPreview=0; deadline=started+15_000; navigate(saved.route(service));
+            probing=false; writing=false; portalRetry=false; electric=false; electricRetry=false; cardSso=false; querying=false; profileSaved=false; academicInjected=false; academicRevision=-1; academicPending=null; academicPreview=0; lastPhase="";
+            String entry=saved.route(service);
+            if ("card".equals(service.id) && CampusServices.byId("card").entry.equals(entry)) { entry=ELECTRIC_SSO; cardSso=true; }
+            started=SystemClock.elapsedRealtime(); lastPreview=0; deadline=started+15_000; navigate(entry);
         }
         void navigate(String url) { injected=false; mainHttpStatus=0; httpUrl=""; loaded=SystemClock.elapsedRealtime(); web.loadUrl(url); schedule(60); }
         void schedule(long delay) { handler.removeCallbacks(tick); if (alive() && service!=null) handler.postDelayed(tick,delay); }
@@ -226,7 +228,7 @@ final class CampusBatch {
                 } else timeout();
                 return false;
             }
-            if (decision==CampusAuth.Decision.SERVICE_ENTRY) { retryPortal(); return false; }
+            if (decision==CampusAuth.Decision.SERVICE_ENTRY) { if (!fallbackCardSso()) retryPortal(); return false; }
             if (decision!=CampusAuth.Decision.READY) { timeout(); return false; }
             return true;
         }
@@ -281,7 +283,11 @@ final class CampusBatch {
             }
             if (state.equals("ok") || state.equals("empty")) { if (!continuePage()) finish(collection.incomplete()); return; }
             // Unknown completed pages do not consume the old 45-second timeout for every app.
-            if (SystemClock.elapsedRealtime()-loaded>2500 && r.optInt("pending")==0 && !r.optBoolean("settling")) { collection.markIncomplete(); if (!continuePage()) finish(true); }
+            long settleWait=("card".equals(service.id) || "network".equals(service.id))?4500:2500;
+            if (SystemClock.elapsedRealtime()-loaded>settleWait && r.optInt("pending")==0 && !r.optBoolean("settling")) {
+                if (!collection.hasResult() && fallbackCardSso()) return;
+                collection.markIncomplete(); if (!continuePage()) finish(true);
+            }
             else timeout();
         }
         boolean continuePage() {
@@ -295,9 +301,21 @@ final class CampusBatch {
             if (next!=null && collection.visit(next.optString("key"))) { collection.openPage(); deadline=SystemClock.elapsedRealtime()+15_000; navigate(next.optString("url")); return true; }
             return false;
         }
+        boolean fallbackCardSso() {
+            if (service==null || !"card".equals(service.id) || cardSso) return false;
+            cardSso=true; mainHttpStatus=0; httpUrl=""; handoffs.clear(); auth.reset();
+            collection=new CampusReadSession(); deadline=SystemClock.elapsedRealtime()+15_000;
+            navigate(ELECTRIC_SSO); return true;
+        }
         void timeout() {
-            if (mainHttpStatus>=400 && SystemClock.elapsedRealtime()-loaded>3000) { fail(mainHttpStatus==401 || mainHttpStatus==403 || mainHttpStatus==412?"blocked":"network"); }
-            else if (SystemClock.elapsedRealtime()>deadline) { collection.markIncomplete(); if (!continuePage()) finish(true); }
+            if (mainHttpStatus>=400 && SystemClock.elapsedRealtime()-loaded>3000) {
+                if ((mainHttpStatus==401 || mainHttpStatus==403) && fallbackCardSso()) return;
+                fail(mainHttpStatus==401 || mainHttpStatus==403 || mainHttpStatus==412?"blocked":"network");
+            }
+            else if (SystemClock.elapsedRealtime()>deadline) {
+                if (!collection.hasResult() && fallbackCardSso()) return;
+                collection.markIncomplete(); if (!continuePage()) finish(true);
+            }
             else schedule(100);
         }
         void preview() {

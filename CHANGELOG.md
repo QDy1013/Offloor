@@ -2,6 +2,19 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.81（修复校园网与一卡通余额同步、兜底及详情显示）
+
+- **门户卡片同步时序与渐进保留**：
+  1. 新增 [CampusPortalScan.java](android/app/src/com/nopalou/CampusPortalScan.java) 统一协调 [CampusSilentRefresh.java](android/app/src/com/nopalou/CampusSilentRefresh.java) 与 [CampusWebActivity.java](android/app/src/com/nopalou/CampusWebActivity.java) 的门户扫描：改以真正落地 `ecampus.nwpu.edu.cn` 后重新计时，在 `onPageStarted` 提前注入 `NwpuAuto.install()`，并先等待首页异步 `.hotdata-ul-li` 余额渲染再点击「应用中心」，避免因点击目录切页或登录超过 5 秒而直接丢失 `network`/`card` 余额。
+- **一卡通统一认证兜底与多布局余额解析**：
+  1. [CampusBatch.java](android/app/src/com/nopalou/CampusBatch.java) 与 [CampusWebActivity.java](android/app/src/com/nopalou/CampusWebActivity.java) 在缺少门户余额或一卡通首页返回 401/未登录态时自动复用 `ELECTRIC_SSO`（`/berserker-auth/cas/login/supwisdom`）进入一卡通首页，并放宽 SPA 落稳等待窗口。
+  2. [nwpu-campus.js](android/app/assets/nwpu-campus.js) 与 [nwpu-sso.js](android/app/assets/nwpu-sso.js) 补充多行/无冒号余额卡片、金额在前标签在后、`4` 列键值对表格、Vant 列表、门户 `HotData`/`#app` Vue 状态兜底（隔离过渡/冻结余额与 `synjones-auth` 临时令牌），以及 `<input>`/`[onclick]` 统一认证按钮识别。
+  3. [CampusServices.java](android/app/src/com/nopalou/CampusServices.java) 阻止持久化含 `synjones-auth` 的临时认证链接。
+- **一卡通详情页与账户总览展示修复**：
+  1. [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 修复详情页误判 `"ecard".equals(s.id)` 的问题（改为 `"card".equals(s.id)`），并在账户总览区分“已读到有效余额”与“仅同步到非余额字段”，统一适配 [CampusSummary.java](android/app/src/com/nopalou/CampusSummary.java) 与 [CampusChanges.java](android/app/src/com/nopalou/CampusChanges.java) 的余额字段标签。
+
+---
+
 ## v0.80（界面极简重构、跨源课表上下文与端侧评测）
 
 - **全套界面极简重构与图标重绘**：

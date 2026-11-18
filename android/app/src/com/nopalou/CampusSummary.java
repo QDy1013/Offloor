@@ -21,7 +21,7 @@ final class CampusSummary {
     /** 电费按电价折成金额显示；其它模块不受影响。 */
     static CampusSummary of(String id,JSONObject module,long now,double price) {
         if (id.equals("network") || id.equals("card")) {
-            String balance=field(module,"余额|可用金额");
+            String balance=field(module,"余额|可用金额|剩余金额|卡内金额|主钱包");
             return new CampusSummary(balance.isEmpty()?"余额暂未读到":balance,id.equals("network")?field(module,"套餐|到期|剩余流量"):recent(module));
         }
         if (id.equals("electric")) {

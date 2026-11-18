@@ -44,7 +44,7 @@
             const u = new URL(value, base);
             if (!allowed(u.href) || /(?:^|\/)(?:logout|delete|remove|submit|save|pay|payment|recharge)(?:\/|$)/i.test(u.pathname)) return '';
             // Authentication tickets and action links must never be persisted or followed by the collector.
-            if ([...u.searchParams.keys()].some(k => sensitive.test(k) || /action|operation|method/i.test(k))) return '';
+            if ([...u.searchParams.keys()].some(k => sensitive.test(k) || /^(?:action|operation|method|synjones-auth)$/i.test(k))) return '';
             if (sensitive.test(decodeURIComponent(u.hash))) return '';
             if (!u.hash.startsWith('#/')) u.hash = '';
             return u.href;
@@ -90,7 +90,7 @@
             seen.add(label + '\0' + value); if (out.fields.length < 2000) out.fields.push({label, value});
         };
         for (const dt of doc.querySelectorAll('dt')) if (dt.nextElementSibling && dt.nextElementSibling.tagName === 'DD' && visible(dt, live)) add(nodeText(dt, live), nodeText(dt.nextElementSibling, live));
-        for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label, .layui-form-label, .el-statistic__head, .ant-statistic-title, label[for]')) {
+        for (const label of doc.querySelectorAll('.control-label, .el-form-item__label, .el-descriptions-item__label, .ant-descriptions-item-label, .form-label, .layui-form-label, .el-statistic__head, .ant-statistic-title, .van-cell__title, .van-field__label, .weui-label, label[for]')) {
             if (!visible(label, live)) continue;
             if (/^(学年|学期|年度|年份|状态|交易类型|记录类型|查询范围)[:：]?$/.test(clean(nodeText(label, live)))) continue;
             const bound = label.getAttribute('for') && (doc.getElementById ? doc : doc.ownerDocument).getElementById(label.getAttribute('for'));
@@ -117,9 +117,10 @@
             // Label/value tables are common in student profiles and network self service.
             const firstRow=table.querySelector('tr');
             const listHeader=!!table.querySelector('thead') || (firstRow && Array.from(firstRow.children).length>1 && Array.from(firstRow.children).every(c=>c.tagName==='TH'));
-            const kv = !listHeader && rows.length > 0 && rows.every(r => r.length === 2 && r[0].length < 45) &&
-                rows.some(r => /姓名|学号|年级|专业|余额|流量|套餐|状态|宿舍|电量|学分/.test(r[0]));
-            if (kv) { rows.forEach(r => add(r[0], r[1])); continue; }
+            const kvRows = rows.filter(r => r.length > 1);
+            const kv = !listHeader && kvRows.length > 0 && kvRows.every(r => r.length % 2 === 0 && r.length <= 6 && r.every((c, i) => i % 2 === 1 || c.length < 45)) &&
+                kvRows.some(r => r.some((c, i) => i % 2 === 0 && /姓名|学号|年级|专业|余额|流量|套餐|状态|宿舍|电量|学分/.test(c)));
+            if (kv) { for (const r of kvRows) for (let i = 0; i + 1 < r.length; i += 2) add(r[i], r[i + 1]); continue; }
             const headerRow = table.querySelector('thead tr') || table.querySelector('tr');
             const hasHeader = !!(headerRow && headerRow.querySelector('th'));
             const component = table.closest('.el-table,.ant-table');
@@ -145,6 +146,14 @@
         const text = (live && doc.body && doc.body.innerText || '').slice(0, 120000);
         const metrics = /((?:账户|帐户|校园卡|一卡通|可用|当前|剩余)?(?:总?余额|剩余电量|已用流量|剩余流量|使用流量|基础套餐|当前套餐))\s*[:：]\s*([^\n]{1,90})/g;
         let m; while ((m = metrics.exec(text))) add(m[1], m[2]);
+        if (live && (kind === 'network' || kind === 'card') && !out.fields.some(f => /余额|可用金额|剩余金额|卡内金额|主钱包/.test(f.label))) {
+            const pick = pickPrimaryBalance(parseBalancePairs(text));
+            if (pick) add(pick.label, pick.value + ' 元');
+            else if (!/正在加载|系统加载中/.test(text)) {
+                const v = vueBalance(doc, kind);
+                if (v) add(v.label, v.value + ' 元');
+            }
+        }
         for (const a of doc.querySelectorAll('a[href]')) {
             if (!visible(a, live) || a.closest('nav,header,footer,.sidebar,.navbar,.menu')) continue;
             const href = safeUrl(a.getAttribute('href'), url), title = cut(nodeText(a, live), 180);
@@ -216,36 +225,139 @@
             await p; root.__louCampusResult = {token, status: 'ok', data};
         })().catch(() => { root.__louCampusResult = {token, status: 'error'}; });
     }
+    function parseBalanceNumber(v) {
+        if (typeof v === 'number') return Number.isFinite(v) && Math.abs(v) <= 100000 ? String(v) : '';
+        if (typeof v !== 'string') return '';
+        const s = v.replace(/[￥¥,，\s]/g, '').replace(/(?:元|人民币|RMB)$/i, '');
+        return /^-?\d+(?:\.\d{1,2})?$/.test(s) && Math.abs(+s) <= 100000 ? s : '';
+    }
+    function isPrimaryBalanceLabel(label) {
+        return /^(?:账户|帐户|校园卡|一卡通|可用|主账户|主钱包)?余额$|^卡余额$|^可用金额$/.test(label);
+    }
+    function parseBalancePairs(raw) {
+        const body = typeof raw === 'string' ? raw : '';
+        const label = '((?<![过渡冻结限额补助赠送赠款])(?:账户|帐户|校园卡|一卡通|电子账户|主账户|主钱包|卡|可用|当前|总)?(?<![过渡冻结限额补助赠送赠款])(?:余额|可用金额|剩余金额|卡内金额))';
+        const out = [], covered = [];
+        const addMatch = (start, end, l, v) => {
+            if (covered.some(([s, e]) => Math.max(s, start) < Math.min(e, end))) return;
+            covered.push([start, end]);
+            out.push({label: l, value: v});
+        };
+        for (const m of body.matchAll(new RegExp(label + '\\s*(?:[(（]\\s*元\\s*[)）])?\\s*[:：]\\s*[￥¥]?\\s*(-?\\d+(?:\\.\\d{1,2})?)\\s*(?:元|人民币|RMB)?(?![\\d.])', 'g'))) {
+            addMatch(m.index, m.index + m[0].length, m[1], m[2]);
+        }
+        if (out.some(p => isPrimaryBalanceLabel(p.label))) return out;
+        if (/(?:余额|可用金额|剩余金额|卡内金额)\s*(?:[(（]\s*元\s*[)）])?\s*[:：]?\s*(?:--|—|暂无|加载)/.test(body)) return out;
+        for (const m of body.matchAll(new RegExp(label + '\\s*(?:[(（]\\s*元\\s*[)）])?\\s+[￥¥]?\\s*(-?\\d+(?:\\.\\d{1,2})?)\\s*(?:元|人民币|RMB)?(?![\\d.])', 'g'))) {
+            addMatch(m.index, m.index + m[0].length, m[1], m[2]);
+        }
+        for (const m of body.matchAll(new RegExp('(?:[￥¥]\\s*(-?\\d+(?:\\.\\d{1,2})?)\\s*(?:元|人民币|RMB)?|(-?\\d+(?:\\.\\d{1,2})?)\\s*(?:元|人民币|RMB))\\s+' + label, 'g'))) {
+            addMatch(m.index, m.index + m[0].length, m[3], m[1] !== undefined ? m[1] : m[2]);
+        }
+        return out;
+    }
+    function pickPrimaryBalance(pairs) {
+        if (!pairs || !pairs.length) return null;
+        if (pairs.length === 1) return pairs[0];
+        const primary = pairs.filter(p => isPrimaryBalanceLabel(p.label));
+        return primary.length === 1 ? primary[0] : null;
+    }
+    function vueInstance(el) {
+        return el && (el.__vue__ || (el.__vue_app__ && el.__vue_app__._instance && el.__vue_app__._instance.proxy)) || null;
+    }
+    function scanBalanceObj(obj, kind, depth, seen, hasCtx) {
+        if (!obj || typeof obj !== 'object' || obj.nodeType || depth > 5 || seen.has(obj) || obj.SystemUpgrading) return null;
+        seen.add(obj);
+        const label = obj.name || obj.label || obj.title || obj.key;
+        if (typeof label === 'string' && /(?:账户|帐户|校园卡|一卡通|卡|可用|主账户|主钱包)?余额|可用金额/.test(label) && !/过渡|冻结|限额|补助/.test(label)) {
+            const val = parseBalanceNumber(obj.value !== undefined ? obj.value : obj.val);
+            if (val) return {label: cut(label, 80), value: val};
+        }
+        const ctx = hasCtx || ('cardStatus' in obj || 'cardType' in obj || 'schoolCard' in obj || 'cardInfo' in obj || 'cardData' in obj || 'wallet' in obj || 'dbWallet' in obj || 'elecWallet' in obj || 'accountInfo' in obj || 'netInfo' in obj || 'accName' in obj || 'feeName' in obj || 'planName' in obj || 'netState' in obj);
+        const explicitKey = kind === 'card'
+            ? /^(?:cardBalance|card_balance|schoolCardBalance|ecardBalance|accBalance|acc_balance|dbBalance|db_balance|mainBalance|accountBalance|卡余额|校园卡余额|可用余额|账户余额)$/i
+            : /^(?:netBalance|net_balance|networkBalance|feeBalance|leftMoney|accountBalance|账户余额|可用余额|网费余额)$/i;
+        const keys = Object.keys(obj).slice(0, 200);
+        for (const k of keys) {
+            if (sensitive.test(k)) continue;
+            let v; try { v = obj[k]; } catch (_) { continue; }
+            if (explicitKey.test(k) || (ctx && /^(?:balance|surplus|money|余额)$/i.test(k))) {
+                const val = parseBalanceNumber(v);
+                if (val) return {label: kind === 'card' ? '校园卡余额' : '账户余额', value: val};
+            }
+        }
+        for (const k of keys) {
+            if (k.charAt(0) === '_' || k.charAt(0) === '$' || sensitive.test(k)) continue;
+            let v; try { v = obj[k]; } catch (_) { continue; }
+            if (v && typeof v === 'object') {
+                const found = scanBalanceObj(v, kind, depth + 1, seen, ctx);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+    function vueBalance(doc, kind) {
+        const rootEl = doc && (doc.querySelector('#app') || doc.body && doc.body.firstElementChild);
+        const vm = vueInstance(rootEl);
+        if (!vm) return null;
+        const seen = new Set(), queue = [vm];
+        for (let visited = 0; queue.length && visited < 200; visited++) {
+            const c = queue.shift();
+            let found = null; try { found = scanBalanceObj(c.$data || c, kind, 0, seen, false); } catch (_) { }
+            if (found) return found;
+            try { (c.$children || []).forEach(x => queue.push(x)); } catch (_) { }
+        }
+        return null;
+    }
     // Confirmed portal widgets expose balances without a second service login. Restrict
     // extraction to the labelled widget, so another card's balance cannot be attributed.
     function portal(doc = root.document, url = root.location.href) {
         const modules = {};
         if (!allowed(url) || new URL(url).hostname !== 'ecampus.nwpu.edu.cn' || !/^\/(?:main\.html)?$/.test(new URL(url).pathname) || isLogin(doc,url,true)) return modules;
+        const widgetIds = new Map();
         for (const widget of doc.querySelectorAll('.hotdata-ul-li')) {
             if (!visible(widget,true)) continue;
-            const heading = widget.querySelector('.hotdata-ul-li-top .left');
+            const heading = widget.querySelector('.hotdata-ul-li-top .left') || widget.querySelector('.hotdata-ul-li-top, .left, h3, h4');
             const name = clean(heading && nodeText(heading,true));
-            const id = name === '网费' ? 'network' : /^(校园卡|一卡通)$/.test(name) ? 'card' : '';
+            const id = /^(?:网费|校园网|校园网费|网费余额|网络自助)(?:\s|$)/.test(name) ? 'network'
+                : /^(?:校园卡|一卡通|校园卡余额|一卡通余额|校园卡服务)(?:\s|$)/.test(name) ? 'card' : '';
             if (!id) continue;
-            const body = nodeText(widget,true);
-            const matches = [...body.matchAll(/((?:账户|帐户|校园卡|一卡通|可用|总)?余额)\s*[:：]\s*[￥¥]?\s*(-?\d+(?:\.\d{1,2})?)\s*(?:元|人民币|RMB)?/g)];
-            if (matches.length !== 1) continue;
-            modules[id] = {state:'ok', source:source(url), fields:[{label:matches[0][1],value:matches[0][2]+' 元'}],tables:[],links:[]};
+            widgetIds.set(widget, id);
+            const pick = pickPrimaryBalance(parseBalancePairs(nodeText(widget,true)));
+            if (pick) modules[id] = {state:'ok', source:source(url), fields:[{label:pick.label,value:pick.value+' 元'}],tables:[],links:[]};
         }
         // The official HotData widget renders some card details in a collapsed panel.
         // Read only its confirmed balance/status fields, never the surrounding Vue state.
         for (const widget of doc.querySelectorAll('.hotdata-ul-li')) {
             let p=widget;
-            for (let i=0;p && i<8;i++,p=p.parentElement) {
-                const vm=p.__vue__; if (!vm || !vm.$options || vm.$options.name!=='HotData') continue;
-                const card=vm.allData && vm.allData.schoolCard;
-                const balance=card && (typeof card.balance==='number' || typeof card.balance==='string') ? String(card.balance).trim() : '';
-                if (!card || card.SystemUpgrading || !/^-?\d+(?:\.\d{1,2})?$/.test(balance)) break;
-                const fields=[{label:'校园卡余额',value:balance+' 元'}];
-                if (typeof card.cardStatus==='string' && clean(card.cardStatus)) fields.push({label:'卡片状态',value:cut(card.cardStatus,100)});
-                modules.card={state:'ok',source:source(url),fields,tables:[],links:[]}; break;
+            for (let i=0;p && i<12;i++,p=p.parentElement) {
+                const vm=vueInstance(p); if (!vm || !vm.$options || vm.$options.name!=='HotData') continue;
+                const all=vm.allData || {};
+                const card=all.schoolCard;
+                const balance=card && !card.SystemUpgrading ? parseBalanceNumber(card.balance) : '';
+                if (!modules.card && balance) {
+                    const fields=[{label:'校园卡余额',value:balance+' 元'}];
+                    if (typeof card.cardStatus==='string' && clean(card.cardStatus)) fields.push({label:'卡片状态',value:cut(card.cardStatus,100)});
+                    modules.card={state:'ok',source:source(url),fields,tables:[],links:[]};
+                }
+                if (!modules.network) {
+                    for (const key of Object.keys(all)) {
+                        if (!/^(?:net(?:work|Fee|Balance)?|wifi|wlan|srun|internet(?:Fee)?)$/i.test(key)) continue;
+                        const net=all[key]; if (!net || typeof net!=='object' || net.SystemUpgrading) continue;
+                        const netBal=parseBalanceNumber(net.balance!==undefined?net.balance:net.fee!==undefined?net.fee:net.money!==undefined?net.money:net.leftMoney!==undefined?net.leftMoney:net.surplus);
+                        if (netBal) { modules.network={state:'ok',source:source(url),fields:[{label:'账户余额',value:netBal+' 元'}],tables:[],links:[]}; break; }
+                    }
+                }
+                break;
             }
-            if (modules.card) break;
+            const id = widgetIds.get(widget);
+            if (id && !modules[id]) {
+                const wvm = vueInstance(widget);
+                if (wvm) {
+                    const found = scanBalanceObj(wvm.$data || wvm, id, 0, new Set(), true);
+                    if (found) modules[id] = {state:'ok', source:source(url), fields:[{label:found.label,value:found.value+' 元'}],tables:[],links:[]};
+                }
+            }
         }
         return modules;
     }

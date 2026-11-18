@@ -55,9 +55,9 @@ final class CampusSilentRefresh {
     private CampusBatch batch;
     private CampusData saved;
     private String owner = "", campusJs, ssoJs, autoJs;
-    private boolean stopped, probing, catalogTried, portalRecovered, portalRetried, booting;
-    private long bootStarted, authDeadline, portalChanged, lastBeat;
-    private String portalSnapshot = "";
+    private boolean stopped, probing, portalRecovered, portalRetried, booting;
+    private long bootStarted, authDeadline, lastBeat;
+    private final CampusPortalScan portalScan = new CampusPortalScan();
     private int generation;
 
     static boolean running() { return current != null; }
@@ -158,7 +158,10 @@ final class CampusSilentRefresh {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !CampusServices.allowed(r.getUrl().toString()); }
             @Override public boolean shouldOverrideUrlLoading(WebView v, String url) { return !CampusServices.allowed(url); }
-            @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) { probing = false; }
+            @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
+                probing = false;
+                if (CampusServices.allowed(url) && autoJs != null) v.evaluateJavascript(autoJs + "\nNwpuAuto.install();", ignored -> { });
+            }
             @Override public void onPageFinished(WebView v, String url) { CookieManager.getInstance().flush(); if (booting) schedule(30); }
             @Override public void onReceivedSslError(WebView v, android.webkit.SslErrorHandler h, android.net.http.SslError e) { h.cancel(); end(false, true); }
             @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) { if (r.isForMainFrame()) end(false, true); }
@@ -178,14 +181,12 @@ final class CampusSilentRefresh {
     private void bootstrap() {
         generation++;
         booting = true;
-        catalogTried = false;
         portalRecovered = false;
+        portalScan.reset();
         auth.reset();
         handoffs.clear();
         bootStarted = SystemClock.elapsedRealtime();
         authDeadline = bootStarted + 45_000;
-        portalSnapshot = "";
-        portalChanged = bootStarted;
         web.loadUrl(CampusServices.PORTAL_SSO);
         schedule(50);
     }
@@ -256,19 +257,15 @@ final class CampusSilentRefresh {
         String url = web.getUrl();
         if (url == null || !"ecampus.nwpu.edu.cn".equals(Uri.parse(url).getHost())) { schedule(1000); return; }
         if (r.optBoolean("portalError") && !portalRecovered) { portalRecovered = true; web.loadUrl(CampusServices.PORTAL); schedule(100); return; }
-        if (!catalogTried) {
-            catalogTried = true;
+        CampusPortalScan.Step step = portalScan.observe(r, SystemClock.elapsedRealtime());
+        if (step == CampusPortalScan.Step.CLICK_CATALOG) {
             web.evaluateJavascript("NwpuSso.click('catalog'," + JSONObject.quote("catalog-" + active) + ")", ignored -> schedule(80));
             return;
         }
-        long now = SystemClock.elapsedRealtime();
-        String snapshot = String.valueOf(r.optJSONArray("apps")) + r.optJSONObject("routes") + r.optJSONObject("portalModules");
-        if (!snapshot.equals(portalSnapshot)) { portalSnapshot = snapshot; portalChanged = now; }
-        boolean empty = (r.optJSONArray("apps") == null || r.optJSONArray("apps").length() == 0)
-                && (r.optJSONObject("routes") == null || r.optJSONObject("routes").length() == 0);
-        if ((empty || r.optBoolean("busy") || now - portalChanged < 200) && now - bootStarted < 5000) { schedule(80); return; }
+        if (step == CampusPortalScan.Step.WAIT) { schedule(80); return; }
         JSONObject routes = r.optJSONObject("routes");
-        finishBootstrap(routes == null ? new JSONObject() : routes, r.optJSONObject("portalModules"), active);
+        JSONObject modules = portalScan.modules.length() > 0 ? portalScan.modules : r.optJSONObject("portalModules");
+        finishBootstrap(routes == null ? new JSONObject() : routes, modules, active);
     }
 
     private void finishBootstrap(JSONObject routes, JSONObject modules, int active) {

@@ -36,8 +36,7 @@ public class CampusWebActivity extends Activity {
     private WebView web;
     private TextView title,status,primary;
     private String script,ssoScript,autoScript,owner="",lastSnapshot="",run;
-    private String portalSnapshot="";
-    private long portalChanged;
+    private final CampusPortalScan portalScan=new CampusPortalScan();
     private boolean portalRecovered;
     private View cover,actions;
     private FrameLayout stage;
@@ -49,7 +48,7 @@ public class CampusWebActivity extends Activity {
     private CampusServices.Service service;
     private final List<CampusServices.Service> queue=new ArrayList<>();
     private int index,generation,success,unavailable;
-    private boolean all,automatic,completed,writing,probing,electricBusy,electricRequested,electricRetry;
+    private boolean all,automatic,completed,writing,probing,electricBusy,electricRequested,electricRetry,cardSso;
     private int restoredIndex=-1;
     private long due,authDeadline,bootstrapStarted,moduleStarted,lastBeat;
     private boolean bootstrapping,resumeService,portalRetried,keepPortalRetry,catalogTried,portalActivated,centralExpired,authPaused,challengeActive;
@@ -120,7 +119,10 @@ public class CampusWebActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r) { return !navigate(r.getUrl().toString()); }
             @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !navigate(url); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon) { probing=false; }
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon) {
+                probing=false;
+                if (CampusServices.allowed(url) && autoScript!=null) v.evaluateJavascript(autoScript+"\nNwpuAuto.install();",ignored -> {});
+            }
             @Override public void onPageFinished(WebView v,String url) { CookieManager.getInstance().flush(); if (service!=null) schedule(30); }
             @Override public void onReceivedSslError(WebView v,SslErrorHandler h,SslError e) { h.cancel(); failure("network"); }
             @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e) { if (r.isForMainFrame()) failure("network"); }
@@ -136,7 +138,7 @@ public class CampusWebActivity extends Activity {
     }
     private void loadNext() {
         if (isFinishing() || isDestroyed()) return;
-        generation++; probing=false; electricBusy=false; electricRequested=false; electricRetry=false; lastSnapshot=""; handler.removeCallbacksAndMessages(null);
+        generation++; probing=false; electricBusy=false; electricRequested=false; electricRetry=false; cardSso=false; lastSnapshot=""; handler.removeCallbacksAndMessages(null);
         bootstrapping=false; centralExpired=false; challengeActive=false; portalActivated=false; catalogTried=false;
         if (!keepPortalRetry) { portalRetried=false; collection=new CampusReadSession(); moduleStarted=android.os.SystemClock.elapsedRealtime(); } keepPortalRetry=false;
         actions.setVisibility(View.GONE); if (automatic) cover.setVisibility(View.VISIBLE);
@@ -152,6 +154,7 @@ public class CampusWebActivity extends Activity {
         due=android.os.SystemClock.elapsedRealtime()+45_000;
         String initial=!all && index==0?getIntent().getStringExtra("url"):null;
         String entry=initial!=null && CampusServices.readUrl(initial)?initial:saved==null?service.entry:saved.route(service);
+        if ("card".equals(service.id) && CampusServices.byId("card").entry.equals(entry)) { entry=CampusBatch.ELECTRIC_SSO; cardSso=true; }
         web.loadUrl(entry); schedule(1200);
     }
     @Override public void onResume() {
@@ -194,7 +197,7 @@ public class CampusWebActivity extends Activity {
             try { inspection=result(value); fresh=inspection.getJSONObject("snapshot"); m=fresh.getJSONObject("modules").getJSONObject(id); } catch (Exception e) { timeout(); return; }
             if (inspection.optBoolean("settling") || !collection.stable(m,inspection.optInt("pending"))) { timeout(); return; }
             String state=m.optString("state");
-            if ("login".equals(state)) { if (!portalRetried) { portalRetried=true; beginBootstrap(true); } else failure("unavailable"); return; }
+            if ("login".equals(state)) { if (fallbackCardSso()) return; if (!portalRetried) { portalRetried=true; beginBootstrap(true); } else failure("unavailable"); return; }
             JSONArray candidates=inspection.optJSONArray("actions");
             boolean prepare=inspection.optBoolean("preparing");
             try { collection.remember(candidates); if (!prepare && ("ok".equals(state) || "empty".equals(state))) collection.add(m); } catch (Exception ignored) { collection.markIncomplete(); }
@@ -236,12 +239,19 @@ public class CampusWebActivity extends Activity {
         }
         return false;
     }
+    private boolean fallbackCardSso() {
+        if (service==null || !"card".equals(service.id) || cardSso) return false;
+        cardSso=true; handoffs.clear(); auth.reset(); collection=new CampusReadSession();
+        due=android.os.SystemClock.elapsedRealtime()+45_000;
+        web.loadUrl(CampusBatch.ELECTRIC_SSO); schedule(800); return true;
+    }
     private void timeout() {
         if (bootstrapping) { if (android.os.SystemClock.elapsedRealtime()-bootstrapStarted>30_000) finishBootstrap(new JSONObject(),generation); else schedule(1000); return; }
         if (all && android.os.SystemClock.elapsedRealtime()>due) {
             collection.markIncomplete();
             if (!collection.limited() && android.os.SystemClock.elapsedRealtime()-moduleStarted<20*60_000 && continueRead()) return;
-            if (collection.hasResult()) finishCollected(generation,true); else failure("unavailable");
+            if (collection.hasResult()) finishCollected(generation,true);
+            else if (!fallbackCardSso()) failure("unavailable");
         } else schedule(800);
     }
     private void finishCollected(int active,boolean partial) {
@@ -263,7 +273,7 @@ public class CampusWebActivity extends Activity {
         generation++; handler.removeCallbacksAndMessages(null); probing=false; electricBusy=false; centralExpired=false; challengeActive=false;
         bootstrapping=true; resumeService=resume; catalogTried=false; portalRecovered=false; auth.reset(); handoffs.clear();
         bootstrapStarted=android.os.SystemClock.elapsedRealtime(); authDeadline=bootstrapStarted+45_000;
-        portalSnapshot=""; portalChanged=bootstrapStarted;
+        portalScan.reset();
         title.setText("统一认证"); actions.setVisibility(View.GONE); status.setText("正在复用翱翔门户会话，加载本人可用的校园服务入口…");
         web.loadUrl(CampusServices.PORTAL_SSO); schedule(50);
     }
@@ -296,6 +306,7 @@ public class CampusWebActivity extends Activity {
             return false;
         }
         if (decision==CampusAuth.Decision.SERVICE_ENTRY) {
+            if ("card".equals(service.id) && !cardSso) { cardSso=true; handoffs.clear(); auth.reset(); web.loadUrl(CampusBatch.ELECTRIC_SSO); schedule(800); return false; }
             if (!portalRetried) { portalRetried=true; beginBootstrap(true); }
             else { status.setText("这个服务的统一认证入口尚未适配，将稍后自动重试。"); if (all) failure("unavailable"); else schedule(1500); }
             return false;
@@ -311,14 +322,14 @@ public class CampusWebActivity extends Activity {
         String url=web.getUrl();
         if (url==null || !"ecampus.nwpu.edu.cn".equals(Uri.parse(url).getHost())) { timeout(); return; }
         if (r.optBoolean("portalError") && !portalRecovered) { portalRecovered=true; web.loadUrl(CampusServices.PORTAL); schedule(100); return; }
-        if (!catalogTried) {
+        CampusPortalScan.Step step=portalScan.observe(r,android.os.SystemClock.elapsedRealtime());
+        if (step==CampusPortalScan.Step.CLICK_CATALOG) {
             catalogTried=true; web.evaluateJavascript("NwpuSso.click('catalog',"+JSONObject.quote("catalog-"+active)+")",ignored -> schedule(80)); return;
         }
-        long now=android.os.SystemClock.elapsedRealtime(); String snapshot=String.valueOf(r.optJSONArray("apps"))+String.valueOf(r.optJSONObject("routes"))+String.valueOf(r.optJSONObject("portalModules"));
-        if (!snapshot.equals(portalSnapshot)) { portalSnapshot=snapshot; portalChanged=now; }
-        boolean empty=(r.optJSONArray("apps")==null || r.optJSONArray("apps").length()==0) && (r.optJSONObject("routes")==null || r.optJSONObject("routes").length()==0);
-        if ((empty || r.optBoolean("busy") || now-portalChanged<200) && now-bootstrapStarted<5000) { schedule(80); return; }
-        JSONObject routes=r.optJSONObject("routes"); finishBootstrap(routes==null?new JSONObject():routes,r.optJSONObject("portalModules"),active);
+        if (step==CampusPortalScan.Step.WAIT) { schedule(80); return; }
+        JSONObject routes=r.optJSONObject("routes");
+        JSONObject modules=portalScan.modules.length()>0?portalScan.modules:r.optJSONObject("portalModules");
+        finishBootstrap(routes==null?new JSONObject():routes,modules,active);
     }
     private void finishBootstrap(JSONObject routes,int active) {
         finishBootstrap(routes,null,active);

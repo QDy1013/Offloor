@@ -163,7 +163,7 @@ final class CampusChanges {
                 if (r[0]) post(c, ID_ELECTRIC, "宿舍电费不足", CampusBalance.electricAlert(kwh, price, threshold), CampusActivity.class);
             }
             if (p.getBoolean("network", true)) {
-                Double yuan = ChangeDiff.firstNumber(CampusSummary.field(data.module("network"), "余额|可用金额"));
+                Double yuan = ChangeDiff.firstNumber(CampusSummary.field(data.module("network"), "余额|可用金额|剩余金额"));
                 double threshold = networkThreshold(p);
                 boolean[] r = ChangeDiff.lowAlert(yuan, threshold, p.getBoolean("network_low", false));
                 p.edit().putBoolean("network_low", r[1]).apply();
