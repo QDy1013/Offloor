@@ -224,7 +224,8 @@ final class CampusChanges {
         Intent open = new Intent(c, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         try {
-            m.notify(id, b.setSmallIcon(android.R.drawable.ic_dialog_info)
+            m.notify(id, b.setSmallIcon(Ui.notifIcon(c, android.R.drawable.ic_dialog_info))
+                    .setColor(0xFFC96442)
                     .setContentTitle(title)
                     .setContentText(text)
                     .setStyle(new Notification.BigTextStyle().bigText(text))

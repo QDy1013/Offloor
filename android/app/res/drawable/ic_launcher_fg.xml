@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 「Offloor」图标前景：三层逐渐变短变淡的聊天楼层（不用再爬的楼），楼外一弯朱红的新月。
-     内容全部落在自适应图标中心 66dp 安全区内，圆形、方形、水滴形遮罩都不会裁到。 -->
+<!-- 「Offloor.」图标前景：极简断环与暖赤陶圆点，呼应品牌字标与「走出重复消息楼层」的轻盈感。
+     全部图形严格落在 108dp 画布中心 66dp 安全区内，圆形、方圆与水滴形裁切下都保持居中平衡。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- 三层楼：长 → 短，实 → 淡 -->
-    <path android:fillColor="#1C1C1E"
-        android:pathData="M37.5,48h25a4.5,4.5 0 0 1 0,9h-25a4.5,4.5 0 0 1 0,-9z" />
-    <path android:fillColor="#1C1C1E" android:fillAlpha="0.45"
-        android:pathData="M37.5,61h17a4.5,4.5 0 0 1 0,9h-17a4.5,4.5 0 0 1 0,-9z" />
-    <path android:fillColor="#1C1C1E" android:fillAlpha="0.18"
-        android:pathData="M37.5,74h7a4.5,4.5 0 0 1 0,9h-7a4.5,4.5 0 0 1 0,-9z" />
-    <!-- 新月：单独一块形状，单色主题图标里也能看出是月牙 -->
-    <path android:fillColor="#E5484D"
-        android:pathData="M79.65,42.61A10,10 0 1 1 68.41,30.13A8.5,8.5 0 0 0 79.65,42.61z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#181715"
+        android:strokeWidth="6.8"
+        android:strokeLineCap="round"
+        android:pathData="M54.89,68.06A15.5,15.5 0 1,1 67.55,54.96" />
+    <path
+        android:fillColor="#C96442"
+        android:pathData="M68.8,63.9a4.9,4.9 0 1,0 0,9.8a4.9,4.9 0 1,0 0,-9.8z" />
 </vector>

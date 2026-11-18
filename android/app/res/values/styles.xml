@@ -10,6 +10,6 @@
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <color name="page_bg">#F3F2EE</color>
-    <color name="accent">#4A55D8</color>
+    <color name="page_bg">#FAF9F5</color>
+    <color name="accent">#C96442</color>
 </resources>

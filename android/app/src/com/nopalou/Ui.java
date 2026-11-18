@@ -611,6 +611,12 @@ final class Ui {
         return MainActivity.dp(c, v);
     }
 
+    /** 运行时按名称查通知小图标（构建脚本不生成 R 类），找不到时退回系统默认图标。 */
+    static int notifIcon(Context c, int fallback) {
+        int id = c.getResources().getIdentifier("ic_notif", "drawable", c.getPackageName());
+        return id != 0 ? id : fallback;
+    }
+
     static GradientDrawable round(Context c, int fill, float radiusDp) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(fill);

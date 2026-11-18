@@ -25,17 +25,18 @@ final class CampusSyncBanner extends FrameLayout implements SharedPreferences.On
 
     static void add(Activity host,LinearLayout parent) {
         CampusSyncBanner indicator=new CampusSyncBanner(host);
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(Ui.dp(host,32),Ui.dp(host,32));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(Ui.dp(host,28),Ui.dp(host,28));
         params.leftMargin=Ui.dp(host,4);
+        params.rightMargin=Ui.dp(host,2);
         parent.addView(indicator,params);
     }
     CampusSyncBanner(Context context) {
         super(context); prefs=context.getSharedPreferences("campus-auto",Context.MODE_PRIVATE);
         setFocusable(true); setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         ring=new Ring(context); addView(ring,new FrameLayout.LayoutParams(-1,-1));
-        value=CourseUi.text(context,"",9,Ui.ACCENT,true); value.setGravity(Gravity.CENTER);
+        value=CourseUi.text(context,"",10,Ui.ACCENT,true); value.setGravity(Gravity.CENTER);
         addView(value,new FrameLayout.LayoutParams(-1,-1));
-        setVisibility(View.INVISIBLE);
+        setVisibility(View.GONE);
         refresh();
     }
     private int dp(float value) { return Ui.dp(getContext(),value); }
@@ -56,14 +57,20 @@ final class CampusSyncBanner extends FrameLayout implements SharedPreferences.On
         String result=prefs.getString("sync_result","");
         boolean recent=!result.isEmpty() && CampusSyncState.visible(false,false,finished,now);
         boolean visible=active || pending || recent;
-        setVisibility(visible?View.VISIBLE:View.INVISIBLE);
+        setVisibility(visible?View.VISIBLE:View.GONE);
         if (!visible) return;
         int total=prefs.getInt("total",0), done=Math.max(0,Math.min(total,prefs.getInt("done",0)));
         boolean complete=!active && !pending && CampusSyncState.completed(result);
         boolean partial=complete && "partial".equals(result);
         int percent=CampusSyncState.percent(done,total,complete);
-        ring.setProgress(percent,active && (total<=0 || pending));
-        value.setText(active || pending?"···":complete?"✓":"!");
+        boolean loading=active || pending;
+        ring.setProgress(percent,active && (total<=0 || pending),loading || complete ? Ui.ACCENT : Ui.AMBER_TX);
+        if (loading) {
+            value.setText("");
+        } else {
+            value.setTextColor(complete ? Ui.GREEN : Ui.AMBER_TX);
+            value.setText(complete ? "✓" : "!");
+        }
         String title=active || pending?"校园信息同步中":partial?"校园信息已更新":complete?"校园信息已同步":"部分信息暂未同步";
         String phase=prefs.getString("sync_phase","");
         String attention=prefs.getString(CampusSilentRefresh.ATTENTION,"");
@@ -78,20 +85,24 @@ final class CampusSyncBanner extends FrameLayout implements SharedPreferences.On
         private final RectF bounds=new RectF();
         private int progress;
         private boolean indeterminate;
+        private int color=Ui.ACCENT;
         Ring(Context context) { super(context); setContentDescription(null); }
-        void setProgress(int value,boolean spinning) {
-            progress=Math.max(0,Math.min(100,value)); indeterminate=spinning; invalidate();
+        void setProgress(int value,boolean spinning,int tint) {
+            progress=Math.max(0,Math.min(100,value)); indeterminate=spinning; color=tint; invalidate();
         }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            float stroke=dp(3), inset=stroke/2+dp(1);
-            bounds.set(inset,inset,getWidth()-inset,getHeight()-inset);
+            float diameter=Math.min(getWidth(),getHeight())-dp(10);
+            if (diameter<=0) return;
+            float left=(getWidth()-diameter)/2f, top=(getHeight()-diameter)/2f;
+            float stroke=dp(1.6f);
+            bounds.set(left,top,left+diameter,top+diameter);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(stroke); paint.setStrokeCap(Paint.Cap.ROUND);
-            paint.setColor(Ui.withAlpha(Ui.ACCENT,35)); canvas.drawArc(bounds,0,360,false,paint);
-            paint.setColor(Ui.ACCENT);
+            paint.setColor(Ui.withAlpha(Ui.RING,110)); canvas.drawArc(bounds,0,360,false,paint);
+            paint.setColor(color);
             if (indeterminate) {
-                float start=(SystemClock.uptimeMillis()/5f)%360f-90f;
-                canvas.drawArc(bounds,start,100,false,paint); postInvalidateDelayed(32);
+                float start=(SystemClock.uptimeMillis()/4f)%360f-90f;
+                canvas.drawArc(bounds,start,88,false,paint); postInvalidateDelayed(24);
             } else if (progress>0) canvas.drawArc(bounds,-90,360f*progress/100f,false,paint);
         }
     }

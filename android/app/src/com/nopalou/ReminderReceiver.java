@@ -136,7 +136,8 @@ public final class ReminderReceiver extends BroadcastReceiver {
         Intent launch = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                 | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent open = PendingIntent.getActivity(context, NOTIFICATION_ID, launch, PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(NOTIFICATION_ID, builder.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+        manager.notify(NOTIFICATION_ID, builder.setSmallIcon(Ui.notifIcon(context, android.R.drawable.ic_lock_idle_alarm))
+                .setColor(0xFFC96442)
                 .setContentTitle("学习待办即将到期")
                 .setContentText("打开 Offloor 查看")
                 .setVisibility(Notification.VISIBILITY_PRIVATE)

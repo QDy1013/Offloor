@@ -163,8 +163,8 @@ public class StudyRoomActivity extends Activity {
 
     private LinearLayout card() {
         LinearLayout c = CourseUi.column(this);
-        c.setPadding(dp(18), dp(16), dp(18), dp(18)); Ui.cardSurface(c, 18);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(12); body.addView(c, p);
+        c.setPadding(dp(16), dp(14), dp(16), dp(14)); Ui.cardSurface(c, 14);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(10); body.addView(c, p);
         return c;
     }
 
@@ -172,8 +172,8 @@ public class StudyRoomActivity extends Activity {
     private LinearLayout formSection(LinearLayout parent, String label) {
         LinearLayout section = CourseUi.column(this);
         section.setPadding(dp(16), dp(14), dp(16), dp(16));
-        section.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.withAlpha(Ui.SUB, 24), 18, 1f));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(14);
+        section.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.LINE, 14, 0.75f));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(12);
         parent.addView(section, p);
         section.addView(text(label, 14, Ui.TEXT, true));
         CourseUi.gap(section, 8);
@@ -182,42 +182,54 @@ public class StudyRoomActivity extends Activity {
 
     private TextView action(LinearLayout target, String label, Runnable run) {
         TextView button = CourseUi.action(this, label, false, run); button.setEnabled(!busy);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(48)); p.topMargin = dp(8);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(42)); p.topMargin = dp(8);
         target.addView(button, p); return button;
     }
 
-    /** 胶囊按钮：选中是强调色底，未选中是浅填充。 */
+    /** 轻量筛选标签：细描边素卡片风，不再用又高又圆的大胶囊。 */
     private TextView chip(LinearLayout parent, String label, boolean selected, Runnable run) {
-        TextView view = text(label, 14, selected ? Ui.ON_ACCENT : Ui.TEXT, true);
+        TextView view = text(label, 12, selected ? Ui.ACCENT : Ui.SUB, selected);
         view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(14), dp(9), dp(14), dp(9));
-        view.setMinHeight(dp(48));
-        view.setBackground(Ui.ripple(this, Ui.round(this, selected ? Ui.ACCENT : Ui.FILL, 99), Ui.press(), 99));
+        view.setSingleLine(true);
+        view.setPadding(dp(12), dp(6), dp(12), dp(6));
+        view.setMinHeight(dp(32));
+        android.graphics.drawable.Drawable bg = selected
+                ? Ui.roundStroke(this, Ui.ACCENT_BG, Ui.withAlpha(Ui.ACCENT, 90), 9, 0.75f)
+                : Ui.roundStroke(this, Ui.CARD, Ui.LINE, 9, 0.75f);
+        view.setBackground(Ui.ripple(this, bg, Ui.press(), 9));
         view.setContentDescription(label + (selected ? "，已选" : ""));
         view.setOnClickListener(v -> run.run());
         return view;
     }
 
-    /** 轨道里的分段按钮：选中是强调色，未选中是白卡，压在灰底上分得清。 */
+    /** 分段轨道按钮：统一应用内其余分段栏样式。 */
     private TextView trackChip(LinearLayout parent, String label, boolean selected, Runnable run) {
-        TextView view = chip(parent, label, selected, run);
-        if (!selected) view.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 99), Ui.press(), 99));
+        TextView view = text(label, 13, selected ? Ui.TEXT : Ui.SUB, selected);
+        view.setGravity(Gravity.CENTER);
+        view.setSingleLine(true);
+        view.setMinHeight(dp(36));
+        android.graphics.drawable.Drawable bg = selected
+                ? Ui.roundStroke(this, Ui.CARD, Ui.LINE, 9, 0.75f) : null;
+        view.setBackground(Ui.ripple(this, bg, Ui.press(), 9));
+        view.setContentDescription(label + (selected ? "，已选" : ""));
+        view.setOnClickListener(v -> run.run());
         return view;
     }
 
     private void slotChip(LinearLayout parent, String label, Runnable run) {
-        TextView view = text(label, 13, Ui.ACCENT, true);
+        TextView view = text(label, 12, Ui.ACCENT, true);
         view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(12), dp(8), dp(12), dp(8));
-        view.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.ACCENT_BG, Ui.withAlpha(Ui.ACCENT, 40), 99, 1f), Ui.press(), 99));
-        view.setMinHeight(dp(48));
+        view.setSingleLine(true);
+        view.setPadding(dp(11), dp(6), dp(11), dp(6));
+        view.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.CARD, Ui.LINE, 9, 0.75f), Ui.press(), 9));
+        view.setMinHeight(dp(32));
         view.setContentDescription("更多时段".equals(label) ? "查看并选择更多时段" : "预约 " + label);
         view.setOnClickListener(v -> run.run());
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(6);
         parent.addView(view, p);
     }
 
-    /** 一行可以横着划的胶囊；返回里面那层容器。 */
+    /** 一行可以横着划的轻标签条；返回里面那层容器。 */
     private LinearLayout horizontalScroll(LinearLayout parent, int bottomMargin) {
         HorizontalScrollView scroll = new HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false); scroll.setClipToPadding(false);
@@ -238,11 +250,12 @@ public class StudyRoomActivity extends Activity {
         if (!active || isFinishing() || isDestroyed()) return;
         LinearLayout root = CourseUi.column(this); root.setBackgroundColor(Ui.BG); setContentView(root); Ui.systemBars(this, root);
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(12), dp(8), dp(12), dp(8));
+        header.setPadding(dp(10), dp(8), dp(12), dp(6));
         header.addView(CourseUi.icon(this, "prev", "返回校园", this::finish));
-        header.addView(text("研修室", 24, Ui.TEXT, true));
+        TextView title = text("研修室", 22, Ui.TEXT, false);
+        title.setTypeface(Ui.editorialBold());
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         if (ready) {
-            View spacer = new View(this); header.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
             header.addView(CourseUi.icon(this, "sync", "刷新校方数据", () -> { if (!busy) { if (!mine) invalidateRoomCache(); rows = null; query(); } }));
         }
         root.addView(header);
@@ -266,25 +279,34 @@ public class StudyRoomActivity extends Activity {
         paging();
     }
 
-    /** 顶部状态卡：连接状态、错误、未核对保护，都集中在这一张卡里。 */
+    /** 顶部状态区：已连接且无异常时仅用一行细字提示更新时间，不再堆叠卡片与大按钮。 */
     private void statusCard() {
+        boolean quietOk = ready && !busy && error.isEmpty() && message.isEmpty() && !pendingWrite();
+        if (quietOk) {
+            if (updatedAt > 0) {
+                TextView quiet = text("西工大图书馆研修室 · 更新于 " + clockOf(updatedAt), 11, Ui.MUTE, false);
+                quiet.setPadding(dp(4), dp(2), dp(4), dp(10));
+                body.addView(quiet);
+            }
+            return;
+        }
         LinearLayout intro = card();
         LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(text("西工大图书馆研修室", 17, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
-        head.addView(tag(busy ? "连接中" : ready ? "已连接" : "未连接",
-                busy ? Ui.AMBER_TX : ready ? Ui.GREEN : Ui.SUB,
-                busy ? Ui.AMBER_BG : ready ? Ui.GREEN_BG : Ui.FILL));
+        head.addView(text("西工大图书馆研修室", 16, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView status = text(busy ? "连接中" : ready ? "已连接" : "未连接", 12,
+                busy ? Ui.AMBER_TX : ready ? Ui.GREEN : Ui.MUTE, true);
+        head.addView(status);
         intro.addView(head);
-        CourseUi.gap(intro, 8);
-        intro.addView(text(ready ? "借用已连接的校园账号 · 可能需要校园网 · 只在手动确认后提交或取消"
-                : "先连接校园账号；校方要求安全验证时会打开官方页面。", 12, Ui.SUB, false));
-        if (ready && updatedAt > 0) {
-            CourseUi.gap(intro, 6);
-            intro.addView(text("数据更新于 " + clockOf(updatedAt), 12, Ui.MUTE, false));
-        }
+        CourseUi.gap(intro, 6);
+        intro.addView(text(ready ? "需手动确认后提交或取消"
+                : busy ? "正在连接图书馆系统，可能需要校园网环境…"
+                : "连接校方账号后可查询预约，验证时将打开官方页面。", 12, Ui.SUB, false));
         if (busy) {
-            CourseUi.gap(intro, 10);
-            intro.addView(text("正在读取校方数据…", 13, Ui.ACCENT, false));
+            CourseUi.gap(intro, 12);
+            android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            bar.setIndeterminate(true);
+            bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
+            intro.addView(bar, new LinearLayout.LayoutParams(-1, dp(3)));
         }
         if (!error.isEmpty()) {
             CourseUi.gap(intro, 10);
@@ -297,10 +319,22 @@ public class StudyRoomActivity extends Activity {
             intro.addView(note);
         }
         if (!ready) {
-            action(intro, busy ? "正在连接…" : "重新连接", this::connect);
-            if (session != null) action(intro, "打开校方页面完成验证", () -> session.openOfficial(this::reconnectFromOfficial));
-            action(intro, "连接或更换校园账号",
-                    () -> startActivity(new Intent(this, NwpuImportActivity.class).putExtra("school_id", "nwpu")));
+            if (!busy) {
+                CourseUi.gap(intro, 12);
+                TextView retry = CourseUi.action(this, session != null ? "去官方页面完成验证" : "重新连接", true,
+                        session != null ? () -> session.openOfficial(this::reconnectFromOfficial) : this::connect);
+                retry.setMinHeight(dp(42));
+                intro.addView(retry, new LinearLayout.LayoutParams(-1, dp(42)));
+                CourseUi.gap(intro, 8);
+                LinearLayout links = new LinearLayout(this); links.setGravity(Gravity.CENTER);
+                if (session != null) {
+                    links.addView(inlineLink("重连", this::connect));
+                    links.addView(text("  ·  ", 12, Ui.LINE, false));
+                }
+                links.addView(inlineLink("更换校园账号",
+                        () -> startActivity(new Intent(this, NwpuImportActivity.class).putExtra("school_id", "nwpu"))));
+                intro.addView(links);
+            }
             return;
         }
         if (pendingWrite()) {
@@ -310,6 +344,14 @@ public class StudyRoomActivity extends Activity {
             if (mine && reconciled) action(intro, "我已核对，解除重复操作保护", this::release);
             else action(intro, "去核对我的预约", () -> { if (busy) return; mine = true; page = 1; rows = null; query(); });
         }
+    }
+
+    private TextView inlineLink(String label, Runnable run) {
+        TextView t = text(label, 12, Ui.ACCENT, true);
+        t.setPadding(dp(8), dp(6), dp(8), dp(6));
+        t.setBackground(Ui.ripple(this, null, Ui.press(), 8));
+        t.setOnClickListener(v -> run.run());
+        return t;
     }
 
     private void release() {
@@ -325,8 +367,8 @@ public class StudyRoomActivity extends Activity {
     /** 空闲房间 / 我的预约 两段切换。 */
     private void modeRow() {
         LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setBackground(Ui.round(this, Ui.FILL, 99)); row.setPadding(dp(4), dp(4), dp(4), dp(4));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(12); body.addView(row, p);
+        row.setBackground(Ui.round(this, Ui.FILL, 11)); row.setPadding(dp(3), dp(3), dp(3), dp(3));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(10); body.addView(row, p);
         row.addView(trackChip(row, "看空闲房间", !mine, () -> switchMode(false)), new LinearLayout.LayoutParams(0, -2, 1));
         row.addView(trackChip(row, "我的预约", mine, () -> switchMode(true)), new LinearLayout.LayoutParams(0, -2, 1));
     }
@@ -568,28 +610,25 @@ public class StudyRoomActivity extends Activity {
         }
         if (best == null) return;
         final JSONObject picked = best;
-        LinearLayout hero = CourseUi.column(this);
-        hero.setPadding(dp(20), dp(18), dp(20), dp(18));
-        hero.setBackground(Ui.heroSurface(this, 22));
-        Ui.lift(hero, 6f);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.bottomMargin = dp(12);
-        body.addView(hero, lp);
+        LinearLayout hero = card();
+        hero.setPadding(dp(18), dp(16), dp(18), dp(16));
         int st = picked.optInt("state", -1);
-        hero.addView(text(st == 4 ? "当前使用中的研修室" : "下一场研修室预约", 12, Ui.HERO_SUB, true));
+        hero.addView(text(st == 4 ? "当前使用中的研修室" : "下一场研修室预约", 12, Ui.ACCENT, true));
         CourseUi.gap(hero, 6);
-        hero.addView(text(picked.optString("name", "研修室"), 20, Ui.ON_HERO, true));
+        TextView heroName = text(picked.optString("name", "研修室"), 20, Ui.TEXT, false);
+        heroName.setTypeface(Ui.editorialBold());
+        hero.addView(heroName);
         String begin = picked.optString("begin"), end = picked.optString("end");
         long beginsAt = StudyRoomPlan.stamp(begin);
         String day = beginsAt > 0 ? StudyRoomPlan.day(beginsAt) : (begin.length() >= 10 ? begin.substring(0, 10) : date);
         CourseUi.gap(hero, 6);
-        hero.addView(text(StudyRoomPlan.relative(day, System.currentTimeMillis()) + " " + hhmm(begin) + "–" + hhmm(end), 14, Ui.ON_HERO, true));
+        hero.addView(text(StudyRoomPlan.relative(day, System.currentTimeMillis()) + " " + hhmm(begin) + "–" + hhmm(end), 14, Ui.TEXT, true));
         String where = picked.optString("location");
-        if (!where.isEmpty()) { CourseUi.gap(hero, 4); hero.addView(text(where, 12, Ui.HERO_SUB, false)); }
+        if (!where.isEmpty()) { CourseUi.gap(hero, 4); hero.addView(text(where, 12, Ui.SUB, false)); }
         String hint = countdown(begin, end);
         if (!hint.isEmpty()) {
-            CourseUi.gap(hero, 10);
-            hero.addView(Ui.tag(this, hint, Ui.ON_HERO, Ui.withAlpha(android.graphics.Color.WHITE, 28)), new LinearLayout.LayoutParams(-2, -2));
+            CourseUi.gap(hero, 8);
+            hero.addView(text(hint, 12, Ui.ACCENT, true));
         }
     }
 

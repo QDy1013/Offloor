@@ -457,33 +457,83 @@ public class CampusActivity extends Activity {
         String locationLabel=selectedRoomLocations.isEmpty()?"选择教学楼"
                 :(selectedRoomLocations.size()==1?selectedRoomLocations.iterator().next()
                 :selectedRoomLocations.iterator().next()+" 等"+selectedRoomLocations.size()+"处");
-        LinearLayout query=card(); query.addView(text("今天 · "+CampusClassroomQuery.today(System.currentTimeMillis()),13,Ui.SUB,true)); CourseUi.gap(query,12);
-        TextView campus=CourseUi.action(this,roomCampus+"  ▾",false,() -> new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择校区").setItems(new String[]{"长安校区","友谊校区"},(d,i) -> {
-            roomCampus=i==0?"长安校区":"友谊校区"; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLocations.clear(); getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply(); roomOptionsChanged();
-        }).show());
-        LinearLayout places=new LinearLayout(this); query.addView(places);
-        campus.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); places.addView(campus,new LinearLayout.LayoutParams(0,dp(44),1));
-        TextView location=CourseUi.action(this,locationLabel+"  ▾",false,() -> showLocationPicker(locations));
-        location.setSingleLine(true); location.setEllipsize(android.text.TextUtils.TruncateAt.END); location.setContentDescription("教学楼筛选，"+locationLabel);
-        location.setEnabled(!locations.isEmpty()); location.setAlpha(locations.isEmpty()?.5f:1f);
-        location.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
-        LinearLayout.LayoutParams locationParams=new LinearLayout.LayoutParams(0,dp(44),1); locationParams.leftMargin=dp(10); places.addView(location,locationParams); CourseUi.gap(query,10);
-        LinearLayout times=new LinearLayout(this); query.addView(times);
-        TextView start=CourseUi.action(this,"开始 "+CampusClassroomQuery.time(roomStart),false,() -> chooseRoomTime(true));
-        TextView end=CourseUi.action(this,"结束 "+CampusClassroomQuery.time(roomEnd),false,() -> chooseRoomTime(false));
-        start.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12)); end.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
-        times.addView(start,new LinearLayout.LayoutParams(0,dp(44),1)); LinearLayout.LayoutParams endParams=new LinearLayout.LayoutParams(0,dp(44),1); endParams.leftMargin=dp(10); times.addView(end,endParams);
-        CourseUi.gap(query,10);
-        LinearLayout presets=new LinearLayout(this); query.addView(presets);
-        TextView oneHour=CourseUi.action(this,"现在起 1 小时",false,() -> quickRoomPreset(1));
-        TextView twoHours=CourseUi.action(this,"现在起 2 小时",false,() -> quickRoomPreset(2));
-        oneHour.setTextSize(13); twoHours.setTextSize(13);
-        oneHour.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,10),Ui.press(),10));
-        twoHours.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,10),Ui.press(),10));
-        presets.addView(oneHour,new LinearLayout.LayoutParams(0,dp(36),1));
-        LinearLayout.LayoutParams twoLp=new LinearLayout.LayoutParams(0,dp(36),1); twoLp.leftMargin=dp(10);
-        presets.addView(twoHours,twoLp);
-        CourseUi.gap(query,14); query.addView(CourseUi.action(this,roomLoading?"重新查询此时段":"查询此时段",true,() -> startClassroomQuery(true)),CourseUi.row(dp(48)));
+        LinearLayout query=card(); query.setPadding(0,0,0,0);
+        // 第1行：今天日期 + 校区双切换滑块
+        LinearLayout rowCampus=new LinearLayout(this); rowCampus.setGravity(Gravity.CENTER_VERTICAL);
+        rowCampus.setPadding(dp(16),dp(11),dp(12),dp(11));
+        LinearLayout campusTitle=CourseUi.column(this);
+        campusTitle.addView(text("校区",12,Ui.MUTE,false));
+        campusTitle.addView(text("今天 · "+CampusClassroomQuery.today(System.currentTimeMillis()),11,Ui.SUB,false));
+        rowCampus.addView(campusTitle,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout seg=new LinearLayout(this); seg.setPadding(dp(2),dp(2),dp(2),dp(2));
+        seg.setBackground(Ui.round(this,Ui.FILL,9));
+        for (String cName:new String[]{"长安校区","友谊校区"}) {
+            boolean on=cName.equals(roomCampus);
+            TextView tab=text(cName.replace("校区",""),12,on?Ui.TEXT:Ui.SUB,on);
+            tab.setGravity(Gravity.CENTER); tab.setPadding(dp(12),dp(5),dp(12),dp(5));
+            tab.setBackground(Ui.ripple(this,on?Ui.roundStroke(this,Ui.CARD,Ui.LINE,7,0.75f):null,Ui.press(),7));
+            tab.setOnClickListener(v -> {
+                if (cName.equals(roomCampus)) return;
+                roomCampus=cName; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLocations.clear();
+                getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply();
+                roomOptionsChanged();
+            });
+            seg.addView(tab);
+        }
+        rowCampus.addView(seg); query.addView(rowCampus);
+        query.addView(Ui.hairline(this));
+
+        // 第2行：教学楼多选（整行轻触即选，不再用胖按钮）
+        LinearLayout rowLoc=new LinearLayout(this); rowLoc.setGravity(Gravity.CENTER_VERTICAL);
+        rowLoc.setPadding(dp(16),dp(13),dp(14),dp(13));
+        rowLoc.setBackground(Ui.ripple(this,null,Ui.press(),0));
+        rowLoc.setFocusable(true);
+        rowLoc.setContentDescription("教学楼筛选，"+locationLabel);
+        rowLoc.setEnabled(!locations.isEmpty());
+        rowLoc.addView(text("教学楼",14,Ui.SUB,false),new LinearLayout.LayoutParams(dp(64),-2));
+        TextView locVal=text(locationLabel,14,locations.isEmpty()?Ui.MUTE:Ui.TEXT,true);
+        locVal.setGravity(Gravity.END); locVal.setSingleLine(true); locVal.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        rowLoc.addView(locVal,new LinearLayout.LayoutParams(0,-2,1));
+        android.widget.ImageView locChev=new android.widget.ImageView(this); locChev.setImageDrawable(Ui.chevron(this,Ui.RING));
+        LinearLayout.LayoutParams lcLp=new LinearLayout.LayoutParams(dp(15),dp(15)); lcLp.leftMargin=dp(6);
+        rowLoc.addView(locChev,lcLp);
+        rowLoc.setOnClickListener(v -> showLocationPicker(locations));
+        query.addView(rowLoc);
+        query.addView(Ui.hairline(this));
+
+        // 第3行：起止时间 + 极简 1h / 2h 快捷字链
+        LinearLayout rowTime=new LinearLayout(this); rowTime.setGravity(Gravity.CENTER_VERTICAL);
+        rowTime.setPadding(dp(16),dp(11),dp(12),dp(11));
+        rowTime.addView(text("时段",14,Ui.SUB,false),new LinearLayout.LayoutParams(dp(64),-2));
+        LinearLayout timeLinks=new LinearLayout(this); timeLinks.setGravity(Gravity.CENTER_VERTICAL);
+        TextView start=text(CampusClassroomQuery.time(roomStart),15,Ui.TEXT,true);
+        start.setPadding(dp(6),dp(5),dp(6),dp(5)); start.setBackground(Ui.ripple(this,null,Ui.press(),8));
+        start.setOnClickListener(v -> chooseRoomTime(true));
+        timeLinks.addView(start);
+        timeLinks.addView(text(" – ",14,Ui.MUTE,false));
+        TextView end=text(CampusClassroomQuery.time(roomEnd),15,Ui.TEXT,true);
+        end.setPadding(dp(6),dp(5),dp(6),dp(5)); end.setBackground(Ui.ripple(this,null,Ui.press(),8));
+        end.setOnClickListener(v -> chooseRoomTime(false));
+        timeLinks.addView(end);
+        rowTime.addView(timeLinks,new LinearLayout.LayoutParams(0,-2,1));
+        for (int h=1;h<=2;h++) {
+            final int hrs=h;
+            TextView q=text(h+"小时",12,Ui.ACCENT,true);
+            q.setPadding(dp(9),dp(5),dp(9),dp(5));
+            q.setBackground(Ui.ripple(this,Ui.roundStroke(this,Ui.CARD,Ui.LINE,8,0.75f),Ui.press(),8));
+            q.setOnClickListener(v -> quickRoomPreset(hrs));
+            LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(-2,-2);
+            if (h==2) qp.leftMargin=dp(6);
+            rowTime.addView(q,qp);
+        }
+        query.addView(rowTime);
+
+        LinearLayout actionWrap=CourseUi.column(this);
+        actionWrap.setPadding(dp(12),dp(2),dp(12),dp(12));
+        TextView submit=CourseUi.action(this,roomLoading?"重新查询此时段":"查询此时段",true,() -> startClassroomQuery(true));
+        submit.setMinHeight(dp(42));
+        actionWrap.addView(submit,new LinearLayout.LayoutParams(-1,dp(42)));
+        query.addView(actionWrap);
         if (data==null || data.owner.isEmpty()) {
             note("登录校园账号后可查询当日的空闲教室。"); LinearLayout login=card(); login.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48))); return;
         }
@@ -885,8 +935,9 @@ public class CampusActivity extends Activity {
         });
         routeFilter.setSingleLine(true); routeFilter.setEllipsize(android.text.TextUtils.TruncateAt.END);
         routeFilter.setContentDescription("路线筛选，"+(busRoute.isEmpty()?"全部路线":busRoute));
-        routeFilter.setEnabled(!routeNames.isEmpty()); routeFilter.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
-        filters.addView(routeFilter,new LinearLayout.LayoutParams(0,dp(44),1));
+        routeFilter.setTextSize(13); routeFilter.setMinHeight(dp(36));
+        routeFilter.setEnabled(!routeNames.isEmpty()); routeFilter.setBackground(Ui.ripple(this,Ui.roundStroke(this,Ui.CARD,Ui.LINE,9,0.75f),Ui.press(),9));
+        filters.addView(routeFilter,new LinearLayout.LayoutParams(0,dp(36),1));
         TextView placeFilter=CourseUi.action(this,busPlace.isEmpty()?"全部上车点":"上车点 · "+busPlace+"  ▾",false,() -> {
             String[] choices=new String[availablePlaces.size()+1]; choices[0]="全部上车点";
             for (int i=0;i<availablePlaces.size();i++) choices[i+1]=availablePlaces.get(i);
@@ -897,9 +948,10 @@ public class CampusActivity extends Activity {
         });
         placeFilter.setSingleLine(true); placeFilter.setEllipsize(android.text.TextUtils.TruncateAt.END);
         placeFilter.setContentDescription("上车点筛选，"+(busPlace.isEmpty()?"全部上车点":busPlace));
+        placeFilter.setTextSize(13); placeFilter.setMinHeight(dp(36));
         placeFilter.setEnabled(!availablePlaces.isEmpty()); placeFilter.setAlpha(availablePlaces.isEmpty()?.5f:1f);
-        placeFilter.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,12),Ui.press(),12));
-        LinearLayout.LayoutParams placeFilterParams=new LinearLayout.LayoutParams(0,dp(44),1); placeFilterParams.leftMargin=dp(8); filters.addView(placeFilter,placeFilterParams);
+        placeFilter.setBackground(Ui.ripple(this,Ui.roundStroke(this,Ui.CARD,Ui.LINE,9,0.75f),Ui.press(),9));
+        LinearLayout.LayoutParams placeFilterParams=new LinearLayout.LayoutParams(0,dp(36),1); placeFilterParams.leftMargin=dp(8); filters.addView(placeFilter,placeFilterParams);
         java.util.List<CampusBusSchedule.Route> routes=CampusBusSchedule.filter(available,busRoute,busPlace);
         long now=System.currentTimeMillis(); boolean today=busWeekend==CampusBusSchedule.weekend(now); int minute=CampusBusSchedule.minute(now);
         if (available.isEmpty()) { note("暂未读到这一天的校车班次，可查看校方原始公告。"); }

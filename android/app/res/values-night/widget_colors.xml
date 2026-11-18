@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_surface">#1F1F22</color>
-    <color name="widget_text">#F2F2F4</color>
-    <color name="widget_sub">#A9A9B0</color>
-    <color name="widget_mute">#7C7C83</color>
-    <color name="widget_accent">#FB923C</color>
+    <color name="widget_surface">#1F1E1B</color>
+    <color name="widget_line">#32302B</color>
+    <color name="widget_text">#F0EEE8</color>
+    <color name="widget_sub">#A8A39A</color>
+    <color name="widget_mute">#75716A</color>
+    <color name="widget_accent">#D97757</color>
 </resources>
