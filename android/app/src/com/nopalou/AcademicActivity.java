@@ -94,9 +94,9 @@ public class AcademicActivity extends Activity {
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
 
         LinearLayout head = new LinearLayout(this); head.setBaselineAligned(false); head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(dp(20), dp(14), dp(8), 0); root.addView(head);
+        head.setPadding(dp(20), dp(14), dp(10), 0); root.addView(head);
         LinearLayout titles = CourseUi.column(this); head.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView title = text("考试与成绩", 26, Ui.TEXT, true); title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        TextView title = text("考试与成绩", 26, Ui.TEXT, false); title.setTypeface(Ui.editorialBold());
         titles.addView(title);
         String sub = subtitle();
         if (sub != null) { TextView s = text(sub, 12, Ui.MUTE, false); s.setPadding(0, dp(4), 0, 0); titles.addView(s); }
@@ -132,20 +132,19 @@ public class AcademicActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams segmentParams() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(42));
-        p.setMargins(dp(16), dp(16), dp(16), dp(12)); return p;
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(40));
+        p.setMargins(dp(16), dp(14), dp(16), dp(12)); return p;
     }
-    /** 一体式分段控件：浅灰槽 + 白色滑块。 */
+    /** 一体式分段控件：暖灰槽 + 描边素白滑块，去掉阴影。 */
     private View segmented() {
         LinearLayout track = new LinearLayout(this); track.setPadding(dp(3), dp(3), dp(3), dp(3));
-        // 浅色：灰槽白滑块；深色：卡片色槽 + 更亮的滑块，保持“选中更突出”。
-        track.setBackground(Ui.round(this, Ui.dark ? Ui.CARD : Ui.FILL, 13));
+        track.setBackground(Ui.round(this, Ui.FILL, 12));
         String[] labels = {"考试安排", "成绩绩点"};
         for (int i = 0; i < 2; i++) {
             boolean on = (i == 1) == showGrades; final boolean grades = i == 1;
             TextView t = text(labels[i], 14, on ? Ui.TEXT : Ui.SUB, on); t.setGravity(Gravity.CENTER);
-            if (on) { t.setBackground(Ui.round(this, Ui.dark ? Ui.FILL : Ui.CARD, 10)); if (!Ui.dark) t.setElevation(dp(1)); }
-            else t.setBackground(Ui.ripple(this, null, Ui.press(), 10));
+            if (on) t.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.LINE, 9, 0.75f));
+            else t.setBackground(Ui.ripple(this, null, Ui.press(), 9));
             t.setSelected(on); t.setContentDescription(labels[i] + (on ? "，已选中" : ""));
             t.setOnClickListener(v -> { if (showGrades != grades) { showGrades = grades; render(); } });
             track.addView(t, new LinearLayout.LayoutParams(0, -1, 1));
@@ -177,7 +176,7 @@ public class AcademicActivity extends Activity {
         t.setLineSpacing(dp(3), 1f); list.addView(t);
     }
     private LinearLayout card(LinearLayout parent, int bottomDp) {
-        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 20);
+        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 14);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.bottomMargin = dp(bottomDp); parent.addView(c, p);
         return c;
     }
@@ -234,34 +233,35 @@ public class AcademicActivity extends Activity {
     }
     private static String countdown(int d) { return d == 0 ? "今天" : d == 1 ? "明天" : d == 2 ? "后天" : String.valueOf(d); }
 
-    /** 下一场考试：和待办页「今日概览」同一张深墨渐变卡 + 大号倒计时。 */
+    /** 下一场考试：暖纸白描边主卡 + 衬线数字倒计时，克制呈现时间与考场。 */
     private void hero(LinearLayout list, Academic.Exam e, String today) {
-        LinearLayout c = CourseUi.column(this); c.setPadding(dp(22), dp(20), dp(22), dp(20));
-        c.setBackground(Ui.heroSurface(this, 26));
-        Ui.lift(c, 8f);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.topMargin = dp(2); list.addView(c, p);
-        int on = Ui.ON_HERO, soft = Ui.HERO_SUB;
-        c.addView(text("下一场考试", 12, soft, true));
-        CourseUi.gap(c, 10);
+        LinearLayout c = card(list, 6);
+        c.setPadding(dp(20), dp(18), dp(20), dp(18));
+        c.addView(text("下一场考试", 12, Ui.ACCENT, true));
+        CourseUi.gap(c, 8);
         LinearLayout row = new LinearLayout(this); row.setGravity(Gravity.BOTTOM); c.addView(row);
         LinearLayout left = CourseUi.column(this); row.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView name = text(e.course, 22, on, true); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END); left.addView(name);
+        TextView name = text(e.course, 21, Ui.TEXT, false);
+        name.setTypeface(Ui.editorialBold());
+        name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
+        left.addView(name);
         int d = e.daysFrom(today);
         if (d != Integer.MIN_VALUE) {
-            LinearLayout count = new LinearLayout(this); count.setGravity(Gravity.BOTTOM); count.setPadding(dp(14), 0, 0, 0);
-            TextView big = text(countdown(d), d <= 2 ? 30 : 40, on, true); big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            LinearLayout count = new LinearLayout(this); count.setGravity(Gravity.BOTTOM); count.setPadding(dp(12), 0, 0, 0);
+            int numColor = d <= 2 ? Ui.RED : Ui.ACCENT;
+            TextView big = text(countdown(d), d <= 2 ? 26 : 36, numColor, false);
+            big.setTypeface(Ui.editorialBold());
             big.setIncludeFontPadding(false); count.addView(big);
-            if (d > 2) { TextView unit = text("天后", 13, soft, true); unit.setPadding(dp(4), 0, 0, dp(4)); count.addView(unit); }
+            if (d > 2) { TextView unit = text("天后", 12, Ui.MUTE, true); unit.setPadding(dp(4), 0, 0, dp(4)); count.addView(unit); }
             row.addView(count);
         }
-        CourseUi.gap(c, 16);
-        View line = new View(this); line.setBackgroundColor(Ui.withAlpha(android.graphics.Color.WHITE, 22)); c.addView(line, new LinearLayout.LayoutParams(-1, 1));
         CourseUi.gap(c, 14);
-        c.addView(infoLine(e.date.isEmpty() ? (e.time.isEmpty() ? "时间待定" : e.time) : dateLong(e.date, today) + "   " + e.start + "–" + e.end, 15, on, true));
-        if (!e.location.isEmpty()) { CourseUi.gap(c, 6); c.addView(infoLine(place(e.location), 13, soft, false)); }
-        // “未结束 / 未开始”在待考卡上是废话；只显示真正有信息量的状态（如缓考、待安排）。
+        c.addView(Ui.hairline(this));
+        CourseUi.gap(c, 12);
+        c.addView(infoLine(e.date.isEmpty() ? (e.time.isEmpty() ? "时间待定" : e.time) : dateLong(e.date, today) + "   " + e.start + "–" + e.end, 14, Ui.TEXT, true));
+        if (!e.location.isEmpty()) { CourseUi.gap(c, 4); c.addView(infoLine(place(e.location), 13, Ui.SUB, false)); }
         if (!e.status.isEmpty() && !e.status.matches("未(结束|开始)")) {
-            CourseUi.gap(c, 12); c.addView(Ui.tag(this, e.status, on, Ui.withAlpha(android.graphics.Color.WHITE, 30)), new LinearLayout.LayoutParams(-2, -2));
+            CourseUi.gap(c, 10); c.addView(Ui.tag(this, e.status, Ui.ACCENT, Ui.ACCENT_BG), new LinearLayout.LayoutParams(-2, -2));
         }
         c.setOnClickListener(v -> copyText("考试安排", e.course + " · " + (e.date.isEmpty() ? e.time : e.date + " " + e.start + "–" + e.end) + (e.location.isEmpty() ? "" : " · " + place(e.location)), "已复制下一场考试信息"));
     }
@@ -282,7 +282,7 @@ public class AcademicActivity extends Activity {
             date.addView(text(weekday(e.date), 11, Ui.MUTE, false), wrap());
         } else date.addView(text("待定", 12, Ui.MUTE, true), wrap());
 
-        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 16); c.setPadding(dp(16), dp(14), dp(14), dp(14));
+        LinearLayout c = CourseUi.column(this); Ui.cardSurface(c, 14); c.setPadding(dp(16), dp(14), dp(14), dp(14));
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, -2, 1); cp.leftMargin = dp(6); row.addView(c, cp);
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL); c.addView(top);
         TextView name = text(e.course, 15, Ui.TEXT, true); name.setMaxLines(2); name.setEllipsize(TextUtils.TruncateAt.END);
@@ -348,7 +348,7 @@ public class AcademicActivity extends Activity {
         CourseUi.gap(list, 14);
         LinearLayout searchBar = new LinearLayout(this);
         searchBar.setGravity(Gravity.CENTER_VERTICAL);
-        searchBar.setBackground(Ui.round(this, Ui.FILL, 14));
+        searchBar.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.LINE, 12, 0.75f));
         searchBar.setPadding(dp(14), dp(2), dp(10), dp(2));
         EditText searchInput = new EditText(this);
         searchInput.setHint("搜索课程名或类别（跨学期）");
@@ -440,8 +440,8 @@ public class AcademicActivity extends Activity {
         LinearLayout top = new LinearLayout(this); top.setGravity(Gravity.BOTTOM); c.addView(top);
         LinearLayout left = CourseUi.column(this); top.addView(left, new LinearLayout.LayoutParams(0, -2, 1));
         left.addView(text("总绩点", 12, Ui.SUB, true));
-        TextView big = text(data.gpa == null ? "—" : formatGpa(data.gpa), 44, Ui.TEXT, true);
-        big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD)); big.setIncludeFontPadding(false); big.setPadding(0, dp(6), 0, 0);
+        TextView big = text(data.gpa == null ? "—" : formatGpa(data.gpa), 40, Ui.TEXT, false);
+        big.setTypeface(Ui.editorialBold()); big.setIncludeFontPadding(false); big.setPadding(0, dp(4), 0, 0);
         left.addView(big);
         double credits = Academic.credits(data.grades); int courses = data.grades.size();
         LinearLayout stats = new LinearLayout(this); top.addView(stats);

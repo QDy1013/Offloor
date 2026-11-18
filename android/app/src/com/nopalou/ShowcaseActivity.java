@@ -45,27 +45,30 @@ public final class ShowcaseActivity extends Activity {
         TextView view=CourseUi.text(this,value,size,color,bold);view.setLineSpacing(dp(3),1);return view;
     }
     private LinearLayout panel(LinearLayout parent,int color) {
-        LinearLayout view=CourseUi.column(this);view.setPadding(dp(18),dp(16),dp(18),dp(16));
-        view.setBackground(Ui.round(this,color,20));
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(14);parent.addView(view,params);return view;
+        LinearLayout view=CourseUi.column(this);view.setPadding(dp(16),dp(14),dp(16),dp(14));
+        view.setBackground(Ui.roundStroke(this,color,Ui.LINE,14,0.75f));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(12);parent.addView(view,params);return view;
     }
     private void render(){
         LinearLayout shell=CourseUi.column(this);shell.setBackgroundColor(Ui.BG);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(8),dp(6),dp(14),dp(6));
         header.addView(CourseUi.icon(this,"prev","返回",this::finish));
-        header.addView(text("情境演示",22,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
+        TextView titleView=text("情境演示",21,Ui.TEXT,false); titleView.setTypeface(Ui.editorialBold());
+        header.addView(titleView,new LinearLayout.LayoutParams(0,-2,1));
         TextView reset=CourseUi.action(this,"重来",false,this::reset);header.addView(reset);
         shell.addView(header,new LinearLayout.LayoutParams(-1,-2));
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         LinearLayout body=CourseUi.column(this);body.setPadding(dp(18),dp(10),dp(18),dp(10));scroll.addView(body);
         shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
-        LinearLayout stage=panel(body,Ui.ACCENT_BG);
+        LinearLayout stage=panel(body,Ui.FILL);
         stage.addView(text("构造场景 · 离线运行 · 步骤 "+scenario.step()+" / "+ShowcaseScenario.LAST_STEP,12,Ui.ACCENT,true));
-        CourseUi.gap(stage,10);stage.addView(text(scenario.title(),23,Ui.TEXT,true));
+        CourseUi.gap(stage,8);
+        TextView stTitle=text(scenario.title(),22,Ui.TEXT,false); stTitle.setTypeface(Ui.editorialBold());
+        stage.addView(stTitle);
         CourseUi.gap(stage,8);stage.addView(text(scenario.note(),14,Ui.SUB,false));
-        CourseUi.gap(stage,12);stage.addView(text(scenario.summary(),12,Ui.ACCENT,true));
-        CourseUi.gap(stage,6);stage.addView(text("样例数据独立展示，全程本机处理。",12,Ui.SUB,false));
+        CourseUi.gap(stage,10);stage.addView(text(scenario.summary(),12,Ui.ACCENT,true));
+        CourseUi.gap(stage,4);stage.addView(text("样例数据独立展示，全程本机处理。",12,Ui.MUTE,false));
 
         List<ShowcaseScenario.Message> messages=scenario.messages();
         if(!messages.isEmpty()) {
@@ -78,8 +81,6 @@ public final class ShowcaseActivity extends Activity {
                 TextView raw=text(message.text,14,Ui.TEXT,false);raw.setTextIsSelectable(true);input.addView(raw);
             }
         }
-        ShowcaseScenario.StudyPreview study=scenario.studyPreview();
-        if(study!=null)addStudyPreview(body,study);
         if(scenario.awaitingReview()) {
             LinearLayout review=panel(body,Ui.AMBER_BG);
             review.addView(text("这条变更对应哪一项？",16,Ui.AMBER_TX,true));CourseUi.gap(review,8);
@@ -110,35 +111,14 @@ public final class ShowcaseActivity extends Activity {
         footer.addView(CourseUi.action(this,"查看本次回放记录",false,this::showRecap),CourseUi.row(-2));shell.addView(footer);
         setContentView(shell);Ui.systemBars(this,shell);
     }
-    private void addStudyPreview(LinearLayout parent,ShowcaseScenario.StudyPreview study){
-        LinearLayout box=panel(parent,Ui.CARD);
-        box.addView(text("改期当天 · 样例课表",13,Ui.ACCENT,true));
-        CourseUi.gap(box,8);
-        box.addView(text(study.clash.text(),15,Ui.TEXT,true));
-        CourseUi.gap(box,8);
-        box.addView(text(study.gap.clockRange()+" 可用于自习",18,Ui.TEXT,true));
-        box.addView(text(study.gap.detail(study.at),14,Ui.SUB,false));
-        CourseUi.gap(box,10);
-        box.addView(text(study.place(),14,Ui.TEXT,true));
-        CourseUi.gap(box,6);
-        box.addView(text("场地为演示样例",12,Ui.SUB,false));
-        CourseUi.gap(box,8);
-        if(study.confirmed){
-            box.addView(text("本人已选用此安排",14,Ui.GREEN,true));
-        }else{
-            box.addView(CourseUi.action(this,"选用样例自习地点",false,()->{
-                if(scenario.confirmStudyPreview())render();else problem();
-            }),CourseUi.row(-2));
-        }
-    }
     private void addCard(LinearLayout parent,Engine.Card card,boolean removed){
         int tone=removed?Ui.RED:card.done?Ui.GREEN:card.needsConfirm?Ui.AMBER_TX:Ui.ACCENT;
         LinearLayout box=panel(parent,Ui.CARD);
         box.addView(text(removed?"已取消":card.done?"本人已完成":card.needsConfirm?"待本人核对":card.updated?"已更新":"待办",12,tone,true));
-        CourseUi.gap(box,6);box.addView(text(card.displayTitle(),18,Ui.TEXT,true));CourseUi.gap(box,8);
+        CourseUi.gap(box,6);box.addView(text(card.displayTitle(),17,Ui.TEXT,true));CourseUi.gap(box,8);
         box.addView(text((card.needsConfirm?"候选时间：":"安排时间：")+(card.deadline<=0?"待核对":TaskTrace.time(card.deadline)),14,Ui.SUB,false));
         CourseUi.gap(box,6);box.addView(text("查看原文和处理记录 ›",12,tone,false));
-        box.setBackground(Ui.ripple(this,Ui.round(this,Ui.CARD,20),Ui.press(),20));
+        box.setBackground(Ui.ripple(this,Ui.roundStroke(this,Ui.CARD,Ui.LINE,14,0.75f),Ui.press(),14));
         box.setFocusable(true);box.setContentDescription(card.displayTitle()+"，查看来源和处理记录");box.setOnClickListener(v->showTrace(card));
     }
     private void showTrace(Engine.Card card){

@@ -26,13 +26,14 @@ final class CourseUi {
     }
     static TextView action(Context c, String value, boolean primary, Runnable click) {
         TextView t = text(c, value, 15, primary ? Ui.ON_ACCENT : Ui.TEXT, true);
-        Ui.pressScale(t, 0.97f);
+        Ui.pressScale(t, 0.98f);
         t.setGravity(Gravity.CENTER);
-        t.setMinHeight(Ui.dp(c, 48));
-        t.setPadding(Ui.dp(c, 14), Ui.dp(c, 10), Ui.dp(c, 14), Ui.dp(c, 10));
-        // 次级按钮用 FILL：放在白卡上也看得出是按钮（原来用 CARD，卡片里的次级按钮和底色融在一起）。
-        t.setBackground(Ui.ripple(c, Ui.round(c, primary ? Ui.ACCENT : Ui.FILL, 16), Ui.press(), 16));
-        if (primary) Ui.lift(t, 3f);
+        t.setMinHeight(Ui.dp(c, 46));
+        t.setPadding(Ui.dp(c, 16), Ui.dp(c, 10), Ui.dp(c, 16), Ui.dp(c, 10));
+        android.graphics.drawable.Drawable bg = primary
+                ? Ui.round(c, Ui.ACCENT, 12)
+                : Ui.roundStroke(c, Ui.CARD, Ui.LINE, 12, 0.85f);
+        t.setBackground(Ui.ripple(c, bg, Ui.press(), 12));
         t.setOnClickListener(v -> click.run()); t.setFocusable(true);
         return t;
     }

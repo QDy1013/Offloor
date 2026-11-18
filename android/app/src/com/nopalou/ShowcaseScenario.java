@@ -12,7 +12,7 @@ public final class ShowcaseScenario {
     private static final String[] NOTES={
         "一段构造会话，展示两份实验报告如何随通知变化。点击下一步开始。",
         "两条通知形成独立事项；点击卡片可查看原文。",
-        "老师明确提到数据库实验报告，只调整这一项。再看看新截止时间和样例课表怎么安排。",
+        "老师明确提到数据库实验报告，只调整这一项；物理实验报告保留原安排。",
         "两项都叫实验报告，暂时无法确定对象。先保留原时间，请选择对应事项或忽略整条变更。",
         "处理方式由本人选择。其他候选解除这条通知的待核对状态。",
         "物理实验报告收到明确取消通知，保留取消记录。",
@@ -28,7 +28,6 @@ public final class ShowcaseScenario {
     public final long startedAt;
     private int step;
     private String decision="";
-    private boolean studyConfirmed;
     private final List<Message> messages=new ArrayList<>();
 
     public ShowcaseScenario(InputStream model,long now) throws Exception {
@@ -41,42 +40,6 @@ public final class ShowcaseScenario {
     public String note(){return NOTES[step];}
     public boolean awaitingReview(){return step==3;}
     public boolean finished(){return step==LAST_STEP;}
-
-    static final class StudyPreview {
-        final StudyPlanner.LessonClash clash;
-        final StudyPlanner.GapSuggestion gap;
-        final long at;
-        final boolean confirmed;
-
-        StudyPreview(StudyPlanner.LessonClash clash, StudyPlanner.GapSuggestion gap, long at, boolean confirmed) {
-            this.clash=clash;
-            this.gap=gap;
-            this.at=at;
-            this.confirmed=confirmed;
-        }
-
-        String place(){return gap.campus+" · 样例自习区";}
-    }
-
-    StudyPreview studyPreview(){
-        if(step!=2)return null;
-        String date=StudyRoomPlan.addDays(StudyRoomPlan.day(messages.get(2).at),3);
-        long at=StudyRoomPlan.at(date,"16:00");
-        StudyPlanner.DayCourses day=new StudyPlanner.DayCourses(date,Collections.singletonList(
-                new TodayPlan.Course("操作系统","友谊校区教室（样例）","18:00","19:50",9)));
-        List<StudyPlanner.DayCourses> days=Collections.singletonList(day);
-        List<Engine.Card> cards=engine.all();
-        StudyPlanner.LessonClash clash=StudyPlanner.nearestLessonClash(cards,days,at);
-        StudyPlanner.GapSuggestion gap=StudyPlanner.findStudyGap(days,cards,at);
-        if(clash==null || gap==null || gap.targetCard!=clash.card)return null;
-        return new StudyPreview(clash,gap,at,studyConfirmed);
-    }
-
-    boolean confirmStudyPreview(){
-        if(studyConfirmed || studyPreview()==null)return false;
-        studyConfirmed=true;
-        return true;
-    }
     public String nextLabel(){
         return new String[]{"接收两条样例通知","接收明确改期","接收含糊变更","请先核对对应事项","接收取消通知","标记剩余事项完成","演示已完成"}[step];
     }
@@ -101,7 +64,7 @@ public final class ShowcaseScenario {
                 send(DATABASE,"明天18点前交数据库实验报告到学习通");
                 send(PHYSICS,"后天18点前交物理实验报告到学习通");break;
             case 1:send("showcase-change","数据库实验报告改为大后天18点30分提交到学习通");break;
-            case 2:studyConfirmed=false;send(REVIEW,"实验报告延期到大后天21点");break;
+            case 2:send(REVIEW,"实验报告延期到大后天21点");break;
             case 3:return false;
             case 4:send("showcase-cancel","物理实验报告取消了，不用交了");break;
             case 5:
@@ -134,13 +97,11 @@ public final class ShowcaseScenario {
     public int completed(){int n=0;for(Engine.Card c:engine.all())if(c.done)n++;return n;}
     public int open(){int n=0;for(Engine.Card c:engine.all())if(!c.done)n++;return n;}
     public String summary(){return "待办 "+open()+" · 待核对 "+pending()+" · 已完成 "+completed()+" · 已取消 "+engine.removedCards().size();}
-    public String checkpoint(){return "SHOWCASE2\n"+startedAt+"\n"+step+"\n"+decision+"\n"+studyConfirmed;}
+    public String checkpoint(){return "SHOWCASE1\n"+startedAt+"\n"+step+"\n"+decision;}
     public static ShowcaseScenario restore(InputStream model,String checkpoint) throws Exception {
         if(checkpoint==null || checkpoint.length()>200)throw new IOException("演示进度无效");
         String[] parts=checkpoint.split("\n",-1);
-        boolean legacy=parts.length==4 && "SHOWCASE1".equals(parts[0]);
-        boolean current=parts.length==5 && "SHOWCASE2".equals(parts[0]) && ("true".equals(parts[4])||"false".equals(parts[4]));
-        if(!legacy&&!current)throw new IOException("演示进度版本无效");
+        if(parts.length!=4 || !"SHOWCASE1".equals(parts[0]))throw new IOException("演示进度版本无效");
         long now;int target;
         try{now=Long.parseLong(parts[1]);target=Integer.parseInt(parts[2]);}catch(NumberFormatException ex){throw new IOException("演示进度数值无效");}
         String choice=parts[3];
@@ -152,17 +113,12 @@ public final class ShowcaseScenario {
                 else{Engine.Card selected=scenario.cardFor(choice);if(selected==null||!scenario.choose(selected.id))throw new IOException("演示核对状态无效");}
             }else if(!scenario.advance())throw new IOException("演示无法恢复");
         }
-        if(current && "true".equals(parts[4]) && !scenario.confirmStudyPreview())throw new IOException("演示安排无效");
         return scenario;
     }
     public String recap(){
         StringBuilder out=new StringBuilder("outfloor 构造场景回放\n仅使用本机规则与分类，不调用云端；不代表真实用户效果。\n\n");
         out.append("步骤 ").append(step).append(" / ").append(LAST_STEP).append(" · ").append(title()).append("\n").append(summary());
         for(Message message:messages)out.append("\n\n").append(TaskTrace.time(message.at)).append(" · ").append(message.actor).append(message.userAction?"（本人操作）":"（样例通知）").append("\n").append(message.text);
-        StudyPreview study=studyPreview();
-        if(study!=null)out.append("\n\n改期当天（样例）\n").append(study.clash.text()).append("\n")
-                .append(study.gap.clockRange()).append(" · ").append(study.place()).append("\n")
-                .append(study.confirmed?"本人已选用此安排":"等待本人选择");
         return out.toString();
     }
 }

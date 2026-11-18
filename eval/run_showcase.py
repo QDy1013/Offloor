@@ -15,9 +15,6 @@ def run(classes,branch,at):
         f=line.split('\t');tag=f[0]
         if tag=='STEP':steps.append({'step':int(f[1]),'title':decode(f[2]),'note':decode(f[3]),'summary':decode(f[4]),'messages':[],'cards':[],'removed':[]})
         elif tag=='MESSAGE':steps[-1]['messages'].append({'at':int(f[1]),'actor':decode(f[2]),'text':decode(f[3]),'user_action':f[4]=='true'})
-        elif tag=='STUDY':
-            steps[-1]['study_plan']={'clash':decode(f[1]),'date':decode(f[2]),'time_range':decode(f[3]),
-                                     'place':decode(f[4]),'confirmed':f[5]=='true'}
         elif tag in ('CARD','REMOVED'):
             steps[-1]['cards' if tag=='CARD' else 'removed'].append({'title':decode(f[1]),'deadline':int(f[2]),'needs_confirm':f[3]=='true','done':f[4]=='true','trace':decode(f[5])})
         else:raise ValueError('Unknown replay output')
@@ -30,10 +27,6 @@ def markdown(report):
         if step['messages']:
             latest=step['messages'] if step['step']==1 else step['messages'][-1:]
             for m in latest:out += [f"{timestamp(m['at'])} · {m['actor']} · {'本人操作（构造）' if m['user_action'] else '样例通知'}",'',m['text'],'']
-        plan=step.get('study_plan')
-        if plan:
-            out += [plan['clash'],'',f"自习安排（样例）：{plan['date']} {plan['time_range']}，{plan['place']}。",
-                    '','本人已选用此安排。' if plan['confirmed'] else '等待本人选择。','']
         if step['cards'] or step['removed']:
             out+=['| 事项 | 时间 | 状态 |','|---|---|---|']
             for removed,cards in ((False,step['cards']),(True,step['removed'])):

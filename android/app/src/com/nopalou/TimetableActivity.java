@@ -22,11 +22,11 @@ import java.util.List;
 
 /** A compact seven-day timetable. Course details and management stay behind taps. */
 public class TimetableActivity extends Activity {
-    // 课程色：浅色是淡底深字，深色是暗底亮字；同一门课在两种模式下是同一个色相。
-    private static final int[] FILLS = {0xFFECE8FA, 0xFFE0EFEB, 0xFFF8EADD, 0xFFE3EBF9, 0xFFF5E4EB, 0xFFEBEDDC};
-    private static final int[] INKS = {0xFF5D498F, 0xFF306E61, 0xFF935B34, 0xFF3D6095, 0xFF984F70, 0xFF64703A};
-    private static final int[] FILLS_DARK = {0xFF2A2440, 0xFF183029, 0xFF35281B, 0xFF1C2638, 0xFF35202B, 0xFF282B1A};
-    private static final int[] INKS_DARK = {0xFFC3B4F5, 0xFF8FD6C3, 0xFFF0B98E, 0xFF9DBBF0, 0xFFF0A3C4, 0xFFC7D28E};
+    // 课程色：Claude 书籍纸张式低饱和暖调——浅色为素纸淡底深墨字，深色为炭灰底柔彩字，温和耐看。
+    private static final int[] FILLS = {0xFFF6EBE5, 0xFFE9F0EC, 0xFFF5EFE0, 0xFFE8EEF2, 0xFFF3E9ED, 0xFFEFECE4};
+    private static final int[] INKS = {0xFF9C472B, 0xFF2D6652, 0xFF8A611C, 0xFF395B75, 0xFF87455E, 0xFF5D5748};
+    private static final int[] FILLS_DARK = {0xFF33231D, 0xFF1B2B25, 0xFF312A1C, 0xFF1E262E, 0xFF302026, 0xFF272620};
+    private static final int[] INKS_DARK = {0xFFE79B81, 0xFF87C9B0, 0xFFDEC17E, 0xFF91B8D6, 0xFFE097B1, 0xFFC8C2B0};
     static int fill(int i) { return (Ui.dark ? FILLS_DARK : FILLS)[i]; }
     static int ink(int i) { return (Ui.dark ? INKS_DARK : INKS)[i]; }
     static int colorIndex(String name) { return (name.hashCode() & Integer.MAX_VALUE) % FILLS.length; }
@@ -112,38 +112,37 @@ public class TimetableActivity extends Activity {
         getWindow().setNavigationBarColor(Ui.BG);   // 和悬浮导航外的页面底色连成一片
         LinearLayout toolbar = new LinearLayout(this); toolbar.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(toolbar, CourseUi.row(dp(46)));
-        // Compact header leaves the screen to the timetable; system back still returns to tasks.
-        TextView title = text("我的课表", 21, Ui.TEXT, true);
-        title.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+        TextView title = text("我的课表", 22, Ui.TEXT, false);
+        title.setTypeface(Ui.editorialBold());
         title.setPadding(dp(8), 0, 0, 0);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         if (getPackageName().equals("com.nopalou.preview") || getPackageName().equals("com.nopalou.timetabletest"))
             toolbar.addView(Ui.tag(this, "测试版", Ui.SUB, Ui.FILL));
-        CampusSyncBanner.add(this,toolbar);
+        CampusSyncBanner.add(this, toolbar);
         if (table != null) toolbar.addView(icon("sync", "重新同步课表", () -> importTable(true)));
         toolbar.addView(icon("more", "课表设置", this::settings));
         if (table == null) { empty(root); addNavigation(root, null); return; }
 
-        TextView school = text(table.school.name + "  /  " + table.termName, 11, Ui.SUB, false);
-        school.setPadding(dp(8),0,dp(8),dp(6)); school.setSingleLine(true); school.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(school);
-        swipeStart = school;
         LinearLayout navigation = new LinearLayout(this); navigation.setGravity(Gravity.CENTER_VERTICAL);
+        swipeStart = navigation;
         root.addView(navigation);
-        LinearLayout weekInfo = CourseUi.column(this); weekInfo.setPadding(dp(8),0,0,0); weekInfo.setMinimumHeight(dp(44)); weekInfo.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout weekInfo = CourseUi.column(this); weekInfo.setPadding(dp(8), 0, 0, 0); weekInfo.setMinimumHeight(dp(44)); weekInfo.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout weekTitle = new LinearLayout(this); weekTitle.setGravity(Gravity.CENTER_VERTICAL);
-        TextView number = text("第 " + week + " 周", 20, Ui.TEXT, true);
+        TextView number = text("第 " + week + " 周", 19, Ui.TEXT, true);
         number.setContentDescription("第" + week + "周，点击选择教学周");
         weekTitle.addView(number);
         ImageView down = new ImageView(this); down.setImageDrawable(CourseUi.glyph(this, "down"));
-        LinearLayout.LayoutParams arrow = new LinearLayout.LayoutParams(dp(17), dp(17)); arrow.leftMargin = dp(8); weekTitle.addView(down, arrow);
+        LinearLayout.LayoutParams arrow = new LinearLayout.LayoutParams(dp(16), dp(16)); arrow.leftMargin = dp(6); weekTitle.addView(down, arrow);
         weekInfo.addView(weekTitle); weekInfo.setOnClickListener(v -> chooseWeek()); weekInfo.setFocusable(true);
         String date = date(1).replace('-', '.') + " — " + date(7).replace('-', '.');
-        TextView range = text(date, 11, Ui.SUB, false); range.setPadding(0,dp(2),0,0); weekInfo.addView(range);
+        TextView range = text(date + " · " + table.school.name, 11, Ui.MUTE, false);
+        range.setSingleLine(true); range.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        range.setPadding(0, dp(2), 0, 0); weekInfo.addView(range);
         navigation.addView(weekInfo, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView today = text("本周", 12, week == table.currentWeek() ? Ui.SUB : Ui.ACCENT, true);
-        today.setPadding(dp(10), dp(10), dp(10), dp(10));
-        today.setMinHeight(dp(44)); today.setMinWidth(dp(48)); today.setGravity(Gravity.CENTER);
-        today.setBackground(Ui.ripple(this, Ui.round(this, Ui.CARD, 22), Ui.press(), 22));
+        TextView today = text("本周", 12, week == table.currentWeek() ? Ui.MUTE : Ui.ACCENT, true);
+        today.setPadding(dp(10), dp(8), dp(10), dp(8));
+        today.setMinHeight(dp(40)); today.setMinWidth(dp(48)); today.setGravity(Gravity.CENTER);
+        today.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.CARD, Ui.LINE, 12, 0.75f), Ui.press(), 12));
         boolean inTerm = table.currentWeek() >= 1 && table.currentWeek() <= table.maxWeek;
         today.setText(inTerm ? "本周" : "非教学周"); today.setEnabled(inTerm);
         today.setContentDescription(inTerm ? "回到本周" : "当前日期不在已导入的教学周内");
@@ -153,11 +152,11 @@ public class TimetableActivity extends Activity {
         previous.setEnabled(week > 1); previous.setAlpha(week > 1 ? 1f : .25f); navigation.addView(previous);
         ImageView next = icon("next", "下一周", () -> changeWeek(week + 1, true));
         next.setEnabled(week < table.maxWeek); next.setAlpha(week < table.maxWeek ? 1f : .25f); navigation.addView(next);
-        CourseUi.gap(root,8);
+        CourseUi.gap(root, 6);
         View statusPill = liveLessonBanner();
         if (statusPill != null) {
             root.addView(statusPill);
-            CourseUi.gap(root, 8);
+            CourseUi.gap(root, 6);
         }
         swipeBoard = CourseUi.column(this); root.addView(swipeBoard, new LinearLayout.LayoutParams(-1, 0, 1));
         weekdayHeader(swipeBoard);
@@ -407,26 +406,22 @@ public class TimetableActivity extends Activity {
 
         Timetable.Lesson target = active != null ? active : next;
         if (target == null) {
-            String doneText = todayCount == 0 ? "今天没有课程安排" : "今日课程已全部结束";
-            TextView pill = text(doneText, 12, Ui.SUB, false);
-            pill.setPadding(dp(12), dp(8), dp(12), dp(8));
-            pill.setBackground(Ui.round(this, Ui.FILL, 12));
-            return pill;
+            return null;
         }
         boolean ongoing = active != null;
         String place = target.room.isEmpty() ? "" : " · " + target.room;
         String label = ongoing
                 ? "正在上课 · " + target.name + place + "（还剩 " + activeRemain + " 分钟）"
                 : "下节课 " + nextClock + " · " + target.name + place + "（还有 " + (nextStart - nowMin) + " 分钟）";
-        int bg = ongoing ? Ui.GREEN_BG : Ui.ACCENT_BG;
+        int bg = ongoing ? Ui.GREEN_BG : Ui.CARD;
         int fg = ongoing ? Ui.GREEN : Ui.ACCENT;
 
         TextView pill = text(label, 12, fg, true);
         pill.setSingleLine(true);
         pill.setEllipsize(android.text.TextUtils.TruncateAt.END);
         pill.setPadding(dp(12), dp(8), dp(12), dp(8));
-        pill.setBackground(Ui.ripple(this, Ui.round(this, bg, 12), Ui.press(), 12));
-        Ui.pressScale(pill, 0.98f);
+        pill.setBackground(Ui.ripple(this, Ui.roundStroke(this, bg, Ui.LINE, 10, 0.75f), Ui.press(), 10));
+        Ui.pressScale(pill, 0.99f);
         pill.setOnClickListener(v -> detail(target));
         return pill;
     }

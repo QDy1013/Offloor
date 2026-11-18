@@ -121,71 +121,71 @@ final class Ui {
     private static void palette(boolean night) {
         dark = night;
         if (!night) {
-            // 浅色：石灰白纸面 + 纯白卡，墨色文字；强调色是一支偏紫的「墨水蓝」，比标准蓝更沉稳。
-            BG = c("#F3F2EE");
+            // 浅色：Claude 暖白羊皮纸底 + 素白卡片 + 细描边；陶土赤陶作为克制的单一强调色。
+            BG = c("#FAF9F5");
             CARD = c("#FFFFFF");
-            FILL = c("#EBEAE5");
-            LINE = c("#E4E2DC");
-            TEXT = c("#16161A");
-            SUB = c("#62626B");
-            MUTE = c("#93939B");
-            RING = c("#BDBBB4");
-            ACCENT = c("#4A55D8");
-            ACCENT_BG = c("#EDEEFC");
+            FILL = c("#F2EFE9");
+            LINE = c("#E6E2D8");
+            TEXT = c("#181715");
+            SUB = c("#5E5B55");
+            MUTE = c("#8E8A82");
+            RING = c("#CBC6BC");
+            ACCENT = c("#C96442");
+            ACCENT_BG = c("#F7EBE5");
             ON_ACCENT = Color.WHITE;
-            RED = c("#DC3E42");
-            RED_BG = c("#FCECEC");
-            ORANGE = c("#D46A12");
-            ORANGE_BG = c("#FBEFE2");
-            AMBER_TX = c("#94650A");
-            AMBER_BG = c("#F9F1DC");
-            GREEN = c("#2A9467");
-            GREEN_BG = c("#E3F2EA");
-            VIOLET = c("#7351D4");
-            VIOLET_BG = c("#F1ECFC");
-            TEAL = c("#0E8580");
-            TEAL_BG = c("#E1F2F0");
-            INK = c("#1B1B22");
-            INK_ACTION = c("#A9B2FF");
-            SHADOW = c("#2B2A4A");
-            HERO_TOP = c("#1D1E2B");
-            HERO_BOTTOM = c("#2B2D48");
-            ON_HERO = c("#F5F5FA");
-            HERO_SUB = c("#A3A6C2");
-            HERO_GLOW = c("#6F7BFF");
+            RED = c("#C8433E");
+            RED_BG = c("#FBECEB");
+            ORANGE = c("#C46D28");
+            ORANGE_BG = c("#F9EFE5");
+            AMBER_TX = c("#9A6619");
+            AMBER_BG = c("#F8F1DE");
+            GREEN = c("#2E7D5B");
+            GREEN_BG = c("#E6F2EC");
+            VIOLET = c("#6F58A8");
+            VIOLET_BG = c("#F0EDF7");
+            TEAL = c("#237873");
+            TEAL_BG = c("#E5F1F0");
+            INK = c("#1F1E1C");
+            INK_ACTION = c("#E6997B");
+            SHADOW = c("#1F1D19");
+            HERO_TOP = c("#24221F");
+            HERO_BOTTOM = c("#191816");
+            ON_HERO = c("#FAF8F4");
+            HERO_SUB = c("#B4AFA6");
+            HERO_GLOW = c("#C96442");
         } else {
-            // 深色：近黑底 + 抬升一档的卡片，彩色整体提亮、降饱和，浅底标签改成同色深底。
-            BG = c("#0F0F12");
-            CARD = c("#19191D");
-            FILL = c("#232328");
-            LINE = c("#2B2B31");
-            TEXT = c("#EDEDF0");
-            SUB = c("#A1A1AA");
-            MUTE = c("#6E6E78");
-            RING = c("#55555E");
-            ACCENT = c("#939CFF");
-            ACCENT_BG = c("#22244A");
-            ON_ACCENT = c("#0C0D1F");
-            RED = c("#FF6B6E");
-            RED_BG = c("#3A1C1E");
-            ORANGE = c("#F29A4C");
-            ORANGE_BG = c("#37281A");
-            AMBER_TX = c("#E6B751");
-            AMBER_BG = c("#322A16");
-            GREEN = c("#4CC38A");
-            GREEN_BG = c("#152E28");
-            VIOLET = c("#B39BFF");
-            VIOLET_BG = c("#2A2345");
-            TEAL = c("#3CCBC2");
-            TEAL_BG = c("#142E2D");
-            INK = c("#2A2A31");
-            INK_ACTION = c("#AEB6FF");
+            // 深色：曜石暖黑底 + 石墨灰卡片 + 极细暖灰描边 + 柔光赤陶强调色。
+            BG = c("#141413");
+            CARD = c("#1F1E1B");
+            FILL = c("#282723");
+            LINE = c("#32302B");
+            TEXT = c("#F0EEE8");
+            SUB = c("#A8A39A");
+            MUTE = c("#75716A");
+            RING = c("#54514B");
+            ACCENT = c("#D97757");
+            ACCENT_BG = c("#33211B");
+            ON_ACCENT = c("#191513");
+            RED = c("#EB6B65");
+            RED_BG = c("#3A1E1D");
+            ORANGE = c("#E59450");
+            ORANGE_BG = c("#362619");
+            AMBER_TX = c("#E0B45A");
+            AMBER_BG = c("#312817");
+            GREEN = c("#52B788");
+            GREEN_BG = c("#192E24");
+            VIOLET = c("#A895DC");
+            VIOLET_BG = c("#282338");
+            TEAL = c("#4CB3AC");
+            TEAL_BG = c("#172E2C");
+            INK = c("#2B2A26");
+            INK_ACTION = c("#E6997B");
             SHADOW = Color.BLACK;
-            HERO_TOP = c("#1B1C2A");
-            HERO_BOTTOM = c("#23254A");
-            ON_HERO = c("#F2F2F8");
-            HERO_SUB = c("#9EA1C0");
-            HERO_GLOW = c("#7D88FF");
+            HERO_TOP = c("#24221F");
+            HERO_BOTTOM = c("#191816");
+            ON_HERO = c("#F4F1EB");
+            HERO_SUB = c("#A8A39A");
+            HERO_GLOW = c("#D97757");
         }
         BLUE = ACCENT;
         BLUE_BG = ACCENT_BG;
@@ -452,24 +452,22 @@ final class Ui {
     }
 
     /**
-     * 卡片底：浅色是白卡 + 一层很散的冷调投影（不描边，靠投影浮起来）；
-     * 深色投影看不见，改用亮一档的卡 + 极细描边。
+     * 卡片底：Claude 极简纸面质感 — 素白（或深灰）平铺 + 1px 暖灰描边，去掉厚重冷色调投影。
      */
     static void cardSurface(View v, float radiusDp) {
         Context c = v.getContext();
-        GradientDrawable face = round(c, CARD, radiusDp);
-        if (dark) face.setStroke(1, LINE);
+        GradientDrawable face = roundStroke(c, CARD, LINE, radiusDp, 0.85f);
         v.setBackground(ripple(c, face, press(), radiusDp));
-        if (!dark) lift(v, 2f);
+        v.setElevation(0f);
     }
 
-    /** 浅色模式下的柔和浮起：只在 API 28+ 上色，低版本是系统默认灰影。 */
+    /** 柔和浮起：保留给少量模态面板；默认尽量克制，不再到处加阴影。 */
     static void lift(View v, float elevationDp) {
         if (dark) return;
         v.setElevation(dp(v.getContext(), elevationDp));
         if (android.os.Build.VERSION.SDK_INT >= 28) {
-            v.setOutlineAmbientShadowColor(withAlpha(SHADOW, 40));
-            v.setOutlineSpotShadowColor(withAlpha(SHADOW, 70));
+            v.setOutlineAmbientShadowColor(withAlpha(SHADOW, 26));
+            v.setOutlineSpotShadowColor(withAlpha(SHADOW, 48));
         }
     }
 
@@ -511,11 +509,11 @@ final class Ui {
         return t;
     }
 
-    /** 设置类列表的分组底板：和页面同色系、比卡片低一档，组内各行用细线分开。 */
+    /** 设置类列表的分组底板：素净细描边卡片，组内各行用细线分开。 */
     static android.widget.LinearLayout group(Context c) {
         android.widget.LinearLayout g = new android.widget.LinearLayout(c);
         g.setOrientation(android.widget.LinearLayout.VERTICAL);
-        g.setBackground(round(c, dark ? FILL : BG, 18));
+        g.setBackground(roundStroke(c, CARD, LINE, 16, 0.85f));
         g.setClipToOutline(true);
         return g;
     }
@@ -639,6 +637,15 @@ final class Ui {
 
     static Typeface medium() {
         return Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    }
+
+    /** Claude 编辑感衬线标题字体：用于主标题与重点数字。 */
+    static Typeface editorial() {
+        return Typeface.create("serif", Typeface.NORMAL);
+    }
+
+    static Typeface editorialBold() {
+        return Typeface.create("serif", Typeface.BOLD);
     }
 
     /** 小标签：浅底深字的胶囊，11sp 中粗。 */
