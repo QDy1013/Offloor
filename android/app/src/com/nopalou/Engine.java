@@ -36,7 +36,7 @@ public class Engine {
     // ---------- 常量（与 Python 端一致）----------
     static final String[] LABELS = {"action", "notice", "discussion", "chatter"};
     static final String[] ACTION_WORDS = {"交", "提交", "填", "签到", "报名", "接龙", "回复",
-            "领取", "打卡", "上传", "传", "下载", "参加", "准备", "完成", "补交", "缴费", "选课"};
+            "领取", "打卡", "上传", "传", "下载", "参加", "准备", "完成", "补交", "缴费", "选课", "投稿"};
     static final String[] TIME_HINTS = {"前", "点", "分", "今天", "明天", "后天", "今晚", "明晚",
             "周", "星期", "月", "日", "截止", "之前", "上课"};
     static final String[] LINK_FILE = {"http", "www.", ".com", "[文件]", "[图片]", "[链接]", ".pdf", ".docx", ".zip"};
@@ -45,7 +45,7 @@ public class Engine {
     static final String[] CHANNELS = {"学习通", "雨课堂", "课程网站", "QQ 群文件", "邮箱", "教务系统",
             "课代表处", "微信转账", "班级接龙", "群接龙", "腾讯会议", "问卷", "飞书", "钉钉"};
     static final String[] VERBS = {"交", "提交", "上传", "传", "填", "报名", "签到", "接龙", "回复",
-            "领取", "打卡", "参加", "完成", "补交", "缴费", "选课", "下载"};
+            "领取", "打卡", "参加", "完成", "补交", "缴费", "选课", "下载", "投稿"};
     static final Set<String> ACKS = new HashSet<>(Arrays.asList(
             "收到", "好的", "1", "+1", "收到收到", "好嘞", "ok", "OK", "明白", "嗯嗯", "好"));
     static final String[] TEACHER_HINTS = {"老师", "辅导员", "班长", "课代表", "社长", "主任"};
@@ -60,6 +60,10 @@ public class Engine {
     // 改时间：这些词 detectRevision 不认，要在撤销/更正分支之前单独处理
     static final String[] RESCHEDULE_WORDS = {"改到", "推迟到", "延期到", "提前到", "调整到", "挪到"};
     static final Pattern P_EXAM_NEW_TIME = Pattern.compile("改到|推迟到|延期到|提前到|调整到|挪到|改为|改成|调整为");
+    private static final Pattern P_EXAM_ORIGINAL_DATE = Pattern.compile("(?:原定(?:安排)?|原先安排)(?:于|在)?\\s*");
+    private static final Pattern P_EXAM_CANCEL_TAIL = Pattern.compile(
+            "\\s*(?:因故|临时|现已|将)?\\s*(?:取消|作废)(?:了)?(?=$|[，,。；;！!\\r\\n])");
+    private static final Pattern P_EXAM_DIVISION_QUALIFIER = Pattern.compile("[（(][^（）()]{1,24}分赛区[）)]");
     // 提问词：带这些就不当"改时间"，只当学生在问
     static final String[] ASK_WORDS = {"吗", "？", "?", "呢", "什么", "几点", "哪"};
     // "带/携带/自备"后面到下一个标点之间的内容，就是考试要带的东西
@@ -70,9 +74,18 @@ public class Engine {
     static final String[] REVISE_WORDS = {"更正", "改为", "改成", "调整为", "不作数", "说错了", "重新发一下"};
     // 自然说法：改期/延后/提前。这类词在"调课通知"里也常见（"下次课改到三教302"），
     // 所以单独放一组：只有 revisionTarget 找到了目标卡才按更正处理（见 process）。
-    // 故意不含"改到""挪到"：它们会把调课通知误判成更正。
+    // “改到”须满足提交时间的额外条件，不能把地点变更直接当改期。
     static final String[] NATURAL_REVISE_WORDS = {"延期到", "推迟到", "顺延到", "提前到",
             "延期", "推迟", "顺延"};
+    static final Pattern P_KEEP_ORIGINAL_SUBMISSION = Pattern.compile(
+            "^(?:请)?(?:大家|各位|同学们)?\\s*(?:还是|仍然|继续)?\\s*按(?:照)?原通知\\s*(?:提交|上传|交)[。！!]*$");
+    static final Pattern P_REVISION_CLAUSE_END = Pattern.compile("[，,。；;！!\\r\\n]");
+    static final Pattern P_DEADLINE_EXTENSION = Pattern.compile(
+            "延长至|延期至|顺延至|推迟至|新截止(?:时间|日期)?(?:为|是|[:：])");
+    static final Pattern P_OLD_DEADLINE = Pattern.compile("原定|原为|(?:截止|截稿)(?:时间|日期)?由");
+    static final Pattern P_DEADLINE_SUBJECT = Pattern.compile("[\\p{IsHan}]{4}");
+    static final String[] DEADLINE_BOILERPLATE = {"截止", "时间", "原定", "原为", "提交", "报名",
+            "各位", "同学", "所有人", "通知", "请大家", "其他"};
     // "不用交/免交"这类否定说法也算撤销，但必须先指到某张卡才生效（见 process）
     static final String[] REVOKE_WORDS = {"作废", "取消", "忽略", "发错", "算了不", "撤销该", "撤回该",
             "不用交", "不用提交", "不需要交", "不需要提交",
@@ -1160,6 +1173,11 @@ public class Engine {
         String flatText = stripSpaces(t);
         if (isDuplicate(cards, m, flatText) || isDuplicate(removedCards, m, flatText)) return;
 
+        if (P_KEEP_ORIGINAL_SUBMISSION.matcher(t.trim()).matches()) {
+            remember(m);
+            return;
+        }
+
         Map<String, Double> f = featurize(m);
         double[] sc = scores(f);
         int idx = argmax(sc);
@@ -1218,7 +1236,7 @@ public class Engine {
                     remember(m);
                     return;
                 }
-                Deadline d = parseDeadline(t, m.ts);
+                Deadline d = revisionDeadline(t, m.ts);
                 if (d.ok()) {
                     target.changes.record(m, "截止时间调整为 " + absoluteTime(d.value));
                     target.changes.removeOlder(m.ts);
@@ -1239,7 +1257,7 @@ public class Engine {
             }
             // 对不上任何卡：撤销/更正只对"说得清指的是哪条"的消息生效，
             // 不能顺势把这句"作废/更正"当成新待办再建一张卡
-            if (!naturalOnly) {
+            if (!naturalOnly || announcedDeadline(t) != null) {
                 remember(m);
                 return;
             }
@@ -1485,7 +1503,47 @@ public class Engine {
         for (String w : REVISE_WORDS) if (t.contains(w)) return "supersede";
         // 自然改期词只有对得上某张卡时才算更正（见 process）
         for (String w : NATURAL_REVISE_WORDS) if (t.contains(w)) return "supersede";
+        if (movedSubmissionTime(t) != null || announcedDeadline(t) != null) return "supersede";
         return null;
+    }
+
+    private static String movedSubmissionTime(String text) {
+        int move = text.indexOf("改到");
+        if (move < 0) return null;
+        String clause = P_REVISION_CLAUSE_END.split(text.substring(move + 2), 2)[0];
+        return containsAny(clause, SUBMIT_WORDS)
+                && (P_CLOCK.matcher(clause).find() || P_HOUR.matcher(clause).find()) ? clause : null;
+    }
+
+    private static Deadline revisionDeadline(String text, long sentAt) {
+        Matcher extension = announcedDeadline(text);
+        if (extension != null) {
+            String time = P_REVISION_CLAUSE_END.split(text.substring(extension.end()), 2)[0];
+            return parseDeadline(time, sentAt);
+        }
+        String moved = movedSubmissionTime(text);
+        return parseDeadline(moved == null ? text : moved, sentAt);
+    }
+
+    /** An announcement gives both the original deadline and a distinct replacement. */
+    private static Matcher announcedDeadline(String text) {
+        Matcher move = P_DEADLINE_EXTENSION.matcher(text);
+        if (!move.find()) return null;
+        String previous = text.substring(0, move.start());
+        String next = P_REVISION_CLAUSE_END.split(text.substring(move.end()), 2)[0];
+        if (!P_OLD_DEADLINE.matcher(previous).find()
+                || !(previous.contains("截止") || previous.contains("截稿"))
+                || !P_ABS_CN.matcher(next).find()) return null;
+        return move;
+    }
+
+    private static boolean sharesDeadlineSubject(String text, String title) {
+        for (int i = 0; i + 4 <= text.length(); i++) {
+            String name = text.substring(i, i + 4);
+            if (title.contains(name) && P_DEADLINE_SUBJECT.matcher(name).matches()
+                    && !containsAny(name, DEADLINE_BOILERPLATE)) return true;
+        }
+        return false;
     }
 
     /** 消息里有提问词：在问，不是在下达更正/撤销。 */
@@ -1495,12 +1553,14 @@ public class Engine {
 
     /** 消息里有任何撤销/更正词（含自然改期词）。 */
     static boolean revisionLike(String t) {
-        return containsAny(t, REVOKE_WORDS) || containsAny(t, REVISE_WORDS) || containsAny(t, NATURAL_REVISE_WORDS);
+        return containsAny(t, REVOKE_WORDS) || containsAny(t, REVISE_WORDS)
+                || containsAny(t, NATURAL_REVISE_WORDS) || movedSubmissionTime(t) != null || announcedDeadline(t) != null;
     }
 
     /** 只命中自然改期词、没命中原七个更正词：可能是调课通知，需先找到目标卡。 */
     static boolean naturalRevisionOnly(String t) {
-        return !containsAny(t, REVISE_WORDS) && containsAny(t, NATURAL_REVISE_WORDS);
+        return !containsAny(t, REVISE_WORDS)
+                && (containsAny(t, NATURAL_REVISE_WORDS) || movedSubmissionTime(t) != null || announcedDeadline(t) != null);
     }
 
     Card latestCard(String gid) {
@@ -1528,6 +1588,10 @@ public class Engine {
         if (m.groupId == null || containsAny(text, ASK_WORDS)
                 || trimmed.startsWith("我") || trimmed.startsWith("俺") || trimmed.startsWith("咱")) return;
         String reference = examReference(text, examWord);
+        if ("revoke".equals(revision)) {
+            applyExamCancellation(m, text, examWord, reference);
+            return;
+        }
         Card target = null;
         for (Card card : cards) {
             if (!"exam".equals(card.kind) || !m.groupId.equals(card.groupId) || card.sourceText == null) continue;
@@ -1542,25 +1606,90 @@ public class Engine {
         String sender = m.sender == null ? "" : m.sender;
         if (!containsAny(sender, TEACHER_HINTS) && !P_ATALL.matcher(text).find()
                 && (sender.isEmpty() || !sender.equals(target.sender))) return;
-        if ("revoke".equals(revision)) {
-            archiveCancellation(target, m);
-        } else {
-            Matcher change = P_EXAM_NEW_TIME.matcher(text);
-            int start = 0;
-            while (change.find()) start = change.end();
-            Deadline deadline = parseDeadline(text.substring(start), m.ts);
-            if (!deadline.ok()) return;
-            target.changes.record(m, "考试时间调整为 " + absoluteTime(deadline.value));
-            target.changes.removeOlder(m.ts);
-            target.lastChangeTs = Math.max(target.lastChangeTs, m.ts);
-            target.deadline = deadline.value;
-            target.deadlineUserSet = false;
-            target.deadlineText = humanDeadline(deadline.value);
-            target.needsConfirm = "low".equals(deadline.conf);
-            target.updated = true;
-            target.lastRevisionText = text;
-        }
+        Matcher change = P_EXAM_NEW_TIME.matcher(text);
+        int start = 0;
+        while (change.find()) start = change.end();
+        Deadline deadline = parseDeadline(text.substring(start), m.ts);
+        if (!deadline.ok()) return;
+        target.changes.record(m, "考试时间调整为 " + absoluteTime(deadline.value));
+        target.changes.removeOlder(m.ts);
+        target.lastChangeTs = Math.max(target.lastChangeTs, m.ts);
+        target.deadline = deadline.value;
+        target.deadlineUserSet = false;
+        target.deadlineText = humanDeadline(deadline.value);
+        target.changes.baseNeedsConfirm = "low".equals(deadline.conf);
+        target.needsConfirm = target.changes.baseNeedsConfirm || target.changes.hasPending();
+        if (!target.changes.hasPending()) target.reason = target.needsConfirm ? TIME_UNCERTAIN : "";
+        target.updated = true;
+        target.lastRevisionText = text;
         notifyChanged();
+    }
+
+    private void applyExamCancellation(Msg message, String text, String examWord, String reference) {
+        String sender = message.sender == null ? "" : message.sender;
+        boolean teacher = containsAny(sender, TEACHER_HINTS);
+        boolean atAll = P_ATALL.matcher(text).find();
+        String oldDateText = examOriginalDateText(text);
+        Deadline oldDate = parseDeadline(oldDateText, message.ts);
+        // The full event name can suggest a candidate when the first notice lacks a division qualifier.
+        String unqualifiedName = examNameWithoutDivision(reference);
+        boolean canReviewName = unqualifiedName.length() >= 8 && oldDate.ok() && directlyCancelsExam(text, examWord);
+        List<Card> exact = new ArrayList<>();
+        List<Card> candidates = new ArrayList<>();
+        boolean named = !reference.equals(examWord) && !"期中考试".equals(reference) && !"期末考试".equals(reference);
+        for (Card card : cards) {
+            if (!"exam".equals(card.kind) || card.done || !message.groupId.equals(card.groupId)
+                    || card.sourceText == null || message.ts < Math.max(card.sourceTs, card.lastChangeTs)) continue;
+            if (oldDate.ok() && !sameExamDate(oldDate, oldDateText, card.deadline)) continue;
+            boolean sameSender = !sender.isEmpty() && sender.equals(card.sender);
+            String original = stripSpaces(card.sourceText).toLowerCase(Locale.ROOT);
+            if ((teacher || sameSender || atAll) && original.contains(reference)) {
+                exact.add(card);
+            } else if ((teacher || sameSender) && canReviewName
+                    && !original.contains("分赛区") && original.contains(unqualifiedName)) {
+                candidates.add(card);
+            }
+        }
+        if (exact.size() == 1) {
+            Card selected = exact.get(0);
+            selected.changes.removeOlder(message.ts);
+            archiveCancellation(selected, message);
+            notifyChanged();
+        } else if (exact.size() > 1 && named) {
+            deferRevision(message, text, exact);
+        } else if (exact.isEmpty() && !candidates.isEmpty()) {
+            deferRevision(message, text, candidates);
+        }
+    }
+
+    private static String examNameWithoutDivision(String reference) {
+        Matcher qualifier = P_EXAM_DIVISION_QUALIFIER.matcher(reference);
+        if (qualifier.find()) return qualifier.replaceFirst("");
+        int division = reference.indexOf("分赛区");
+        return division < 0 ? "" : reference.substring(division + "分赛区".length());
+    }
+
+    private static boolean directlyCancelsExam(String text, String examWord) {
+        for (int at = text.indexOf(examWord); at >= 0; at = text.indexOf(examWord, at + examWord.length())) {
+            if (P_EXAM_CANCEL_TAIL.matcher(text).region(at + examWord.length(), text.length()).lookingAt()) return true;
+        }
+        return false;
+    }
+
+    private static String examOriginalDateText(String text) {
+        Matcher marker = P_EXAM_ORIGINAL_DATE.matcher(text);
+        if (!marker.find()) return null;
+        String clause = P_REVISION_CLAUSE_END.split(text.substring(marker.end()), 2)[0];
+        return P_ABS_CN.matcher(clause).lookingAt() || P_ABS_NUM.matcher(clause).lookingAt() ? clause : null;
+    }
+
+    private static boolean sameExamDate(Deadline original, String dateText, long candidate) {
+        if (candidate <= 0) return false;
+        if (original.hasTime) return candidate == original.value;
+        TimeZone zone = TimeZone.getDefault();
+        if (localDay(candidate, zone) != localDay(original.value, zone)) return false;
+        int hour = sendCalendar(candidate).get(Calendar.HOUR_OF_DAY);
+        return (!dateText.contains("上午") || hour < 12) && (!dateText.contains("下午") || hour >= 12);
     }
 
     /** 撤销/更正专用来词：出现在任何卡里都说明不了指向哪一条，匹配时排除。 */
@@ -1598,10 +1727,20 @@ public class Engine {
         boolean near = containsAny(t, REVISION_PRONOUN_NEAR);
         boolean far = containsAny(t, REVISION_PRONOUN_FAR);
         Set<String> keys = new HashSet<>();
-        for (int i = 0; i + 1 < t.length(); i++) {
-            char a = t.charAt(i), b = t.charAt(i + 1);
+        Matcher extension = announcedDeadline(t);
+        String subject = extension != null ? t.substring(0, extension.start())
+                : titleOnly && movedSubmissionTime(t) != null ? t.substring(0, t.indexOf("改到")) : t;
+        Deadline previousDeadline = null;
+        if (extension != null) {
+            Matcher old = P_OLD_DEADLINE.matcher(subject);
+            int start = 0;
+            while (old.find()) start = old.end();
+            previousDeadline = parseDeadline(subject.substring(start), m.ts);
+        }
+        for (int i = 0; i + 1 < subject.length(); i++) {
+            char a = subject.charAt(i), b = subject.charAt(i + 1);
             if (a < 0x4E00 || a > 0x9FFF || b < 0x4E00 || b > 0x9FFF) continue;
-            String g = t.substring(i, i + 2);
+            String g = subject.substring(i, i + 2);
             boolean stop = false;
             for (String s : REVISION_STOP) if (s.equals(g)) { stop = true; break; }
             if (!stop) keys.add(g);
@@ -1615,6 +1754,14 @@ public class Engine {
             if (!gid.equals(c.groupId) || c.done) continue;
             if (!trusted && !sender.equals(c.sender)) continue;
             String blob = c.title == null ? "" : c.title;
+            if (extension != null) {
+                if (!"todo".equals(c.kind) || !previousDeadline.ok() || c.deadline != previousDeadline.value) continue;
+                // Display titles may omit the event name before a comma; keep the original notice as evidence.
+                if (!sharesDeadlineSubject(subject, blob)) {
+                    if (c.sourceText == null || !sharesDeadlineSubject(subject, c.sourceText)) continue;
+                    blob = c.sourceText;
+                }
+            }
             int score = 0;
             for (String g : keys) {
                 if (blob.contains(g)) score++;
@@ -1631,6 +1778,7 @@ public class Engine {
             }
         }
         if (best != null) return tied ? deferRevision(m, t, bestMatches) : best;
+        if (extension != null) return null;
         // 泛称只接受同一发送者、最近一周内唯一的一份作业，不能靠“最新一张”猜。
         if (P_GENERIC_HOMEWORK_REVISION.matcher(t).find() && !blank(sender)) {
             List<Card> homework = new ArrayList<>();
@@ -1701,7 +1849,7 @@ public class Engine {
         Msg change = selected.changes.find(messageId);
         if (change == null || !Objects.equals(change.groupId, selected.groupId)) return false;
         String revision = detectRevision(change.text);
-        Deadline deadline = parseDeadline(change.text, change.ts);
+        Deadline deadline = revisionDeadline(change.text, change.ts);
         if (!"revoke".equals(revision) && !deadline.ok()) return false;
         for (Card c : new ArrayList<>(cards)) {
             if (!Objects.equals(c.groupId, change.groupId) || c.changes.find(messageId) == null) continue;

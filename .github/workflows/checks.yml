@@ -25,6 +25,10 @@ jobs:
           "$SDKMANAGER" --install 'platforms;android-34' 'build-tools;34.0.0' 'ndk;27.2.12479018' > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - uses: ./.github/actions/checks
+      - name: 记录公开通知回放
+        run: >-
+          python3 eval/run_sequence_eval.py --dataset eval/public_notice_cases.json
+          --out "$RUNNER_TEMP/public-notice-evaluation.json"
       - name: 端侧小模型推理库冒烟测试（电脑本机版 + 微型随机模型）
         run: |
           python3 -m pip install --quiet numpy==2.1.3
@@ -45,4 +49,7 @@ jobs:
             ${{ runner.temp }}/core-checks.json
             ${{ runner.temp }}/browser-checks.json
             ${{ runner.temp }}/reliability-checks.json
+            ${{ runner.temp }}/sequence-checks.json
+            ${{ runner.temp }}/exam-cancel-review.json
+            ${{ runner.temp }}/public-notice-evaluation.json
             ${{ runner.temp }}/showcase.json

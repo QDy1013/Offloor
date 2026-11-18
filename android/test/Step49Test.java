@@ -35,6 +35,27 @@ public final class Step49Test {
         say(cancel,"明天18点前交实验报告到学习通");
         check("重新布置不会被取消档案挡住",cancel.all().size()==1);
         check("有新版本时不恢复旧取消卡",!cancel.restoreCard(cancel.removedCards().get(0)));
+        Engine moved=fresh();
+        say(moved,"明天18点前交数据结构实验报告到学习通");
+        Engine.Card report=moved.all().get(0);
+        long original=report.deadline;
+        say(moved,"数据结构下次课改到三教302，明天20点前交");
+        check("后一句的提交时间不是改到后面的地点",report.deadline==original);
+        say(moved,"数据结构实验报告原定明天18点，改到后天20点交");
+        check("带旧时间的改期取新时间",report.deadline==Engine.parseDeadline("后天20点",now+seq*1000L).value);
+        long updated=report.deadline;
+        say(moved,"数据结构实验报告改到后天22点交吗？");
+        check("询问改期不改变原卡",report.deadline==updated);
+        Engine official=fresh();
+        say(official,"请在1月31日20:00前提交机器人创意作品");
+        say(official,"请在1月31日20:00前提交建筑模型作品");
+        Engine.Card robot=official.all().get(0), model=official.all().get(1);
+        long originalModel=model.deadline;
+        say(official,"机器人创意作品截止时间原为1月31日20:00，报名延长至2月10日21:00");
+        check("正式延期只改原时间和名称都吻合的事项",robot.deadline==Engine.parseDeadline("2月10日21:00",now).value
+                &&model.deadline==originalModel&&official.all().size()==2);
+        say(official,"建筑模型作品截止时间原为1月30日20:00，延长至2月16日21:00");
+        check("旧时间对不上时保留原卡且不另出卡",model.deadline==originalModel&&official.all().size()==2);
         System.out.println("PASS "+count);
     }
 }

@@ -23,7 +23,19 @@ public final class Step53Test {
         long physics=card(s,"物理").deadline;
         check("明确改期仅改对应数据库事项",s.advance()&&card(s,"数据库").updated&&card(s,"物理").deadline==physics);
         long database=card(s,"数据库").deadline;
+        ShowcaseScenario.StudyPreview plan=s.studyPreview();
+        check("改期后由规划器发现截止时间与样例课表冲突",plan!=null
+                &&plan.clash.card==card(s,"数据库")&&"操作系统".equals(plan.clash.lesson.name)
+                &&plan.clash.start<database&&database<plan.clash.end);
+        check("推荐与课表不冲突且位于截止前的样例空档",
+                plan.gap.startMinute==16*60&&plan.gap.endMinute==18*60&&plan.gap.targetCard==plan.clash.card
+                &&plan.place().contains("样例"));
+        check("只有本人选用后才确认样例安排",!plan.confirmed&&s.confirmStudyPreview()
+                &&s.studyPreview().confirmed&&!s.confirmStudyPreview());
+        s=restore(s.checkpoint());
+        check("重建后仍保留本人选用状态",s.studyPreview().confirmed&&s.recap().contains("本人已选用此安排"));
         check("含糊变更保留两项原时间",s.advance()&&s.awaitingReview()&&s.pending()==2&&card(s,"数据库").deadline==database&&card(s,"物理").deadline==physics);
+        check("下一条变更后不展示旧学习安排",s.studyPreview()==null&&!s.confirmStudyPreview());
         check("没有本人选择不能跳过核对",!s.advance()&&s.step()==3&&s.messages().size()==4);
         String pending=s.checkpoint();s=restore(pending);
         check("页面重建可恢复待核对分支",s.awaitingReview()&&s.reviewChoices().size()==2&&s.pending()==2);

@@ -13,6 +13,9 @@ public final class ShowcaseDump {
         for(ShowcaseScenario.Message m:s.messages())System.out.println("MESSAGE\t"+m.at+"\t"+enc(m.actor)+"\t"+enc(m.text)+"\t"+m.userAction);
         for(Engine.Card c:s.engine.all())card("CARD",c);
         for(Engine.Card c:s.engine.removedCards())card("REMOVED",c);
+        ShowcaseScenario.StudyPreview study=s.studyPreview();
+        if(study!=null)System.out.println("STUDY\t"+enc(study.clash.text())+"\t"+enc(study.gap.date)
+                +"\t"+enc(study.gap.clockRange())+"\t"+enc(study.place())+"\t"+study.confirmed);
     }
     static void card(String tag,Engine.Card c){
         System.out.println(tag+"\t"+enc(c.displayTitle())+"\t"+c.deadline+"\t"+c.needsConfirm+"\t"+c.done+"\t"+enc(TaskTrace.text(c)));
@@ -29,6 +32,7 @@ public final class ShowcaseDump {
                 else for(Engine.Card c:scenario.reviewChoices())if(c.title.contains("database".equals(args[1])?"数据库":"物理")){applied=scenario.choose(c.id);break;}
                 if(!applied)throw new IllegalStateException("核对分支未执行");
             }else if(!scenario.advance())throw new IllegalStateException("回放未推进");
+            if(scenario.step()==2&&!scenario.confirmStudyPreview())throw new IllegalStateException("样例学习安排未生成");
             dump(scenario);
         }
     }

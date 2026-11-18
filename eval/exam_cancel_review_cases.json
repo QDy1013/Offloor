@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-18",
+  "data_kind": "public_notice_paraphrases",
+  "provenance": "复用公开通知集中已冻结的北理工案例，单独追加一次模拟的本人确认。此处验证待核对、本人确认与取消归档。公开通知集原有的自动取消评分口径保持原样。",
+  "cases": [
+    {
+      "id": "bit-neccs-confirm-cancellation",
+      "title": "北理工初赛取消后手动确认",
+      "family": "取消待核对",
+      "source_mode": "沿用公开通知回放，追加构造的本人操作",
+      "sources": [
+        {"label": "北京理工大学初赛安排", "url": "https://jwb.bit.edu.cn/tzgg/35ceaf1ce495425ca613ae8ede90b570.htm"},
+        {"label": "北京理工大学初赛取消通知", "url": "https://jwb.bit.edu.cn/tzgg/b78b916847a143ff99a4c8ade451cc1c.htm"}
+      ],
+      "messages": [
+        ["a", "2025-03-05T12:00", "北理工2025年全国大学生英语竞赛初赛笔试将在4月13日上午9:00于良乡校区开始。"],
+        ["m", "2025-04-11T12:00", "北京理工大学分赛区全国大学生英语竞赛初赛笔试取消，原先安排在4月13日上午。"],
+        ["resolve", "2025-04-11T12:01", "a", "m"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2025-04-13T09:00"}},
+        {"after": 2, "tasks": {"a": {"deadline": "2025-04-13T09:00", "review": ["m"]}}},
+        {"after": 3, "tasks": {"a": {"deadline": "2025-04-13T09:00", "status": "cancelled"}}}
+      ]
+    }
+  ]
+}

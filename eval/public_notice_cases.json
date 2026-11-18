@@ -1,0 +1,129 @@
+{
+  "date": "2026-11-18",
+  "data_kind": "public_notice_paraphrases",
+  "provenance": "高校官网发布的历史公告，按事实改写为短通知回放。发送日期优先取公告日期，未给出的发送时间为回放所设。单页还原样本的起始通知依据更正公告中的原安排，回放日期只保证顺序，不代表真实推送。预期日期未给时刻的只核对日期。",
+  "cases": [
+    {
+      "id": "swjtu-yongda-registration",
+      "title": "西南交大永达杯报名延期",
+      "family": "延期",
+      "source_mode": "原通知和更正分别发布",
+      "sources": [
+        {"label": "西南交通大学原报名通知", "url": "https://news.swjtu.edu.cn/info/1020/105455.htm"},
+        {"label": "西南交通大学报名延期通知", "url": "https://news.swjtu.edu.cn/info/1020/110275.htm"}
+      ],
+      "messages": [
+        ["a", "2026-05-22T12:00", "西南交大永达杯创新创业大赛开始报名，请在2026年7月31日23:59前报名。"],
+        ["m", "2026-07-17T12:00", "永达杯创新创业大赛报名截止原为7月31日23:59，现延长至2026年9月15日23:59。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2026-07-31T23:59"}},
+        {"after": 2, "tasks": {"a": "2026-09-15T23:59"}}
+      ]
+    },
+    {
+      "id": "shnu-thesis-upload",
+      "title": "上海师大学位论文上传延期",
+      "family": "延期",
+      "source_mode": "原通知和更正分别发布",
+      "sources": [
+        {"label": "上海师范大学原论文送审指南", "url": "https://yjsc.shnu.edu.cn/94/34/c17213a758836/page.htm"},
+        {"label": "上海师范大学延期通知", "url": "https://yjsc.shnu.edu.cn/97/82/c17243a759682/page.psp"}
+      ],
+      "messages": [
+        ["a", "2022-03-01T12:00", "拟申请学位的研究生请于3月13日23:59前在五思云平台上传学位论文。"],
+        ["m", "2022-03-13T12:00", "五思云学位论文上传截止由3月13日23:59延长至3月18日23:59，其他要求照旧。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2022-03-13T23:59"}},
+        {"after": 2, "tasks": {"a": "2022-03-18T23:59"}}
+      ]
+    },
+    {
+      "id": "fudan-image-submission",
+      "title": "复旦复新影像作品征集延期",
+      "family": "延期",
+      "source_mode": "依据更正公告还原原安排",
+      "sources": [
+        {"label": "复旦大学新闻学院征集与延期公告", "url": "https://xwxy.fudan.edu.cn/qqdxsznyxczds/list.htm"}
+      ],
+      "messages": [
+        ["a", "2026-09-01T12:00", "第二届复新大学生智能影像创作大赛，作品请在2026年9月20日前投稿。"],
+        ["m", "2026-09-18T12:00", "第二届复新大学生智能影像创作大赛，作品征集截止原为2026年9月20日，延期至2026年10月7日23:59。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2026-09-20"}},
+        {"after": 2, "tasks": {"a": "2026-10-07T23:59"}}
+      ]
+    },
+    {
+      "id": "uestc-fiction-submission",
+      "title": "电子科大青少年科幻征文延期",
+      "family": "延期",
+      "source_mode": "依据更正公告还原原安排",
+      "sources": [
+        {"label": "电子科技大学作品征集延期通知", "url": "https://www.cdcm.uestc.edu.cn/info/1055/1725.htm"}
+      ],
+      "messages": [
+        ["a", "2025-02-20T12:00", "第十六届青少年科幻征文大赛，参赛者请于2025年3月15日前提交征文作品。"],
+        ["m", "2025-03-01T21:12", "第十六届青少年科幻征文大赛延长投稿期。科幻征文作品原定3月15日截稿，新截止时间为2025年5月15日23时59分。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2025-03-15"}},
+        {"after": 2, "tasks": {"a": "2025-05-15T23:59"}}
+      ]
+    },
+    {
+      "id": "bit-neccs-cancel",
+      "title": "北理工全国大学生英语竞赛初赛取消",
+      "family": "取消",
+      "source_mode": "原通知和更正分别发布",
+      "sources": [
+        {"label": "北京理工大学初赛安排", "url": "https://jwb.bit.edu.cn/tzgg/35ceaf1ce495425ca613ae8ede90b570.htm"},
+        {"label": "北京理工大学初赛取消通知", "url": "https://jwb.bit.edu.cn/tzgg/b78b916847a143ff99a4c8ade451cc1c.htm"}
+      ],
+      "messages": [
+        ["a", "2025-03-05T12:00", "北理工2025年全国大学生英语竞赛初赛笔试将在4月13日上午9:00于良乡校区开始。"],
+        ["m", "2025-04-11T12:00", "北京理工大学分赛区全国大学生英语竞赛初赛笔试取消，原先安排在4月13日上午。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2025-04-13T09:00"}},
+        {"after": 2, "tasks": {"a": {"deadline": "2025-04-13T09:00", "status": "cancelled"}}}
+      ]
+    },
+    {
+      "id": "ustb-physics-cancel",
+      "title": "北京科大第39届大学生物理竞赛取消",
+      "family": "取消",
+      "source_mode": "依据取消公告还原原安排",
+      "sources": [
+        {"label": "北京科技大学教务处取消公告", "url": "https://jwc.ustb.edu.cn/tztg/7d4540b110674201a37b9789e3b22845.htm"}
+      ],
+      "messages": [
+        ["a", "2022-11-20T12:00", "请参赛同学留意，第39届全国部分地区大学生物理竞赛定于2022年12月4日举办。"],
+        ["m", "2022-11-23T12:00", "第39届全国部分地区大学生物理竞赛取消，原定举办日期是12月4日。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2022-12-04"}},
+        {"after": 2, "tasks": {"a": {"deadline": "2022-12-04", "status": "cancelled"}}}
+      ]
+    },
+    {
+      "id": "cls-forum-cancel",
+      "title": "生命科学联合中心紫荆论坛报告取消",
+      "family": "取消",
+      "source_mode": "依据取消公告还原原安排",
+      "sources": [
+        {"label": "生命科学联合中心发布的报告取消通告", "url": "https://www.cls.edu.cn/search.jsp?currentnum=40&newskeycode2=&searchScope=0&wbtreeid=1290"}
+      ],
+      "messages": [
+        ["a", "2025-11-12T12:00", "11月14日下午16:00举行紫荆论坛学术报告，有意参会的同学请留出时间。"],
+        ["m", "2025-11-13T12:00", "因报告人日程调整，11月14日16:00的紫荆论坛学术报告取消。"]
+      ],
+      "checks": [
+        {"after": 1, "tasks": {"a": "2025-11-14T16:00"}},
+        {"after": 2, "tasks": {"a": {"deadline": "2025-11-14T16:00", "status": "cancelled"}}}
+      ]
+    }
+  ]
+}

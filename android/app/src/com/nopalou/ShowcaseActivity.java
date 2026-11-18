@@ -78,6 +78,8 @@ public final class ShowcaseActivity extends Activity {
                 TextView raw=text(message.text,14,Ui.TEXT,false);raw.setTextIsSelectable(true);input.addView(raw);
             }
         }
+        ShowcaseScenario.StudyPreview study=scenario.studyPreview();
+        if(study!=null)addStudyPreview(body,study);
         if(scenario.awaitingReview()) {
             LinearLayout review=panel(body,Ui.AMBER_BG);
             review.addView(text("这条变更对应哪一项？",16,Ui.AMBER_TX,true));CourseUi.gap(review,8);
@@ -107,6 +109,27 @@ public final class ShowcaseActivity extends Activity {
         footer.addView(next,CourseUi.row(-2));CourseUi.gap(footer,6);
         footer.addView(CourseUi.action(this,"查看本次回放记录",false,this::showRecap),CourseUi.row(-2));shell.addView(footer);
         setContentView(shell);Ui.systemBars(this,shell);
+    }
+    private void addStudyPreview(LinearLayout parent,ShowcaseScenario.StudyPreview study){
+        LinearLayout box=panel(parent,Ui.CARD);
+        box.addView(text("改期当天 · 样例课表",13,Ui.ACCENT,true));
+        CourseUi.gap(box,8);
+        box.addView(text(study.clash.text(),15,Ui.TEXT,true));
+        CourseUi.gap(box,8);
+        box.addView(text(study.gap.clockRange()+" 可用于自习",18,Ui.TEXT,true));
+        box.addView(text(study.gap.detail(study.at),14,Ui.SUB,false));
+        CourseUi.gap(box,10);
+        box.addView(text(study.place(),14,Ui.TEXT,true));
+        CourseUi.gap(box,6);
+        box.addView(text("场地为演示样例",12,Ui.SUB,false));
+        CourseUi.gap(box,8);
+        if(study.confirmed){
+            box.addView(text("本人已选用此安排",14,Ui.GREEN,true));
+        }else{
+            box.addView(CourseUi.action(this,"选用样例自习地点",false,()->{
+                if(scenario.confirmStudyPreview())render();else problem();
+            }),CourseUi.row(-2));
+        }
     }
     private void addCard(LinearLayout parent,Engine.Card card,boolean removed){
         int tone=removed?Ui.RED:card.done?Ui.GREEN:card.needsConfirm?Ui.AMBER_TX:Ui.ACCENT;

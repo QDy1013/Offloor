@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-18",
+  "data_kind": "constructed",
+  "cases": [
+    {"id":"move-reading","family":"改期","messages":[["a","09:00","明天17点前交图论阅读笔记"],["b","09:02","明天20点前交概率论练习"],["m","09:07","更正：图论阅读笔记改到后天19点提交"]],"checks":[{"after":2,"tasks":{"a":"1 17:00","b":"1 20:00"}},{"after":3,"tasks":{"a":"2 19:00","b":"1 20:00"},"protect":["b"]}]},
+    {"id":"move-earlier","family":"改期","messages":[["a","09:00","后天21点前提交信号实验记录"],["m","09:10","信号实验记录改为明天17点提交"]],"checks":[{"after":2,"tasks":{"a":"1 17:00"}}]},
+    {"id":"move-duration","family":"改期","messages":[["a","09:00","明天19点前提交工图练习"],["m","09:10","更正：工图练习改为两小时内提交"]],"checks":[{"after":2,"tasks":{"a":"0 11:10"}}]},
+    {"id":"move-relative","family":"改期","messages":[["a","09:00","明天20点前交数值分析练习"],["m","10:00","数值分析练习顺延到后天晚上九点提交"]],"checks":[{"after":2,"tasks":{"a":"2 21:00"}}]},
+    {"id":"move-twice","family":"改期","messages":[["a","09:00","明天16点前交电路仿真报告"],["m","09:05","电路仿真报告改到后天18点交"],["n","09:10","电路仿真报告改成后天20点交"]],"checks":[{"after":2,"tasks":{"a":"2 18:00"}},{"after":3,"tasks":{"a":"2 20:00"}}]},
+    {"id":"move-two-groups","family":"改期","messages":[["a","09:00","明天17点前交实习周记","甲组"],["b","09:01","明天20点前交实习周记","乙组"],["m","09:10","实习周记改到后天19点交","乙组"]],"checks":[{"after":3,"tasks":{"a":"1 17:00","b":"2 19:00"},"protect":["a"]}]},
+
+    {"id":"cancel-one","family":"取消","messages":[["a","09:00","明晚七点前交化学实验预习表"],["m","09:08","化学实验预习表取消了，不用交了"]],"checks":[{"after":1,"tasks":{"a":"1 19:00"}},{"after":2,"tasks":{"a":{"deadline":"1 19:00","status":"cancelled"}}}]},
+    {"id":"cancel-named","family":"取消","messages":[["a","09:00","明天16点前交光学实验报告"],["b","09:01","明天18点前交热学实验报告"],["m","09:09","热学实验报告取消了，不用交了"]],"checks":[{"after":3,"tasks":{"a":"1 16:00","b":{"deadline":"1 18:00","status":"cancelled"}},"protect":["a"]}]},
+    {"id":"cancel-then-reissue","family":"取消","messages":[["a","09:00","明天20点前交程序设计实践报告"],["m","09:08","程序设计实践报告取消了，不用交了"],["b","09:30","请在后天22点前交程序设计实践报告"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 20:00","status":"cancelled"},"b":"2 22:00"}}]},
+    {"id":"cancel-after-move","family":"取消","messages":[["a","09:00","明天18点前交制图作业"],["m","09:10","制图作业改到后天15点交"],["n","09:20","制图作业作废，不用交了"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"2 15:00","status":"cancelled"}}}]},
+    {"id":"cancel-other-group","family":"取消","messages":[["a","09:00","明天17点前交测量记录","甲组"],["m","09:05","测量记录取消了，不用交了","乙组"]],"checks":[{"after":2,"tasks":{"a":"1 17:00"},"protect":["a"]}]},
+    {"id":"cancel-question","family":"取消","messages":[["a","09:00","明天17点前交统计调查表"],["m","09:05","统计调查表是不是不用交了？","","高同学"]],"checks":[{"after":2,"tasks":{"a":"1 17:00"},"protect":["a"]}]},
+
+    {"id":"ambiguous-move","family":"歧义核对","messages":[["a","09:00","明天17点前交电磁学实验报告"],["b","09:01","明天20点前交光学实验报告"],["m","09:08","实验报告延期到后天18点"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 20:00","review":["m"]}},"protect":["a","b"]}]},
+    {"id":"ambiguous-cancel","family":"歧义核对","messages":[["a","09:00","明天17点前交材料实验报告"],["b","09:01","明天20点前交机械实验报告"],["m","09:08","实验报告取消了，不用交了"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 20:00","review":["m"]}},"protect":["a","b"]}]},
+    {"id":"ambiguous-confirm","family":"歧义核对","messages":[["a","09:00","明天17点前交水声实验报告"],["b","09:01","明天20点前交电声实验报告"],["m","09:08","实验报告延期到后天18点"],["resolve","09:10","a","m"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 20:00","review":["m"]}},"protect":["a","b"]},{"after":4,"tasks":{"a":"2 18:00","b":"1 20:00"},"protect":["b"]}]},
+    {"id":"ambiguous-ignore","family":"歧义核对","messages":[["a","09:00","明天17点前交结构实验报告"],["b","09:01","明天20点前交传热实验报告"],["m","09:08","实验报告延期到后天18点"],["ignore","09:10","b","m"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 20:00","review":["m"]}}},{"after":4,"tasks":{"a":"1 17:00","b":"1 20:00"},"protect":["a","b"]}]},
+    {"id":"ambiguous-cancel-confirm","family":"歧义核对","messages":[["a","09:00","明天17点前交精密仪器实验报告"],["b","09:01","明天20点前交测控实验报告"],["m","09:08","实验报告取消了，不用交了"],["resolve","09:12","b","m"]],"checks":[{"after":3,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 20:00","review":["m"]}}},{"after":4,"tasks":{"a":"1 17:00","b":{"deadline":"1 20:00","status":"cancelled"}},"protect":["a"]}]},
+    {"id":"ambiguous-three","family":"歧义核对","messages":[["a","09:00","明天17点前交导航实验报告"],["b","09:01","明天18点前交通信实验报告"],["c","09:02","明天19点前交控制实验报告"],["m","09:08","实验报告延期到后天18点"]],"checks":[{"after":4,"tasks":{"a":{"deadline":"1 17:00","review":["m"]},"b":{"deadline":"1 18:00","review":["m"]},"c":{"deadline":"1 19:00","review":["m"]}},"protect":["a","b","c"]}]},
+
+    {"id":"late-old-move","family":"乱序与干扰","messages":[["a","09:00","明天19点前交流体力学作业"],["m","09:20","流体力学作业改到后天21点交"],["n","09:10","流体力学作业改到后天18点交"]],"checks":[{"after":3,"tasks":{"a":"2 21:00"},"protect":["a"]}]},
+    {"id":"late-old-cancel","family":"乱序与干扰","messages":[["a","09:00","明天18点前交材料力学练习"],["m","09:30","材料力学练习改到后天19点交"],["n","09:10","材料力学练习取消了，不用交了"]],"checks":[{"after":3,"tasks":{"a":"2 19:00"},"protect":["a"]}]},
+    {"id":"peer-asking","family":"乱序与干扰","messages":[["a","09:00","明天19点前交离散数学练习"],["m","09:07","离散数学练习改到后天20点交吗？","","小周"]],"checks":[{"after":2,"tasks":{"a":"1 19:00"},"protect":["a"]}]},
+    {"id":"duplicate-notification","family":"乱序与干扰","messages":[["a","09:00","明天19点前交气动计算表"],["b","09:00","明天19点前交气动计算表"],["m","09:07","气动计算表改到后天18点交"]],"checks":[{"after":2,"tasks":{"a":"1 19:00"}},{"after":3,"tasks":{"a":"2 18:00"}}]},
+    {"id":"no-existing-task","family":"乱序与干扰","messages":[["m","09:05","更正：软件构造作业改到明天17点提交"],["a","09:10","明天20点前交图形学练习"]],"checks":[{"after":2,"tasks":{"a":"1 20:00"}}]},
+    {"id":"unrelated-notice","family":"乱序与干扰","messages":[["a","09:00","明天18点前交数据分析小作业"],["m","09:05","今天的足球比赛延期到明天20点，球场施工"]],"checks":[{"after":2,"tasks":{"a":"1 18:00"},"protect":["a"]}]},
+
+    {"id":"move-into-clash","family":"课表与空档","courses":[["0","操作系统","16:00","17:50"]],"messages":[["a","09:00","今天21点前交网络实验报告"],["m","12:00","网络实验报告改为今天16点30分提交"]],"checks":[{"after":1,"at":"14:00","tasks":{"a":"0 21:00"},"clashes":[]},{"after":2,"at":"14:00","tasks":{"a":"0 16:30"},"clashes":["a|操作系统"],"plan":{"target":"a","day":"0","start":"14:00","end":"16:00","minutes":120}}]},
+    {"id":"move-out-of-clash","family":"课表与空档","courses":[["0","操作系统","16:00","17:50"]],"messages":[["a","09:00","今天16点30分前交物理预习表"],["m","12:00","物理预习表改为今天20点提交"]],"checks":[{"after":1,"at":"14:00","tasks":{"a":"0 16:30"},"clashes":["a|操作系统"]},{"after":2,"at":"14:00","tasks":{"a":"0 20:00"},"clashes":[],"plan":{"target":"a","day":"0","start":"14:00","end":"16:00","minutes":120}}]},
+    {"id":"cancel-clears-clash","family":"课表与空档","courses":[["0","数字电路","16:00","17:50"]],"messages":[["a","09:00","今天16点30分前交力学辅导题"],["m","12:00","力学辅导题取消了，不用交了"]],"checks":[{"after":2,"at":"14:00","tasks":{"a":{"deadline":"0 16:30","status":"cancelled"}},"clashes":[],"plan":null}]},
+    {"id":"clash-at-class-start","family":"课表与空档","courses":[["0","数字电路","16:00","17:50"]],"messages":[["a","09:00","今天16点前交电子设计记录"],["m","12:00","请大家按原通知交"]],"checks":[{"after":2,"at":"14:00","tasks":{"a":"0 16:00"},"clashes":[],"plan":{"target":"a","day":"0","start":"14:00","end":"16:00","minutes":120}}]},
+    {"id":"cutoff-inside-gap","family":"课表与空档","courses":[["0","操作系统","14:00","17:50"]],"messages":[["a","09:00","今天21点前交嵌入式实验报告"],["m","12:00","嵌入式实验报告改到今天18点30分交"]],"checks":[{"after":2,"at":"13:30","tasks":{"a":"0 18:30"},"clashes":[],"plan":{"target":"a","day":"0","start":"17:50","end":"19:50","minutes":40}}]},
+    {"id":"expired-gap-target","family":"课表与空档","courses":[["0","操作系统","14:00","17:50"]],"messages":[["a","09:00","今天16点前交数字信号处理练习"],["b","09:03","今天21点前交算法分析习题"]],"checks":[{"after":2,"at":"13:30","tasks":{"a":"0 16:00","b":"0 21:00"},"clashes":["a|操作系统"],"plan":{"target":"b","day":"0","start":"17:50","end":"19:50","minutes":120}}]}
+  ]
+}

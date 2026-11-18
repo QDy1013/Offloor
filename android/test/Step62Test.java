@@ -52,6 +52,10 @@ public final class Step62Test {
         StudyPlanner.GapSuggestion usable = StudyPlanner.findStudyGap(
                 days, Arrays.asList(noonExam, duringGap, report), now);
         check("deadline within the gap remains eligible", usable.targetCard == duringGap);
+        check("shows only the time available before a deadline inside the gap",
+                usable.detail(now).contains("截止前可用 40 分钟"));
+        check("does not warn when the deadline is after the gap",
+                !nextTask.detail(now).contains("截止前可用"));
 
         Engine.Card dueTonight = card("tonight", "todo", "今晚提交", today, "22:00", false);
         long lateEvening = StudyRoomPlan.at(today, "21:20");

@@ -96,6 +96,14 @@ final class StudyPlanner {
                 String timing = targetCard.deadline > 0 && !targetCard.needsConfirm
                         ? TodayView.countdown(targetCard.deadline, now) : "时间待确认";
                 sb.append("建议优先处理「").append(targetCard.displayTitle()).append("」（").append(timing).append("）");
+                if (targetCard.deadline > 0 && !targetCard.needsConfirm) {
+                    long start = StudyRoomPlan.at(date, startMinute);
+                    long end = StudyRoomPlan.at(date, endMinute);
+                    if (targetCard.deadline > start && targetCard.deadline < end) {
+                        long minutes = (targetCard.deadline - start) / 60_000L;
+                        sb.append("\n截止前可用").append(minutes == 0 ? "不到 1 分钟" : " " + minutes + " 分钟");
+                    }
+                }
             } else {
                 sb.append("可利用这段时间自习、复习或推进课程作业");
             }

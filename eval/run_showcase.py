@@ -15,6 +15,9 @@ def run(classes,branch,at):
         f=line.split('\t');tag=f[0]
         if tag=='STEP':steps.append({'step':int(f[1]),'title':decode(f[2]),'note':decode(f[3]),'summary':decode(f[4]),'messages':[],'cards':[],'removed':[]})
         elif tag=='MESSAGE':steps[-1]['messages'].append({'at':int(f[1]),'actor':decode(f[2]),'text':decode(f[3]),'user_action':f[4]=='true'})
+        elif tag=='STUDY':
+            steps[-1]['study_plan']={'clash':decode(f[1]),'date':decode(f[2]),'time_range':decode(f[3]),
+                                     'place':decode(f[4]),'confirmed':f[5]=='true'}
         elif tag in ('CARD','REMOVED'):
             steps[-1]['cards' if tag=='CARD' else 'removed'].append({'title':decode(f[1]),'deadline':int(f[2]),'needs_confirm':f[3]=='true','done':f[4]=='true','trace':decode(f[5])})
         else:raise ValueError('Unknown replay output')
@@ -27,6 +30,10 @@ def markdown(report):
         if step['messages']:
             latest=step['messages'] if step['step']==1 else step['messages'][-1:]
             for m in latest:out += [f"{timestamp(m['at'])} · {m['actor']} · {'本人操作（构造）' if m['user_action'] else '样例通知'}",'',m['text'],'']
+        plan=step.get('study_plan')
+        if plan:
+            out += [plan['clash'],'',f"自习安排（样例）：{plan['date']} {plan['time_range']}，{plan['place']}。",
+                    '','本人已选用此安排。' if plan['confirmed'] else '等待本人选择。','']
         if step['cards'] or step['removed']:
             out+=['| 事项 | 时间 | 状态 |','|---|---|---|']
             for removed,cards in ((False,step['cards']),(True,step['removed'])):
@@ -43,7 +50,8 @@ def main():
     now=datetime.fromisoformat(args.at).replace(tzinfo=ZONE) if args.at else datetime.now(ZONE)
     at=int(now.timestamp()*1000);app=ROOT/'android/app/src/com/nopalou'
     with tempfile.TemporaryDirectory(prefix='.showcase-',dir=ROOT) as classes:
-        sources=[app/(name+'.java') for name in ('Engine','StateFormat','TaskChanges','ChangeDiff','TaskTrace','ShowcaseScenario')]
+        sources=[app/(name+'.java') for name in ('Engine','StateFormat','TaskChanges','ChangeDiff','TaskTrace',
+                'ShowcaseScenario','StudyPlanner','StudyRoomPlan','TodayPlan','TodayView','SectionTimes')]
         subprocess.run(['javac','-encoding','UTF-8','--release','11','-d',classes,*map(str,sources),str(ROOT/'eval/ShowcaseDump.java')],check=True)
         report={'schema':1,'data_kind':'constructed','scope':'同 Android 情境演示引擎，离线回放；不包含通知权限、真实云端或原生界面验证','started_at':at,'branches':[run(classes,b,at) for b in ('database','physics','ignore')]}
     args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
