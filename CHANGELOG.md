@@ -2,17 +2,16 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
-## 未发布候选版（`codex/study-loop` 分支）
+## v0.80（界面极简重构、跨源课表上下文与端侧评测）
 
-面向「第二十届全国大学生软件创新大赛 · AI 赋能学习生产力」赛道深化实现，重点补齐**跨源学习闭环、AI 上下文增强、严格无泄漏泛化评测与主界面工程解耦**：
-
-1. **跨源学习闭环（Phase 1）**：新增 [StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java)，打通「教务课表 × 群消息/平台待办/考试」与「空闲教室 / 图书馆研修室」两条链路：
-   - 本周 7 天内自动检测「课程时间 ↔ 截止待办/考试时间」冲突，并在首页展示冲突横幅（`clashBanner`）。
-   - 计算今日/本周高优先级学习空档（`studyLoopCard`），提供一键预填参数直达 [StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 或 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 查询空教室/研修室。
-   - 在 [EngineHolder.java](android/app/src/com/nopalou/EngineHolder.java) 与 [Engine.java](android/app/src/com/nopalou/Engine.java) 中实现课表课程名运行时注入（`setTimetableCourses` / `effectiveProfile`），在不改动用户档案缓存键（`profileKey()`）的前提下让未手填课表的用户也能命中「与我的课程相关」判断；[TodayWidget.java](android/app/src/com/nopalou/TodayWidget.java) 统一复用 `Timetable.coursesForDay`。
-2. **AI 复核课程上下文增强（Phase 2 Wave 1）**：在 [StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java) 与 [AiClient.java](android/app/src/com/nopalou/AiClient.java) 提取静态可测的 `buildJudgeRequest(...)`，为待 AI 复核的消息按课程名匹配注入 `matched_course` 线索，并在 [AiResponseTest.java](android/test/AiResponseTest.java) 补充单元测试。
-3. **严格无泄漏泛化与多基线评测（Phase 2 Wave 2）**：新增 [strict_ood.jsonl](eval/strict_ood.jsonl)（100 条全新表述、去除发送者标签泄漏的现实分布外评测集）、[run_benchmark.py](eval/run_benchmark.py) 与 [test_strict_benchmark.py](eval/test_strict_benchmark.py)，并扩展 [EngineEval.java](eval/EngineEval.java) 的 `--escalations` 统计，对比关键词基线、无规则逻辑回归基线、Python 三级流水线、APK Java 引擎与极端发送者假设，同步核验端侧规则直接拦截率。
-4. **首页交互面板模块化与文档重构（Phase 2 Wave 3）**：将原 [MainActivity.java](android/app/src/com/nopalou/MainActivity.java) 中的详情溯源/修卡/新建/日历面板与自检/日志/群管理/保活引导面板分别拆出至 [HomeCardSheets.java](android/app/src/com/nopalou/HomeCardSheets.java) 和 [HomeOpsSheets.java](android/app/src/com/nopalou/HomeOpsSheets.java)，保持现有视觉与隐私回归脚本 100% 兼容；并将版本履历沉淀至本文件。
+- **全套界面极简重构与图标重绘**：
+  1. [Ui.java](android/app/src/com/nopalou/Ui.java)、[CourseUi.java](android/app/src/com/nopalou/CourseUi.java) 与应用资源主题统一切换为暖羊皮纸 `#FAF9F5` / 深墨 `#141413` + 素白卡片细描边 + 陶土赤陶 `#C96442`（深色 `#D97757`）单强调色与衬线标题层级；[AppNavigation.java](android/app/src/com/nopalou/AppNavigation.java) 改为贴底 `1px` 细线导航栏。
+  2. [MainActivity.java](android/app/src/com/nopalou/MainActivity.java) 去除深墨概览方块、卡片冗余方框标签与常驻自习推荐卡片，改为可折叠搜索与 4 项分段筛选；「更多」菜单精简为 7 项核心入口，拆出 [HomeCardSheets.java](android/app/src/com/nopalou/HomeCardSheets.java) 与 [HomeOpsSheets.java](android/app/src/com/nopalou/HomeOpsSheets.java)。
+  3. [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java)、[AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java)、[CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java)、[StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java) 与 [CampusSyncBanner.java](android/app/src/com/nopalou/CampusSyncBanner.java) 全面轻量化，去除厚重渐变块、堆叠大按钮与粗同步圆环；重绘桌面自适应图标与通知小图标 `ic_notif`。
+  4. [ShowcaseActivity.java](android/app/src/com/nopalou/ShowcaseActivity.java) 与 [ShowcaseScenario.java](android/app/src/com/nopalou/ShowcaseScenario.java) 移除构造的样例自习地点假交互。
+- **跨源课表上下文、AI 线索与严格评测**：
+  1. [StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java)、[EngineHolder.java](android/app/src/com/nopalou/EngineHolder.java) 与 [Engine.java](android/app/src/com/nopalou/Engine.java) 保留静默课表课程同步（`setTimetableCourses` / `effectiveProfile`）与真实撞课/撞车提醒；[AiClient.java](android/app/src/com/nopalou/AiClient.java) 增加课表匹配线索 `matched_course`。
+  2. 新增有状态序列评测（[run_sequence_eval.py](eval/run_sequence_eval.py)）、无泄漏分布外评测集（[strict_ood.jsonl](eval/strict_ood.jsonl)、[run_benchmark.py](eval/run_benchmark.py)）与端侧推理验证。
 
 ---
 
