@@ -2,6 +2,21 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.82（双端分布外评测对齐、30 天过期清理、校园同步脱敏自检与课表自习空档直达）
+
+- **APK Java 引擎与 Python 引擎规则对齐（分布外评测达平齐）**：
+  1. [Engine.java](android/app/src/com/nopalou/Engine.java) 与 [jielong.py](engine/jielong.py) 同步补齐无「接龙」字头的连续编号名单识别（`>= 3` 条连续人名接龙），同步月日日期守卫（如 `3.23 22:00 前报名` 不误判为编号列表），并用任务动词守卫过滤编号作业/步骤清单。
+  2. [Engine.java](android/app/src/com/nopalou/Engine.java) 与 [pipeline.py](engine/pipeline.py) 同步将星期/时段词加入 `REVISION_STOP`（防止「本周五班会取消」仅靠「周五」误撤同日体检回执待办），并补充指代性时间撤回回退（支持「周五那个不用交了」唯一匹配撤卡，多张冲突仍转待核对）。
+  3. 100 条无泄漏分布外评测（`eval/strict_ood.jsonl`）上，APK Java 引擎召回由 `92.0%` 升至 **`94.0%`**、F1 由 `94.8%` 升至 **`95.9%`**、截止时间准确由 `87.5%` 升至 **`90.0%`**、接龙召回由 `80.0%` 升至 **`100.0%`**，与 Python 三级流水线完全持平；在 8,086 条合成留出集上，Java 截止时间准确由 `90.80%` 升至 **`93.25%`**，Python 截止时间准确由 `89.67%` 升至 **`92.40%`**（变更准确由 `74.47%` 升至 **`80.85%`**，双端接龙均 `100% / 100%`）。
+- **隐私清理、校园同步脱敏自检与跨源学习闭环入口**：
+  1. [Engine.java](android/app/src/com/nopalou/Engine.java) 新增 30 天过期数据清理 `pruneExpired(...)`，由 [EngineHolder.java](android/app/src/com/nopalou/EngineHolder.java) 在启动时自动清理超过 30 天的已完成卡片与已移除记录，**所有未完成待办即使过期也永不自动删除**。
+  2. 新增纯 Java 脱敏自检工具 [CampusDiag.java](android/app/src/com/nopalou/CampusDiag.java)，并在 [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 右上角设置菜单增加「复制同步自检」，仅导出模块状态、字段标签计数与去除查询参数的路径，严格屏蔽学号、账号哈希、余额数字、姓名、宿舍、密码与临时令牌。
+  3. [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 在本周课表页轻量恢复跨源学习空档提示条（复用 [StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java) `findStudyGap`），不增加首页负担即可一键预填时段跳转**空教室查询**或**图书馆研修室预约**。
+- **单测与文档对齐**：
+  1. 新增 [Step65Test.java](android/test/Step65Test.java) 并扩展 [CampusDataTest.java](android/test/CampusDataTest.java) 与 [test_strict_benchmark.py](eval/test_strict_benchmark.py)，全量核心与适配器回归扩至 **95 组**；同步刷新 [README.md](README.md)、[方案书对照.md](docs/方案书对照.md) 与 [演示与答辩要点.md](docs/演示与答辩要点.md)。
+
+---
+
 ## v0.81（修复校园网与一卡通余额同步、兜底及详情显示）
 
 - **门户卡片同步时序与渐进保留**：

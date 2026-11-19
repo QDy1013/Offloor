@@ -71,8 +71,10 @@ EXAM_BUILDING_PLACE_RE = re.compile(
 # 撤销/更正专用词：出现在任何卡里都说明不了指向哪一条，匹配时排除
 REVISION_STOP = ("刚才", "上条", "之前", "那条", "截止", "更正",
                  "取消", "作废", "改成", "改为", "一下", "今晚", "明天",
-                 # 会误匹配到无关卡片的套话（如"下周一上课，大家不用带电脑"）
-                 "大家", "上课", "下周",
+                 # 会误匹配到无关卡片的套话与常见日期词（如"本周五班会取消"误删周五作业）
+                 "大家", "上课", "下周", "本周", "这周", "今天", "后天", "明晚",
+                 "周一", "周二", "周三", "周四", "周五", "周六", "周日", "周天",
+                 "上午", "下午", "晚上",
                  # 调课通知里的常见词，避免"下次课改到三教302"误指向待办卡
                  "腾讯", "会议", "教室", "下次",
                  # "请相互转告"套话切出来的二字词
@@ -81,6 +83,10 @@ REVISION_STOP = ("刚才", "上条", "之前", "那条", "截止", "更正",
 REVISION_PRONOUN_NEAR = ("刚才", "刚刚", "那条")
 # "之前"类指代词：原发送者本人说时，取此人在本群最新的一张卡，不限时间
 REVISION_PRONOUN_FAR = ("之前", "上条", "上面", "前面")
+DEICTIC_TIME_REVISION = re.compile(
+    r"^(?:请(?:大家|各位|同学们)?)?\s*(?:本|这|下)?(周[一二三四五六日天]|今天|明天|后天|今晚|明晚)\s*"
+    r"(?:那个|那份|那次|那项|这个|这份)\s*(?:不用交|不用提交|不需要交|不需要提交|无需交|无需提交|免交|不用再交|不交|取消|作废)"
+)
 GENERIC_HOMEWORK_REVISION = re.compile(
     r"(?:^|[，,。；;\s])(?:这次|本次|此次)?作业\s*(?:截止(?:时间)?|提交时间|时间)?\s*"
     r"(?:改到|改为|改成|调整为|延期到|推迟到|顺延到|提前到)"
@@ -778,6 +784,14 @@ class Pipeline:
                           and any(key in (c.source_text or "") for key in keys)]
         if source_matches:
             return source_matches[0] if len(source_matches) == 1 else self._defer_revision(text, source_matches)
+        m_dt = DEICTIC_TIME_REVISION.search(text.strip())
+        if m_dt:
+            day_token = m_dt.group(1)
+            day_matches = [c for c in self.cards if c.group_id == gid and not c.revoked
+                           and (trusted or sender == c.sender)
+                           and day_token in (c.source_text or "")]
+            if day_matches:
+                return day_matches[0] if len(day_matches) == 1 else self._defer_revision(text, day_matches)
         for c in reversed(self.cards):
             if c.group_id != gid or c.revoked or (not trusted and sender != c.sender):
                 continue

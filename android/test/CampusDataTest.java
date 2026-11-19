@@ -38,6 +38,17 @@ public class CampusDataTest {
         check("roundtrip validates content",new CampusData(discovered.encode()).owner.equals(a.owner));
         check("no cleartext untrusted origin accepted",!CampusServices.allowed("http://nwpu.edu.cn/") && !CampusServices.allowed("https://nwpu.edu.cn.evil.test/"));
         check("destructive routes rejected",!CampusServices.readUrl("https://jwxt.nwpu.edu.cn/student/delete/123") && !CampusServices.readUrl("https://jwxt.nwpu.edu.cn/x?ticket=private"));
+        JSONObject netMod=new JSONObject().put("state","ok").put("source","https://ecampus.nwpu.edu.cn/main.html")
+                .put("fields",new JSONArray().put(new JSONObject().put("label","账户余额").put("value","42.50 元")).put(new JSONObject().put("label","身份证号").put("value","PRIVATE_ID")))
+                .put("tables",new JSONArray()).put("links",new JSONArray());
+        CampusData diagData=CampusData.merge(null,fresh("20230137",new JSONObject().put("network",netMod)),1700000000000L,null);
+        String diag=CampusDiag.report(diagData,"0.82","TestPhone / Android 14","同步完成","complete",5,5,"");
+        check("campus diagnostic includes sanitized sync state and balance presence",
+                diag.contains("账号绑定：已绑定") && diag.contains("network(网费)：state=ok") && diag.contains("已读余额=是") && diag.contains("ecampus.nwpu.edu.cn/main.html"));
+        check("campus diagnostic never leaks owner hash, student id, balance number or sensitive labels",
+                !diag.contains(diagData.owner) && !diag.contains("20230137") && !diag.contains("42.50") && !diag.contains("PRIVATE_ID") && !diag.contains("身份证号"));
+        check("campus diagnostic strips query tokens from source URLs",
+                "yktapp.nwpu.edu.cn/plat".equals(CampusDiag.safeSource("https://yktapp.nwpu.edu.cn/plat?synjones-auth=SECRET")));
         if (args.length>0) {
             String js=Files.readString(Paths.get(args[0])); CampusData fromJs=CampusData.merge(null,js,1,null);
             check("real browser adapter output accepted by Java",fromJs.module("profile").getString("state").equals("ok") && CampusData.count(fromJs.module("program"))==1);

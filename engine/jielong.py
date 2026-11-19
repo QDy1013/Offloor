@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from .timeparse import parse_jielong_deadline
 from datetime import datetime
 
-RE_NUM_LINE = re.compile(r"^\s*(\d{1,3})\s*[.、)]\s*(.+?)\s*$", re.M)
+# 点号后紧跟一两位数字时按月日处理，例如“3.23 22:00 前报名”。
+RE_NUM_LINE = re.compile(
+    r"^[ \t]*(\d{1,3})[ \t]*(?:\.(?!\d{1,2}(?!\d))|[、)])[ \t]*(\S[^\r\n]*)$",
+    re.M,
+)
 RE_TITLE = re.compile(r"[（(]([^）)]*)[）)]")
 ME_NAMES = ("李承宇", "承宇", "小李", "李同学")
 ME_SID = "20230137"
@@ -29,16 +33,36 @@ class Jielong:
     note: str = ""
 
 
+_HEADER_TASK = ("作业", "任务", "清单", "注意事项", "要求", "步骤", "题目", "习题")
+_ITEM_TASK = (
+    "完成", "提交", "预习", "复习", "阅读", "下载", "安装", "整理", "准备",
+    "撰写", "打印", "背诵", "上传", "作业", "报告", "习题", "实验", "试题",
+    "题目", "论文", "代码", "笔记", "章节", "步骤", "要求", "注意", "截止",
+)
+
+
 def is_jielong(text: str) -> bool:
     stripped = text.strip()
     if stripped.startswith("#接龙"):
         return True
     if "#接龙" in stripped[:20]:
         return True
-    nums = RE_NUM_LINE.findall(stripped)
-    if len(nums) >= 3:
-        idx = [int(n) for n, _ in nums]
+    matches = list(RE_NUM_LINE.finditer(stripped))
+    if "接龙" in stripped and matches:
+        return True
+    if len(matches) >= 3:
+        idx = [int(m.group(1)) for m in matches]
         if idx == list(range(1, len(idx) + 1)):   # 连续编号
+            header = stripped[:matches[0].start()].strip()
+            if header and any(w in header for w in _HEADER_TASK):
+                return False
+            for m in matches:
+                body = m.group(2).strip()
+                if len(body) > 24 or any(w in body for w in _ITEM_TASK):
+                    return False
+                first = re.split(r"[\s（(：:]", body)[0]
+                if not first or len(first) > 12:
+                    return False
             return True
     return False
 

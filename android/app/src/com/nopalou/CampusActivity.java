@@ -1020,18 +1020,30 @@ public class CampusActivity extends Activity {
         row.addView(t,new LinearLayout.LayoutParams(dp(150),-2));
     }
     private void settings() {
-        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"立即更新","切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
+        new AlertDialog.Builder(this,Ui.dialogTheme()).setItems(new String[]{"立即更新","复制同步自检","切换教务账号","清空本机校园数据","下载最新版"},(d,i) -> {
             if (i==0) {
                 boolean started=CampusAutoRefresh.refreshNow(this);
                 android.widget.Toast.makeText(this,started?"已开始在后台更新，可以照常使用":"正在后台更新中",android.widget.Toast.LENGTH_SHORT).show();
                 updates.postDelayed(this::reload,1500);
             }
-            else if (i==1) startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"));
-            else if (i==3) startActivity(new Intent(this,UpdateActivity.class));
+            else if (i==1) copySyncDiag();
+            else if (i==2) startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"));
+            else if (i==4) startActivity(new Intent(this,UpdateActivity.class));
             else new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("清空本机校园数据？").setMessage("将删除此页面的同步存档和宿舍绑定，可重新同步。").setNegativeButton("取消",null).setPositiveButton("清空",(a,b) -> io.execute(() -> {
                 CampusStore.clear(getApplicationContext()); runOnUiThread(() -> { data=null; render(); });
             })).show();
         }).show();
+    }
+    private void copySyncDiag() {
+        String ver="未知";
+        try { ver=getPackageManager().getPackageInfo(getPackageName(),0).versionName; } catch (Exception ignored) { }
+        android.content.SharedPreferences p=getSharedPreferences("campus-auto",MODE_PRIVATE);
+        String text=CampusDiag.report(data,ver,android.os.Build.MODEL+" / Android "+android.os.Build.VERSION.RELEASE,
+                p.getString("sync_phase",""),p.getString("sync_result",""),
+                p.getInt("done",0),p.getInt("total",0),CampusSilentRefresh.attention(this));
+        android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        if (cm!=null) cm.setPrimaryClip(android.content.ClipData.newPlainText("Offloor 校园同步自检",text));
+        toast("已复制脱敏同步自检信息（不含账号、密码和余额）");
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
     @Override public void onPause() { resumed=false; if (busRefresh!=null) busRefresh.stop(); busAttempted=false; busLoading=false; busTrips=null; ticketBusy=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }

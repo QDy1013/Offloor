@@ -158,6 +158,11 @@ public class TimetableActivity extends Activity {
             root.addView(statusPill);
             CourseUi.gap(root, 6);
         }
+        View gapStrip = studyGapStrip();
+        if (gapStrip != null) {
+            root.addView(gapStrip);
+            CourseUi.gap(root, 6);
+        }
         swipeBoard = CourseUi.column(this); root.addView(swipeBoard, new LinearLayout.LayoutParams(-1, 0, 1));
         weekdayHeader(swipeBoard);
 
@@ -424,6 +429,55 @@ public class TimetableActivity extends Activity {
         Ui.pressScale(pill, 0.99f);
         pill.setOnClickListener(v -> detail(target));
         return pill;
+    }
+
+    /** 课表页顶部轻量学习空档条：仅在本周展示，一键预填参数直达空教室或研修室预约，不打扰待办首页。 */
+    private View studyGapStrip() {
+        if (table == null || week != table.currentWeek() || getPackageName().equals("com.nopalou.timetabletest")) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        Engine eng = EngineHolder.get(getApplicationContext());
+        StudyPlanner.GapSuggestion gap = StudyPlanner.findStudyGap(
+                table.weekAheadCourses(now), eng == null ? null : eng.all(), now);
+        if (gap == null) return null;
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(7), dp(10), dp(7));
+        row.setBackground(Ui.roundStroke(this, Ui.CARD, Ui.LINE, 10, 0.75f));
+
+        String head = (gap.isToday ? "今日空档 " : "明日空档 ") + gap.clockRange();
+        if (gap.targetCard != null) head += " · " + gap.targetCard.displayTitle();
+        else head += " 无课";
+        TextView info = text(head, 12, Ui.SUB, false);
+        info.setSingleLine(true);
+        info.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+
+        if (gap.isToday) {
+            TextView room = text("空教室", 12, Ui.ACCENT, true);
+            room.setPadding(dp(8), dp(2), dp(4), dp(2));
+            room.setBackground(Ui.ripple(this, null, Ui.press(), 8));
+            room.setOnClickListener(v -> startActivity(new Intent(this, CampusActivity.class)
+                    .putExtra("module", "classroom")
+                    .putExtra("prefill_campus", gap.campus)
+                    .putExtra("prefill_start", gap.startMinute)
+                    .putExtra("prefill_end", gap.endMinute)));
+            row.addView(room);
+            row.addView(text("·", 12, Ui.MUTE, false));
+        }
+        TextView study = text("研修室", 12, Ui.ACCENT, true);
+        study.setPadding(dp(4), dp(2), dp(4), dp(2));
+        study.setBackground(Ui.ripple(this, null, Ui.press(), 8));
+        study.setOnClickListener(v -> startActivity(new Intent(this, StudyRoomActivity.class)
+                .putExtra("prefill_date", gap.date)
+                .putExtra("prefill_campus", gap.campus)
+                .putExtra("prefill_start", gap.startMinute)
+                .putExtra("prefill_end", gap.endMinute)
+                .putExtra("prefill_theme", gap.studyTheme())));
+        row.addView(study);
+        return row;
     }
 
     /** 课程块：淡色底 + 左侧 3dp 同色细条，色块之间更容易分清。 */

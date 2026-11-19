@@ -51,8 +51,9 @@ def main() -> None:
         for c in snap.cards:
             c.needs_confirm = (c.deadline is None)
         jv = score_ood(rows, snap.active_cards(), snap.jielong_ids, escalations=esc)
-        assert jv["f1"] >= 0.90, f"Java 引擎严格分布外 F1 异常偏低: {jv['f1']}"
+        assert jv["f1"] >= 0.92, f"Java 引擎严格分布外 F1 异常偏低: {jv['f1']}"
         assert jv["precision"] >= 0.90, f"Java 引擎精确率偏低: {jv['precision']}"
+        assert jv["jielong_recall"] == 1.0, f"Java 引擎接龙召回回退: {jv['jielong_recall']}"
         assert jv["vague_restraint_acc"] == 1.0, "Java 引擎不得为模糊时间编造具体日期"
         assert jv["local_only_pct"] >= 0.75, f"端侧拦截率低于预期: {jv['local_only_pct']}"
 

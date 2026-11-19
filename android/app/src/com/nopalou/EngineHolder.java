@@ -203,6 +203,13 @@ public class EngineHolder {
             }
         };
         engine = e;
+        if (!storageBlocked()) {
+            int pruned = e.pruneExpired(System.currentTimeMillis(), Engine.DEFAULT_RETENTION_MS);
+            if (pruned > 0) {
+                diag(app, "清理", "已自动清理超过 30 天的历史事项 · " + pruned + " 条");
+                saveAsync(app);
+            }
+        }
         AiImages.cleanupCache(app);
         return engine;
     }

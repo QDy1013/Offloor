@@ -1024,12 +1024,40 @@ public class Engine {
         return new String[]{s, verb};
     }
 
+    private static final String[] JIELONG_HEADER_TASK = {
+            "作业", "任务", "清单", "注意事项", "要求", "步骤", "题目", "习题"
+    };
+    private static final String[] JIELONG_ITEM_TASK = {
+            "完成", "提交", "预习", "复习", "阅读", "下载", "安装", "整理", "准备",
+            "撰写", "打印", "背诵", "上传", "作业", "报告", "习题", "实验", "试题",
+            "题目", "论文", "代码", "笔记", "章节", "步骤", "要求", "注意", "截止"
+    };
+
     static boolean isJielong(String text) {
         if (text == null) return false;
         String t = text.trim();
-        if (!t.contains("接龙")) return false;    // 只有编号行的作业清单不算接龙
         if (t.contains("#接龙")) return true;
-        return P_NUMLINE.matcher(t).find();       // 光说"接龙"没名单的，不当接龙
+        if (t.contains("接龙")) return P_NUMLINE.matcher(t).find();   // 光说"接龙"没名单的，不当接龙
+        // 无“接龙”字样时：仅当存在 3 条以上从 1 起连续编号的短人名/学号名单（且非作业清单）才算接龙
+        Matcher m = P_NUMLINE.matcher(t);
+        List<Integer> idx = new ArrayList<>();
+        List<String> bodies = new ArrayList<>();
+        int firstMatch = -1;
+        while (m.find()) {
+            if (firstMatch < 0) firstMatch = m.start();
+            try { idx.add(Integer.parseInt(m.group(1))); } catch (NumberFormatException e) { return false; }
+            bodies.add(m.group(2).trim());
+        }
+        if (idx.size() < 3) return false;
+        for (int i = 0; i < idx.size(); i++) if (idx.get(i) != i + 1) return false;
+        String header = firstMatch > 0 ? t.substring(0, firstMatch).trim() : "";
+        if (!header.isEmpty() && containsAny(header, JIELONG_HEADER_TASK)) return false;
+        for (String body : bodies) {
+            if (body.length() > 24 || containsAny(body, JIELONG_ITEM_TASK)) return false;
+            String first = body.split("[\\s（(：:]")[0];
+            if (first.isEmpty() || first.length() > 12) return false;
+        }
+        return true;
     }
 
     String[] jielongInfo(String text) {   // {title, joined("1"/"0"), rosterSize}
@@ -1695,7 +1723,12 @@ public class Engine {
     /** 撤销/更正专用来词：出现在任何卡里都说明不了指向哪一条，匹配时排除。 */
     static final String[] REVISION_STOP = {"刚才", "上条", "之前", "那条", "截止", "更正",
             "取消", "作废", "改成", "改为", "一下", "今晚", "明天", "大家", "上课", "下周",
+            "本周", "这周", "今天", "后天", "明晚", "周一", "周二", "周三", "周四", "周五", "周六", "周日", "周天",
+            "上午", "下午", "晚上",
             "腾讯", "会议", "教室", "下次", "请相", "相互", "互转", "转告"};
+    static final Pattern P_DEICTIC_TIME_REVISION = Pattern.compile(
+            "^(?:请(?:大家|各位|同学们)?)?\\s*(?:本|这|下)?(周[一二三四五六日天]|今天|明天|后天|今晚|明晚)\\s*"
+                    + "(?:那个|那份|那次|那项|这个|这份)\\s*(?:不用交|不用提交|不需要交|不需要提交|无需交|无需提交|免交|不用再交|不交|取消|作废)");
     static final Pattern P_GENERIC_HOMEWORK_REVISION = Pattern.compile(
             "(?:^|[，,。；;\\s])(?:这次|本次|此次)?作业\\s*(?:截止(?:时间)?|提交时间|时间)?\\s*"
                     + "(?:改到|改为|改成|调整为|延期到|推迟到|顺延到|提前到)");
@@ -1807,6 +1840,18 @@ public class Engine {
         }
         if (sourceMatches.size() > 1) return deferRevision(m, t, sourceMatches);
         if (sourceMatches.size() == 1) return sourceMatches.get(0);
+        Matcher deicticTime = P_DEICTIC_TIME_REVISION.matcher(t.trim());
+        if (deicticTime.find()) {
+            String dayToken = deicticTime.group(1);
+            List<Card> dayMatches = new ArrayList<>();
+            for (int i = cards.size() - 1; i >= 0; i--) {
+                Card c = cards.get(i);
+                if (c.done || !gid.equals(c.groupId) || (!trusted && !sender.equals(c.sender))) continue;
+                if (c.sourceText != null && c.sourceText.contains(dayToken)) dayMatches.add(c);
+            }
+            if (dayMatches.size() > 1) return deferRevision(m, t, dayMatches);
+            if (dayMatches.size() == 1) return dayMatches.get(0);
+        }
         for (int i = cards.size() - 1; i >= 0; i--) {
             Card c = cards.get(i);
             if (!gid.equals(c.groupId) || (!trusted && !sender.equals(c.sender))) continue;
@@ -2027,6 +2072,39 @@ public class Engine {
         card.changes.action(actedAt,"本人","从已移除列表恢复事项",card.displayTitle());
         notifyChanged();
         return true;
+    }
+
+    public static final long DEFAULT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000L;
+
+    /**
+     * 清理超过保留期（默认 30 天）的已完成事项与已移除归档，降低本机历史数据留存。
+     * 未完成的事项（即使已逾期）绝不自动删除，避免替用户丢失待办。
+     */
+    public int pruneExpired(long now, long retentionMs) {
+        if (now <= 0 || retentionMs <= 0) return 0;
+        long cutoff = now - retentionMs;
+        int pruned = 0;
+        for (int i = cards.size() - 1; i >= 0; i--) {
+            Card c = cards.get(i);
+            if (!c.done) continue;
+            long ref = latestCardActivity(c);
+            if (ref > 0 && ref < cutoff) { cards.remove(i); pruned++; }
+        }
+        for (int i = removedCards.size() - 1; i >= 0; i--) {
+            Card c = removedCards.get(i);
+            long ref = c.removedAt > 0 ? c.removedAt : latestCardActivity(c);
+            if (ref > 0 && ref < cutoff) { removedCards.remove(i); pruned++; }
+        }
+        if (pruned > 0) notifyChanged();
+        return pruned;
+    }
+
+    private static long latestCardActivity(Card c) {
+        long ref = Math.max(c.lastChangeTs, Math.max(c.deadline, c.sourceTs));
+        for (TaskChanges.Event ev : c.changes.history()) {
+            if (ev.at > ref) ref = ev.at;
+        }
+        return ref;
     }
 
     public void clearRemovedCards() {
