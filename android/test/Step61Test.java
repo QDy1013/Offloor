@@ -85,6 +85,29 @@ public final class Step61Test {
         check("same-course exam during its own class is skipped",
                 clashes.stream().noneMatch(c -> c.card == sameCourseExam));
 
+        // 考试持续时长与后续课程重叠检测：18:30-20:30 考试应与 19:00-20:40 课程撞课；
+        // 显式 14:00-15:30 90 分钟考试不应与 15:40-17:20 课程误报撞课；14:00-16:00 考试也不与 16:00 课程相撞。
+        List<StudyPlanner.DayCourses> durDays = Collections.singletonList(
+                new StudyPlanner.DayCourses("2026-11-18", Arrays.asList(
+                        course("形势与政策", "教西A101", "19:00", "20:40", 11),
+                        course("数字逻辑", "教西B201", "15:40", "17:20", 9)
+                ))
+        );
+        Engine.Card overlapExam = card("e4", "exam", "面向对象编程考试", "教务系统", "面向对象编程 · 18:30–20:30 · 教西D204",
+                StudyRoomPlan.at("2026-11-18", "18:30"), false, false);
+        Engine.Card shortExam = card("e5", "exam", "英语听力测试", "英语群", "周三 14:00-15:30 考试",
+                StudyRoomPlan.at("2026-11-18", "14:00"), false, false);
+        List<StudyPlanner.LessonClash> durClashes = StudyPlanner.findLessonClashes(
+                Arrays.asList(overlapExam, shortExam), durDays, now);
+        check("exam duration overlaps following evening lesson",
+                durClashes.size() == 1 && durClashes.get(0).card == overlapExam
+                        && "形势与政策".equals(durClashes.get(0).lesson.name));
+        check("explicit 90m exam ends before 15:40 lesson without false clash",
+                StudyPlanner.examDurationMinutes(shortExam) == 90
+                        && durClashes.stream().noneMatch(c -> c.card == shortExam));
+        check("default 2h exam ending at 16:00 does not overlap 16:00 class",
+                clashes.stream().noneMatch(c -> c.card == examClash && "数据库系统".equals(c.lesson.name)));
+
         // ---------- 3. 学习空档与空间行动推荐 ----------
         Engine.Card urgentNet = card("u1", "todo", "提交计算机网络实验报告", "计算机网络群", "明天22点前提交",
                 StudyRoomPlan.at("2026-11-17", "22:00"), false, false);

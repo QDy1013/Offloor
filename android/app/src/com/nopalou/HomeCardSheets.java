@@ -85,6 +85,21 @@ final class HomeCardSheets {
             TextView cd = a.uiText(TodayView.countdown(c.deadline, now), 13, tone, false);
             cd.setPadding(0, MainActivity.dp(a, 4), 0, 0);
             dueBox.addView(cd);
+            java.util.List<String> conflicts = a.cardConflictLines(c);
+            if (!conflicts.isEmpty()) {
+                View sep = new View(a);
+                sep.setBackgroundColor(Ui.withAlpha(Ui.ORANGE, 55));
+                LinearLayout.LayoutParams sepLp = a.lp(-1, 1);
+                sepLp.topMargin = MainActivity.dp(a, 10);
+                sepLp.bottomMargin = MainActivity.dp(a, 8);
+                dueBox.addView(sep, sepLp);
+                for (int i = 0; i < conflicts.size(); i++) {
+                    TextView line = a.uiText(conflicts.get(i), 12, Ui.ORANGE, false);
+                    line.setLineSpacing(MainActivity.dp(a, 2), 1f);
+                    if (i > 0) line.setPadding(0, MainActivity.dp(a, 4), 0, 0);
+                    dueBox.addView(line);
+                }
+            }
         }
         if (unsure && !TextUtils.isEmpty(c.reason)) {
             TextView why = a.uiText(c.reason, 12, tone, false);

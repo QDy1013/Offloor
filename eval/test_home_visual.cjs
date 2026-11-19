@@ -6,14 +6,14 @@ const main = fs.readFileSync(path.join(base, 'MainActivity.java'), 'utf8');
 const nav = fs.readFileSync(path.join(base, 'AppNavigation.java'), 'utf8');
 let checks = 0;
 function check(name, run) { run(); checks++; console.log('PASS ' + name); }
-check('editorial overview removes hero dark box and decorative tags', () => {
+check('editorial overview removes hero dark box, clash banner, and verbose stats', () => {
     assert.match(main, /brand\.setTypeface\(Ui\.editorialBold\(\)\)/);
     assert.match(main, /headerMeta\.addView\(sub/);
     assert.match(main, /headline\.setTypeface\(Ui\.editorialBold\(\)\)/);
     assert.match(main, /headline\.setText\(s\)/);
-    assert.match(main, /stats\.setText\(TextUtils\.join/);
-    assert.match(main, /if \(sub != null\) sub\.setText\(subLine\(\)\)/);
-    assert.doesNotMatch(main, /Ui\.tag\(this, "今日概览"|Ui\.heroSurface\(this|studyLoopCard|updateStudyLoop/);
+    assert.match(main, /sub\.setText\(subLine\(\)\)/);
+    assert.match(main, /stats\.setText\(baseStats\)/);
+    assert.doesNotMatch(main, /Ui\.tag\(this, "今日概览"|Ui\.heroSurface\(this|studyLoopCard|updateStudyLoop|clashBanner|updateClashBanner/);
 });
 check('segmented bar keeps 4 quiet tabs, collapsible search and status filters', () => {
     assert.match(main, /segTab\("全部"\)/);
@@ -25,14 +25,14 @@ check('segmented bar keeps 4 quiet tabs, collapsible search and status filters',
     assert.match(main, /uiHandler\.postDelayed\(searchRefresh, 180\)/);
 });
 const listItem = main.slice(main.indexOf('    View cardView('), main.indexOf('    private static String kindName('));
-check('cards stay hairline-flat without redundant square pills', () => {
-    assert.match(listItem, /Ui\.cardSurface\(card, 14\)/);
-    assert.match(listItem, /Ui\.roundStroke\(this, Ui\.FILL, Ui\.LINE, 14, 0\.75f\)/);
+check('cards stay hairline-grouped two-line rows without redundant badges or source clutter', () => {
+    assert.match(main, /LinearLayout groupCard = Ui\.group\(this\)/);
     assert.match(listItem, /Ui\.pressScale\(card, 0\.99f\)/);
-    assert.match(listItem, /cardLp\.bottomMargin = dp\(this, 8\)/);
-    assert.match(listItem, /meta\.addView\(sourceMark\(c, 14\)\)/);
+    assert.match(listItem, /compactDueLabel\(c, groupName\)/);
+    assert.match(listItem, /compactSubLine\(c\)/);
+    assert.match(listItem, /timeView\.setFontFeatureSettings\("tnum"\)/);
     assert.match(listItem, /return card/);
-    assert.doesNotMatch(listItem, /Ui\.tag\(this|kindTag\(c\.kind\)/);
+    assert.doesNotMatch(listItem, /Ui\.tag\(this|kindTag\(c\.kind\)|sourceMark\(c/);
 });
 check('completion target keeps accessible touch size and retains undo and edit actions', () => {
     assert.match(listItem, /checkLp = lp\(dp\(this, 44\), dp\(this, 44\)\)/);

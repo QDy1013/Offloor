@@ -68,11 +68,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     Engine engine;
     LinearLayout cardList;
+    /** 大标题下的统计副标（明天/过期/待确认/未完成计数，有冲突时同行轻附可点计数）。 */
     TextView stats;
     /** 顶部副标题（日期 + 问候），render() 时按小时段刷新。 */
     TextView sub;
-    /** 撞车提醒横幅：几天内几件事挤在一起或与课表撞课时显示在概览下方。 */
-    TextView clashBanner;
+    /** 当前 7 天内的冲突缓存：不在首页插横幅，而是轻附在统计行、对应卡片时间行与详情面板中。 */
+    private List<ClashPlan.Clash> activeTaskClashes = java.util.Collections.emptyList();
+    private List<StudyPlanner.LessonClash> activeLessonClashes = java.util.Collections.emptyList();
+    private final Map<String, List<StudyPlanner.LessonClash>> lessonClashesByCard = new HashMap<>();
+    private final Map<String, ClashPlan.Clash> taskClashByCard = new HashMap<>();
     private Timetable timetable;
     private int timetableLoadVersion;
     private final Runnable timetableChanged = () -> { if (this.resumed) loadTimetableAsync(); };
@@ -187,13 +191,15 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
     private static final class DueBinding {
         final Engine.Card card;
-        final TextView due;
+        final TextView timeView;
+        final TextView subView;
         final String bucket;
         final int urgency;
 
-        DueBinding(Engine.Card card, TextView due, String bucket, int urgency) {
+        DueBinding(Engine.Card card, TextView timeView, TextView subView, String bucket, int urgency) {
             this.card = card;
-            this.due = due;
+            this.timeView = timeView;
+            this.subView = subView;
             this.bucket = bucket;
             this.urgency = urgency;
         }
@@ -629,35 +635,13 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         headerArea.addView(stats, stLp);
         page.addView(headerArea, lp(-1, -2));
 
-        // 轻量冲突提醒：仅在真实存在课表或任务冲突时显示一行细描边提示
-        clashBanner = uiText("", 13, Ui.ORANGE, true);
-        clashBanner.setPadding(dp(this, 14), dp(this, 10), dp(this, 14), dp(this, 10));
-        clashBanner.setBackground(Ui.ripple(this, Ui.roundStroke(this, Ui.ORANGE_BG, Ui.withAlpha(Ui.ORANGE, 75), 12, 0.75f), Ui.press(), 12));
-        clashBanner.setLineSpacing(dp(this, 2), 1f);
-        clashBanner.setMaxLines(2);
-        clashBanner.setEllipsize(TextUtils.TruncateAt.END);
-        clashBanner.setOnClickListener(v -> showClashDetail());
-        clashBanner.setVisibility(View.GONE);
-        LinearLayout.LayoutParams clashLp = lp(-1, -2);
-        clashLp.topMargin = dp(this, 6);
-        clashLp.bottomMargin = dp(this, 6);
-        page.addView(clashBanner, clashLp);
-
         // 离线演示条
         demoTools = new LinearLayout(this);
         demoTools.setGravity(Gravity.CENTER_VERTICAL);
         demoTools.setVisibility(View.GONE);
-        demoTools.setPadding(dp(this, 16), dp(this, 11), dp(this, 12), dp(this, 11));
+        demoTools.setPadding(dp(this, 16), dp(this, 10), dp(this, 12), dp(this, 10));
         demoTools.setBackground(Ui.roundStroke(this, Ui.FILL, Ui.LINE, 14, 0.75f));
-        LinearLayout demoText = new LinearLayout(this);
-        demoText.setOrientation(LinearLayout.VERTICAL);
-        demoText.addView(uiText("离线演示", 14, Ui.TEXT, true));
-        TextView demoHint = uiText("样例卡片，不进日常列表", 12, Ui.SUB, false);
-        demoHint.setSingleLine(true);
-        demoHint.setEllipsize(TextUtils.TruncateAt.END);
-        demoHint.setPadding(0, dp(this, 3), 0, 0);
-        demoText.addView(demoHint);
-        demoTools.addView(demoText, new LinearLayout.LayoutParams(0, -2, 1));
+        demoTools.addView(uiText("离线演示", 14, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
         demoUpdate = stylePrimary(button("播放更新", v -> {
             if (demo != null) {
                 demo.applyUpdates();
@@ -1066,6 +1050,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         headline.setText(s);
         if (compactTitle != null) compactTitle.setText(s);
 
+        if (sub != null) sub.setText(subLine());
         List<String> parts = new ArrayList<>();
         if (tomorrow > 0 && !"tomorrow".equals(lead)) parts.add("明天 " + tomorrow + " 件");
         if (overdue > 0 && !"overdue".equals(lead)) parts.add("已过期 " + overdue + " 件");
@@ -1075,7 +1060,29 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         else parts.add(demo == null && !EngineHolder.listenerConnected
                 ? "开启自动读取后，群消息里的作业与通知会整理到这里"
                 : "群里有作业、考试或接龙时，会自动整理到这里");
-        stats.setText(TextUtils.join(" · ", parts));
+        String baseStats = TextUtils.join(" · ", parts);
+        int lessonConflicts = activeLessonClashes.size();
+        int taskConflicts = activeTaskClashes.size();
+        int totalConflicts = lessonConflicts + taskConflicts;
+        if (totalConflicts == 0) {
+            stats.setText(baseStats);
+            stats.setOnClickListener(null);
+            stats.setClickable(false);
+        } else {
+            String conflictSummary = lessonConflicts > 0 && taskConflicts == 0
+                    ? lessonConflicts + " 处撞课 ›"
+                    : lessonConflicts == 0
+                    ? taskConflicts + " 处撞车 ›"
+                    : totalConflicts + " 处冲突 ›";
+            SpannableStringBuilder sb = new SpannableStringBuilder(baseStats);
+            sb.append(" · ");
+            int cs = sb.length();
+            sb.append(conflictSummary);
+            sb.setSpan(new ForegroundColorSpan(Ui.ORANGE), cs, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new StyleSpan(Typeface.BOLD), cs, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            stats.setText(sb);
+            stats.setOnClickListener(v -> showClashDetail());
+        }
         final String targetLead = lead;
         final int confirmCount = confirm;
         final int openCount = open;
@@ -1555,6 +1562,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         Engine.Card enter = animateInCard;
         animateInCard = null;
         Engine shown = demo == null ? engine : demo.engine;
+        refreshConflicts(shown, now);
         updateHeadline(shown, now);
         updateWindowTabs(shown, now);
         // 开发者统计：长按大标题查看。
@@ -1568,7 +1576,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         headline.setOnLongClickListener(devStats);
         stats.setOnLongClickListener(devStats);
         renderedDay = localDay(now);
-        updateClashBanner(shown, now);
         if (demo == null) {
             updateNotifStatus();
         } else {
@@ -1646,12 +1653,28 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             View header = groupHeader(groupName, group.size());
             cardList.addView(header);
             if (stagger) enterAnim(header, order++);
-            for (Engine.Card card : group) {
-                View v = cardView(card, now);
-                cardList.addView(v);
-                if (stagger) enterAnim(v, order++);
-                else if (card == enter) popIn(v);
+            LinearLayout groupCard = Ui.group(this);
+            if ("已完成".equals(groupName)) {
+                groupCard.setBackground(Ui.roundStroke(this, Ui.FILL, Ui.LINE, 16, 0.75f));
             }
+            for (int idx = 0; idx < group.size(); idx++) {
+                Engine.Card card = group.get(idx);
+                if (idx > 0) {
+                    View rule = new View(this);
+                    rule.setBackgroundColor(Ui.withAlpha(Ui.LINE, 180));
+                    LinearLayout.LayoutParams rLp = lp(-1, 1);
+                    rLp.leftMargin = dp(this, 48);
+                    rLp.rightMargin = dp(this, 16);
+                    groupCard.addView(rule, rLp);
+                }
+                View v = cardView(card, groupName, now);
+                groupCard.addView(v);
+                if (!stagger && card == enter) popIn(v);
+            }
+            LinearLayout.LayoutParams gLp = lp(-1, -2);
+            gLp.bottomMargin = dp(this, 6);
+            cardList.addView(groupCard, gLp);
+            if (stagger) enterAnim(groupCard, order++);
         }
         if (list.size() > displayed) {
             Button moreBtn = button("显示更多", v -> {
@@ -1675,38 +1698,44 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return layer;
     }
 
-    /** 点击撞车横幅：逐行列出近期事挤在一起或与课表上课撞课的详情。 */
+    /** 点击统计行冲突计数：逐行列出近期事挤在一起或与课表上课撞课的详情。 */
     void showClashDetail() {
         long now = System.currentTimeMillis();
         Engine shown = demo == null ? engine : demo.engine;
-        ClashPlan.Clash clash = ClashPlan.nearest(shown.all(), now);
-        List<StudyPlanner.LessonClash> lessonClashes = (demo == null && timetable != null)
-                ? StudyPlanner.findLessonClashes(shown.all(), timetable.weekAheadCourses(now), now)
-                : java.util.Collections.emptyList();
-        if (clash == null && lessonClashes.isEmpty()) {
-            clashBanner.setVisibility(View.GONE);
-            return;
-        }
+        refreshConflicts(shown, now);
+        if (activeTaskClashes.isEmpty() && activeLessonClashes.isEmpty()) return;
         StringBuilder body = new StringBuilder();
-        if (!lessonClashes.isEmpty()) {
+        if (!activeLessonClashes.isEmpty()) {
             body.append("与已导入课表冲突：");
-            int limit = Math.min(lessonClashes.size(), 4);
+            int limit = Math.min(activeLessonClashes.size(), 6);
             for (int i = 0; i < limit; i++) {
-                body.append("\n· ").append(lessonClashes.get(i).text());
+                body.append("\n· ").append(activeLessonClashes.get(i).text());
             }
-            if (lessonClashes.size() > limit) body.append("\n· 另有 ").append(lessonClashes.size() - limit).append(" 项冲突");
+            if (activeLessonClashes.size() > limit) body.append("\n· 另有 ").append(activeLessonClashes.size() - limit).append(" 项冲突");
         }
-        if (clash != null) {
+        if (!activeTaskClashes.isEmpty()) {
             if (body.length() > 0) body.append("\n\n待办时间相近：");
-            for (int i = 0; i < clash.cards.size(); i++) {
-                Engine.Card c = clash.cards.get(i);
-                if (body.length() > 0 && !(i == 0 && lessonClashes.isEmpty())) body.append("\n");
-                body.append("· ").append(c.displayTitle()).append("  ")
-                        .append(Engine.humanDeadline(c.deadline));
+            int gLimit = Math.min(activeTaskClashes.size(), 4);
+            for (int g = 0; g < gLimit; g++) {
+                ClashPlan.Clash clash = activeTaskClashes.get(g);
+                if (g > 0) body.append("\n");
+                if (activeTaskClashes.size() > 1) {
+                    if (body.length() > 0) body.append("\n");
+                    body.append(Engine.humanDeadline(clash.start)).append("前后：");
+                }
+                for (int i = 0; i < clash.cards.size(); i++) {
+                    Engine.Card c = clash.cards.get(i);
+                    if (body.length() > 0) body.append("\n");
+                    body.append("· ").append(c.displayTitle()).append("  ")
+                            .append(Engine.humanDeadline(c.deadline));
+                }
+            }
+            if (activeTaskClashes.size() > gLimit) {
+                body.append("\n· 另有 ").append(activeTaskClashes.size() - gLimit).append(" 组相近事项");
             }
         }
         alert()
-                .setTitle(lessonClashes.isEmpty() ? "这几件事挤在一起" : "日程冲突提醒")
+                .setTitle(activeLessonClashes.isEmpty() ? "这几件事挤在一起" : "日程冲突提醒")
                 .setMessage(body.toString())
                 .setPositiveButton("知道了", null)
                 .show();
@@ -1743,23 +1772,18 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     /**
-     * 一张极简纸面任务卡：左边完成圈，右边三行克制文字（标题 / 截止与状态 / 来源），
-     * 去掉多余方框徽章与阴影，靠细描边与留白区分层次。
+     * 极简两行任务行（Things / 滴答清单风格，放在日期分组白底大卡内以细线分隔）：
+     * 左完成圈，主体第 1 行「左标题 + 右等宽时间」，第 2 行仅留 1 个最关键行动线索（地点/提交渠道/冲突）；
+     * 来源平台、群名、发送者与原文轨迹全收进点击后的详情底抽屉。
      */
-    View cardView(Engine.Card c, long now) {
+    View cardView(Engine.Card c, String groupName, long now) {
         int urgency = TodayView.urgency(c.deadline, c.needsConfirm, c.done, now);
         boolean unsure = c.needsConfirm || c.deadline == 0 || c.deadlineHint() != null;
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(dp(this, 8), dp(this, 12), dp(this, 14), dp(this, 12));
-        if (c.done) {
-            GradientDrawable face = Ui.roundStroke(this, Ui.FILL, Ui.LINE, 14, 0.75f);
-            card.setBackground(Ui.ripple(this, face, Ui.press(), 14));
-            card.setElevation(0f);
-        } else {
-            Ui.cardSurface(card, 14);
-        }
+        card.setPadding(dp(this, 4), 0, dp(this, 16), 0);
+        card.setBackground(Ui.ripple(this, null, Ui.press(), 0));
         Ui.pressScale(card, 0.99f);
 
         int ringColor = c.done ? Ui.MUTE : unsure ? Ui.AMBER_TX
@@ -1768,7 +1792,9 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         FrameLayout checkZone = new FrameLayout(this);
         View check = new View(this);
         check.setBackground(circle);
-        checkZone.addView(check, new FrameLayout.LayoutParams(dp(this, 20), dp(this, 20), Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        FrameLayout.LayoutParams ckLp = new FrameLayout.LayoutParams(dp(this, 20), dp(this, 20), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        ckLp.topMargin = dp(this, 10);
+        checkZone.addView(check, ckLp);
         checkZone.setBackground(Ui.rippleCircle(this, Ui.press()));
         checkZone.setContentDescription((c.done ? "恢复待办：" : "标记完成：") + c.displayTitle());
         LinearLayout.LayoutParams checkLp = lp(dp(this, 44), dp(this, 44));
@@ -1777,78 +1803,52 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        if (c.done) body.setAlpha(0.62f);
+        body.setPadding(0, dp(this, 10), 0, dp(this, 10));
+        if (c.done) body.setAlpha(0.58f);
 
-        TextView title = uiText(c.displayTitle(), 16, c.done ? Ui.SUB : Ui.TEXT, true);
+        LinearLayout topLine = new LinearLayout(this);
+        topLine.setOrientation(LinearLayout.HORIZONTAL);
+        topLine.setGravity(Gravity.TOP);
+
+        TextView title = uiText(c.displayTitle(), 15.5f, c.done ? Ui.SUB : Ui.TEXT, true);
         title.setMaxLines(2);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setLineSpacing(dp(this, 2), 1f);
         if (c.done) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-        body.addView(title);
+        topLine.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+
+        TextView timeView = null;
+        TextView subView = null;
+        if (!c.done) {
+            timeView = uiText(compactDueLabel(c, groupName), 13, compactDueColor(c, now), true);
+            timeView.setSingleLine(true);
+            timeView.setFontFeatureSettings("tnum");
+            LinearLayout.LayoutParams tLp = lp(-2, -2);
+            tLp.leftMargin = dp(this, 14);
+            tLp.topMargin = dp(this, 2);
+            topLine.addView(timeView, tLp);
+        }
+        body.addView(topLine, lp(-1, -2));
 
         if (!c.done) {
-            String dueStr = dueLabel(c, now);
-            String kindName = kindName(c.kind);
-            String pending = c.changes.hasPending() ? "待核对" : null;
-            SpannableStringBuilder dueText = new SpannableStringBuilder(dueStr);
-            dueText.setSpan(new ForegroundColorSpan(dueColor(c, now)), 0, dueText.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if (kindName != null) {
-                int s = dueText.length();
-                dueText.append(" · ").append(kindName);
-                dueText.setSpan(new ForegroundColorSpan(Ui.MUTE), s, dueText.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            SpannableStringBuilder subText = compactSubLine(c);
+            subView = uiText("", 12.5f, Ui.MUTE, false);
+            subView.setSingleLine(true);
+            subView.setEllipsize(TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams sLp = lp(-1, -2);
+            sLp.topMargin = dp(this, 3);
+            if (subText.length() > 0) {
+                subView.setText(subText);
+                subView.setVisibility(View.VISIBLE);
+            } else {
+                subView.setVisibility(View.GONE);
             }
-            if (pending != null) {
-                int s = dueText.length();
-                dueText.append(" · ").append(pending);
-                dueText.setSpan(new ForegroundColorSpan(Ui.AMBER_TX), s, dueText.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
-            TextView due = uiText("", 13, Ui.SUB, true);
-            due.setText(dueText);
-            due.setSingleLine(true);
-            due.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams dueLp = lp(-1, -2);
-            dueLp.topMargin = dp(this, 5);
-            body.addView(due, dueLp);
+            body.addView(subView, sLp);
             if (!unsure && c.deadline > 0) {
-                dueBindings.add(new DueBinding(c, due,
-                        TodayView.bucket(c.deadline, c.needsConfirm, c.done, now), urgency));
+                dueBindings.add(new DueBinding(c, timeView, subView, groupName, urgency));
             }
         }
 
-        LinearLayout meta = new LinearLayout(this);
-        meta.setGravity(Gravity.CENTER_VERTICAL);
-        meta.addView(sourceMark(c, 14));
-        TextView metaLine = uiText(joinDistinct(sourceName(c), c.groupName, c.sender), 12, Ui.MUTE, false);
-        metaLine.setSingleLine(true);
-        metaLine.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams mtLp = new LinearLayout.LayoutParams(0, -2, 1);
-        mtLp.leftMargin = dp(this, 6);
-        meta.addView(metaLine, mtLp);
-        LinearLayout.LayoutParams metaLp = lp(-1, -2);
-        metaLp.topMargin = dp(this, 5);
-        body.addView(meta, metaLp);
-
-        List<String> extra = new ArrayList<>();
-        if (!TextUtils.isEmpty(c.channel) && !"jielong".equals(c.kind)) extra.add("提交到 " + c.channel);
-        if ("exam".equals(c.kind) && !TextUtils.isEmpty(c.place)) extra.add("地点 " + c.place);
-        if ("exam".equals(c.kind) && !TextUtils.isEmpty(c.bring)) extra.add("带 " + c.bring);
-        if (!extra.isEmpty() && !c.done) {
-            TextView ex = uiText(TextUtils.join("  ·  ", extra), 12, Ui.SUB, false);
-            ex.setMaxLines(1);
-            ex.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams exLp = lp(-1, -2);
-            exLp.topMargin = dp(this, 4);
-            body.addView(ex, exLp);
-        }
-        boolean redundantReason = "来自教务系统的考试安排".equals(c.reason);
-        if (!c.done && !TextUtils.isEmpty(c.reason) && c.deadlineHint() == null && !redundantReason) {
-            TextView reason = uiText(c.reason, 12, Ui.AMBER_TX, false);
-            reason.setMaxLines(1);
-            reason.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams rLp = lp(-1, -2);
-            rLp.topMargin = dp(this, 4);
-            body.addView(reason, rLp);
-        }
         card.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
 
         checkZone.setOnClickListener(v -> {
@@ -1861,9 +1861,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             showCardEdit(c);
             return true;
         });
-        LinearLayout.LayoutParams cardLp = lp(-1, -2);
-        cardLp.bottomMargin = dp(this, 8);
-        card.setLayoutParams(cardLp);
+        card.setLayoutParams(lp(-1, -2));
         return card;
     }
 
@@ -1924,16 +1922,117 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             onCardsChanged();
             return;
         }
-        for (DueBinding b : dueBindings) {
-            String text = dueLabel(b.card, now);
-            if (!text.contentEquals(b.due.getText())) b.due.setText(text);
-        }
-        if (sub != null) sub.setText(subLine());
         Engine shown = demo == null ? engine : demo.engine;
+        refreshConflicts(shown, now);
+        refreshDueBindings(now);
         updateHeadline(shown, now);
         updateWindowTabs(shown, now);
-        updateClashBanner(shown, now);
         if (demo == null) updateNotifStatus();
+    }
+
+    private void refreshDueBindings(long now) {
+        for (DueBinding b : dueBindings) {
+            if (b.timeView != null) {
+                String t = compactDueLabel(b.card, b.bucket);
+                if (!t.contentEquals(b.timeView.getText())) b.timeView.setText(t);
+                b.timeView.setTextColor(compactDueColor(b.card, now));
+            }
+            if (b.subView != null) {
+                SpannableStringBuilder next = compactSubLine(b.card);
+                if (next.length() > 0) {
+                    if (!TextUtils.equals(next, b.subView.getText())) b.subView.setText(next);
+                    b.subView.setVisibility(View.VISIBLE);
+                } else {
+                    b.subView.setVisibility(View.GONE);
+                }
+            }
+        }
+    }
+
+    /** 右侧精简时间：同在「今天/明天」分组内直接给 HH:mm，不重复日期；更晚/已过期给 M/d HH:mm。 */
+    private static String compactDueLabel(Engine.Card c, String groupName) {
+        if ("media".equals(c.kind)) {
+            return c.sourceText != null && c.sourceText.contains("[图片]") ? "截图识别" : "看原群";
+        }
+        if (c.deadlineHint() != null || c.deadline == 0 || c.needsConfirm) return "待确认";
+        if ("今天".equals(groupName) || "明天".equals(groupName)) {
+            return new SimpleDateFormat("HH:mm", Locale.CHINA).format(new java.util.Date(c.deadline));
+        }
+        if ("这几天".equals(groupName)) return Engine.humanDeadline(c.deadline);
+        return new SimpleDateFormat("M/d HH:mm", Locale.CHINA).format(new java.util.Date(c.deadline));
+    }
+
+    private static int compactDueColor(Engine.Card c, long now) {
+        boolean unsure = c.needsConfirm || c.deadline == 0 || c.deadlineHint() != null;
+        int urgency = TodayView.urgency(c.deadline, c.needsConfirm, c.done, now);
+        if (unsure) return Ui.AMBER_TX;
+        if (urgency >= 1) return Ui.urgencyColor(urgency);
+        return Ui.MUTE;
+    }
+
+    /** 精简教务多级地点：如「长安校区, 教学西楼D座, 教西D-204」只取「教西D-204」。 */
+    private static String shortPlace(String raw) {
+        if (raw == null) return "";
+        String[] segs = raw.split("[,，]");
+        List<String> clean = new ArrayList<>();
+        for (String s : segs) {
+            String t = s.trim();
+            if (!t.isEmpty()) clean.add(t);
+        }
+        if (clean.isEmpty()) return raw.trim();
+        String last = clean.get(clean.size() - 1);
+        if (clean.size() >= 2 && last.matches("[A-Za-z0-9\\-]+")) {
+            return clean.get(clean.size() - 2) + " " + last;
+        }
+        return last;
+    }
+
+    /** 列表第二行：极简「来源（群名/教务系统） · 关键行动线索（考场/提交渠道/待核对） · 冲突」，严格单行、不加图标。 */
+    private SpannableStringBuilder compactSubLine(Engine.Card c) {
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        String origin = !TextUtils.isEmpty(c.groupName) ? c.groupName.trim() : sourceName(c);
+        if ("演示样例".equals(origin)) origin = "";
+        String hint = null;
+        int hintColor = Ui.MUTE;
+        if ("media".equals(c.kind)) {
+            hint = c.sourceText != null && c.sourceText.contains("[图片]") ? "分享截图识别" : "去原群查看";
+        } else if (c.changes.hasPending()) {
+            hint = "有变更待核对";
+            hintColor = Ui.AMBER_TX;
+        } else if ("exam".equals(c.kind) && !TextUtils.isEmpty(c.place)) {
+            hint = shortPlace(c.place);
+        } else if (!TextUtils.isEmpty(c.channel) && !"jielong".equals(c.kind)) {
+            hint = c.channel;
+        } else if (c.deadlineHint() != null) {
+            hint = c.deadlineHint();
+            hintColor = Ui.AMBER_TX;
+        }
+        if (!TextUtils.isEmpty(origin) && !origin.equals(hint)) {
+            sb.append(origin);
+            sb.setSpan(new ForegroundColorSpan(Ui.MUTE), 0, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (!TextUtils.isEmpty(hint)) {
+            if (sb.length() > 0) {
+                int sep = sb.length();
+                sb.append(" · ");
+                sb.setSpan(new ForegroundColorSpan(Ui.MUTE), sep, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            int s = sb.length();
+            sb.append(hint);
+            sb.setSpan(new ForegroundColorSpan(hintColor), s, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        String conflict = cardConflictTag(c);
+        if (conflict != null) {
+            if (sb.length() > 0) {
+                int sep = sb.length();
+                sb.append(" · ");
+                sb.setSpan(new ForegroundColorSpan(Ui.MUTE), sep, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            int s = sb.length();
+            sb.append(conflict);
+            sb.setSpan(new ForegroundColorSpan(Ui.ORANGE), s, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return sb;
     }
 
     private static int localDay(long now) {
@@ -1942,20 +2041,61 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return cal.get(Calendar.YEAR) * 1000 + cal.get(Calendar.DAY_OF_YEAR);
     }
 
-    private void updateClashBanner(Engine shown, long now) {
-        ClashPlan.Clash clash = ClashPlan.nearest(shown.all(), now);
-        StudyPlanner.LessonClash lessonClash = (demo == null && timetable != null)
-                ? StudyPlanner.nearestLessonClash(shown.all(), timetable.weekAheadCourses(now), now)
-                : null;
-        if (lessonClash != null && (clash == null || lessonClash.card.deadline <= clash.start)) {
-            clashBanner.setText("撞课提醒 · " + lessonClash.text() + "  ›");
-            clashBanner.setVisibility(View.VISIBLE);
-        } else if (clash != null) {
-            clashBanner.setText("撞车提醒 · " + clash.text() + "  ›");
-            clashBanner.setVisibility(View.VISIBLE);
-        } else {
-            clashBanner.setVisibility(View.GONE);
+    private void refreshConflicts(Engine shown, long now) {
+        lessonClashesByCard.clear();
+        taskClashByCard.clear();
+        if (shown == null) {
+            activeTaskClashes = java.util.Collections.emptyList();
+            activeLessonClashes = java.util.Collections.emptyList();
+            return;
         }
+        List<Engine.Card> all = shown.all();
+        activeTaskClashes = ClashPlan.find(all, now);
+        activeLessonClashes = (demo == null && timetable != null)
+                ? StudyPlanner.findLessonClashes(all, timetable.weekAheadCourses(now), now)
+                : java.util.Collections.emptyList();
+        for (StudyPlanner.LessonClash lc : activeLessonClashes) {
+            if (lc.card == null || lc.card.id == null) continue;
+            List<StudyPlanner.LessonClash> list = lessonClashesByCard.get(lc.card.id);
+            if (list == null) { list = new ArrayList<>(); lessonClashesByCard.put(lc.card.id, list); }
+            list.add(lc);
+        }
+        for (ClashPlan.Clash g : activeTaskClashes) {
+            for (Engine.Card card : g.cards) {
+                if (card != null && card.id != null) taskClashByCard.put(card.id, g);
+            }
+        }
+    }
+
+    private String cardConflictTag(Engine.Card c) {
+        if (c == null || c.done || c.id == null) return null;
+        if (lessonClashesByCard.containsKey(c.id)) return "撞课";
+        if (taskClashByCard.containsKey(c.id)) return "撞车";
+        return null;
+    }
+
+    /** 供卡片详情底抽屉展示当前卡片关联的具体撞课或相近事项，不改变首页布局。 */
+    List<String> cardConflictLines(Engine.Card c) {
+        List<String> out = new ArrayList<>();
+        if (c == null || c.done || c.id == null) return out;
+        Engine shown = demo == null ? engine : demo.engine;
+        refreshConflicts(shown, System.currentTimeMillis());
+        List<StudyPlanner.LessonClash> lessons = lessonClashesByCard.get(c.id);
+        if (lessons != null) {
+            for (StudyPlanner.LessonClash lc : lessons) {
+                out.add("撞课 · " + lc.text());
+            }
+        }
+        ClashPlan.Clash group = taskClashByCard.get(c.id);
+        if (group != null) {
+            int peers = 0;
+            for (Engine.Card peer : group.cards) {
+                if (peer == null || c.id.equals(peer.id)) continue;
+                if (peers++ >= 3) break;
+                out.add("时间相近 · 与「" + peer.displayTitle() + "」（" + Engine.humanDeadline(peer.deadline) + "）挤在一起");
+            }
+        }
+        return out;
     }
 
     private void loadTimetableAsync() {
@@ -1971,7 +2111,11 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 timetable = table;
                 long now = System.currentTimeMillis();
                 Engine shown = demo == null ? engine : demo.engine;
-                if (shown != null) updateClashBanner(shown, now);
+                if (shown != null) {
+                    refreshConflicts(shown, now);
+                    updateHeadline(shown, now);
+                    refreshDueBindings(now);
+                }
             });
         });
     }

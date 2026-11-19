@@ -2461,7 +2461,7 @@ public class Engine {
 
     /** 教务系统里的一场考试；start 为 0 表示只知道日期或时间未排。 */
     public static class SchoolExam {
-        public String course, place;
+        public String course, place, clockRange;
         public long start;          // 毫秒；0 = 时间未知
         public boolean dateOnly;    // 只知道日期，时刻待定
         public boolean finished;
@@ -2529,7 +2529,8 @@ public class Engine {
             c.groupName = "教务系统";
             c.sender = "教务系统";
             c.sourceId = key;
-            c.sourceText = x.course.trim() + (place == null ? "" : " · " + place);
+            String range = blank(x.clockRange) ? "" : " · " + x.clockRange.trim();
+            c.sourceText = x.course.trim() + range + (place == null ? "" : " · " + place);
             c.sourceTs = now;
             c.confidence = 0.95;
             c.reason = c.deadline == 0 ? "教务系统还没排出考试时间" : x.dateOnly ? "教务系统只给了日期，具体时刻待确认" : "来自教务系统的考试安排";

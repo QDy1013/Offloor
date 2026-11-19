@@ -13,7 +13,7 @@
 
 1. **端侧三级流水线优先，80%+ 消息本地即时消化**：通过系统 `NotificationListenerService` 本地监听通知文字（结合平台模板与截图 OCR 兜底），依次经过**规则噪声过滤 → 8 维特征 + 字符 2-gram 线性分类器 → 结构化抽取/中文时间归一化/接龙与变更状态机**。在无泄漏分布外基准（`eval/strict_ood.jsonl`）上，**81.0%（Java 引擎）~ 86.0%（Python 版）**的消息完全无需调用大模型即可在本机精准出卡或拦截，兼顾零延迟、低功耗与聊天隐私。
 2. **端云协同疑难复核 + 课程上下文注入**：仅将低置信度、缺字段或表达含糊的消息写入持久化队列（`AiQueue` / `AiJob`），交由编入 APK 的 **端侧小模型（`llama.cpp` GGUF + GBNF 语法约束 JSON 输出，支持如 Qwen2.5-1.5B Q4_K_M）** 或用户自行配置的 **OpenAI 兼容云端模型** 复核补全。运行时自动将教务课表同步至 `Engine.effectiveProfile()`，并在 [AiClient.java](android/app/src/com/nopalou/AiClient.java) `buildJudgeRequest` 中注入匹配课程名（`matched_course`），辅助模型区分课程作业、通知与无关讨论。
-3. **跨源学习生产力闭环（课表 × 待办 × 空教室/研修室）**：[StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java) 将教务课表、群通知待办/考试与校园空间系统串联起来——自动检测未来 7 天内**课程时间与截止任务/考试的时间冲突**并在首页预警；在本周课表页（[TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java)）结合当日空闲窗口给出轻量自习空档提示，一键预填参数直达**空闲教室查询**（[CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java)）或**图书馆研修室预约**（[StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java)）。
+3. **跨源学习生产力闭环（课表 × 待办 × 空教室/研修室）**：[StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java) 将教务课表、群通知待办/考试与校园空间系统串联起来——自动检测未来 7 天内**课程时间与截止任务/考试（含考试持续时长区间）的时间冲突**，在不破坏首页版式的前提下轻附于统计行、受影响卡片时间行与详情面板；在本周课表页（[TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java)）结合当日空闲窗口给出轻量自习空档提示，一键预填参数直达**空闲教室查询**（[CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java)）或**图书馆研修室预约**（[StudyRoomActivity.java](android/app/src/com/nopalou/StudyRoomActivity.java)）。
 4. **可信归因与严格克制原则**：不替学生「猜时间」——如「3 月中下旬」「下周交」等含糊表述统一保持「待确认」而不编造截止点；仅信任老师/班干等可信来源触发改期或撤卡；卡片详情完整记录原文与处理链路（`TaskTrace` / `TaskChanges`），用户亲手修正的内容永不被 AI 覆盖。
 
 ---
@@ -43,7 +43,7 @@ flowchart TD
 
     ENG --> LOOP["跨源学习闭环 (StudyPlanner.java)"]
     C1 --> LOOP
-    LOOP --> UI1["首页暖纸极简卡片 / 撞车预警横幅 / 桌面小组件 (TodayWidget)"]
+    LOOP --> UI1["首页暖纸极简卡片 / 内联冲突提示 / 桌面小组件 (TodayWidget)"]
     LOOP --> UI2["课表页轻量自习空档提示 → 空闲教室查询 / 图书馆研修室预约"]
     ENG --> UI3["系统日历写入 (不含原文) / 到期前 2 小时本地提醒"]
 ```
@@ -56,9 +56,9 @@ flowchart TD
 
 | 浅色模式（暖纸主题 · 离线演示） | 深色模式（深墨主题 · 离线演示） | 卡片详情与来源追溯 |
 | :---: | :---: | :---: |
-| <img src="docs/界面重构/v083_home_light.png" alt="浅色模式界面" width="240" /> | <img src="docs/界面重构/v083_home_dark.png" alt="深色模式界面" width="240" /> | <img src="docs/界面重构/v083_detail_light.png" alt="卡片详情与来源追溯" width="240" /> |
+| <img src="docs/界面重构/v085_home_light.png" alt="浅色模式界面" width="240" /> | <img src="docs/界面重构/v085_home_dark.png" alt="深色模式界面" width="240" /> | <img src="docs/界面重构/v085_detail_light.png" alt="卡片详情与来源追溯" width="240" /> |
 
-> 以上三张截图均为 `v0.83` 真机（vivo V2505A · Android 16）在内置「离线演示」模式下的实拍画面，展示撞车提醒、接龙状态追踪、考试/作业卡片与来源轨迹，不含任何真实个人隐私数据。
+> 以上三张截图均为 `v0.85` 真机（vivo V2505A · Android 16）在内置「离线演示」模式下的实拍画面，展示无横幅极简版式、统计行与卡片时间行内联冲突提示、接龙状态追踪、考试/作业卡片与详情溯源，不含任何真实个人隐私数据。
 
 ---
 
@@ -67,7 +67,7 @@ flowchart TD
 - **消息自动成卡与精准变更追踪**：授权通知使用权后自动整理作业、考试与接龙；同一群 30 分钟内重复推送自动去重；识别带字头及无字头编号名单的「你还没接」群接龙并在本人接龙后自动消卡；区分提问句与真实通知，改期与取消仅响应可信发送者且屏蔽纯星期词误匹配，多场相似考试无法唯一匹配时保留原卡并高亮「待核对」。
 - **本机 + 云端协同 AI 识别**：支持 App 内下载或导入 GGUF 模型（通过 `android/native/` + NDK 编译 `llama.cpp`），提供四步配置向导与隐私边界说明；支持按条测试与离线补审旧待确认卡片；相册截图或带图消息支持视觉转写后接入同一识别引擎。
 - **按群分级策略、完备溯源与 30 天过期清理**：支持对不同群设置**重点关注**（放宽同学互助消息限制）/ **普通** / **不用管**；支持一键完成（带 4 秒底部撤销条）、移除与已移除列表恢复、手动新建任务卡片，以及每张卡最近 20 条来源与处理记录回溯；启动时自动清理超过 30 天的已完成卡片与已移除记录（未完成待办永不自动删除）。
-- **跨源学习闭环与桌面小组件**：课表与待办/考试同屏联动，未来 7 天撞车横幅直达冲突详情；本周课表页提供轻量今日自习空档提示，一键预填参数直达空闲教室或研修室预约；桌面小组件「今日课程与待办」同步展示当下正在上的课与最近截止事项。
+- **跨源学习闭环与桌面小组件**：课表与待办/考试同屏联动，未来 7 天撞车/撞课（含考试持续时长区间重叠）在不增减首页区块的前提下内联呈现于统计行、卡片时间行与详情面板；本周课表页提供轻量今日自习空档提示，一键预填参数直达空闲教室或研修室预约；桌面小组件「今日课程与待办」同步展示当下正在上的课与最近截止事项。
 - **高校教务与校园服务深度适配**：支持西北工业大学自动续登（凭据经 Android Keystore + AES-GCM 加密本地存储）、周课表（支持友谊校区夏/冬季作息）、成绩跨学期检索、待考日程一键复制、50 条官方校车未发车筛选、宿舍电费/校园网/一卡通余额同步与低余额阈值提醒（缴费跳转官方页，绝不代收卡密）、校园服务设置内「复制同步自检」脱敏诊断报告，以及图书馆研修室合规预约（绝不后台抢约、绝不绕过验证码、写操作不自动重试）；课表模块亦预留太原理工、陕师大、哈工大（威海）适配测试入口。
 
 ---
@@ -148,7 +148,7 @@ Offloor/
 │   └── build.py / prepare_updates.py # 跨平台零 Gradle 构建脚本与更新清单校验
 ├── docs/                             # 设计文档、真机记录、规则说明与 UI 重构截图
 ├── .github/                          # CI 自动检查与预览版/正式版带 NDK APK 构建流
-├── CHANGELOG.md                      # v0.9 ~ v0.84 完整版本演进与候选分支记录
+├── CHANGELOG.md                      # v0.9 ~ v0.85 完整版本演进与候选分支记录
 └── README.md                         # 本文件
 ```
 

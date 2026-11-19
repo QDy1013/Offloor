@@ -25,6 +25,9 @@ final class StudyPlanner {
     private static final int STUDY_DAY_END = 22 * 60;
     private static final int MIN_GAP_MINUTES = 60;
     private static final int MAX_SUGGEST_MINUTES = 120;
+    private static final int DEFAULT_EXAM_MINUTES = 120;
+    private static final java.util.regex.Pattern CLOCK_RANGE = java.util.regex.Pattern.compile(
+            "(?<!\\d)(\\d{1,2})[:：](\\d{2})\\s*[-–—~至到]\\s*(\\d{1,2})[:：](\\d{2})(?!\\d)");
 
     private StudyPlanner() { }
 
@@ -152,7 +155,29 @@ final class StudyPlanner {
         return !matchCourse(card, Collections.singletonList(lessonName)).isEmpty();
     }
 
-    /** 找出 7 天内待办/考试与课表上课时间的跨源冲突（跳过同课程随堂事项与整点“上课前交”边界）。 */
+    /** 估算考试时长（分钟）：优先从原文/标题读显式起止时段（如 18:30–20:30），否则默认 120 分钟。 */
+    static int examDurationMinutes(Engine.Card card) {
+        if (card == null || card.deadline <= 0) return DEFAULT_EXAM_MINUTES;
+        Calendar cal = Calendar.getInstance(StudyRoomPlan.CHINA);
+        cal.setTimeInMillis(card.deadline);
+        int startMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE);
+        String[] sources = {card.sourceText, card.title};
+        for (String src : sources) {
+            if (src == null || src.isEmpty()) continue;
+            java.util.regex.Matcher m = CLOCK_RANGE.matcher(src);
+            while (m.find()) {
+                int sh = Integer.parseInt(m.group(1)), sm = Integer.parseInt(m.group(2));
+                int eh = Integer.parseInt(m.group(3)), em = Integer.parseInt(m.group(4));
+                if (sh > 23 || sm > 59 || eh > 23 || em > 59) continue;
+                int sMin = sh * 60 + sm, eMin = eh * 60 + em;
+                int dur = eMin - sMin;
+                if (Math.abs(sMin - startMin) <= 15 && dur >= 30 && dur <= 360) return dur;
+            }
+        }
+        return DEFAULT_EXAM_MINUTES;
+    }
+
+    /** 找出 7 天内待办/考试与课表上课时间的跨源冲突（考试按持续时长区间重叠，普通待办跳过整点“上课前交”边界，并跳过同课程）。 */
     static List<LessonClash> findLessonClashes(List<Engine.Card> cards, List<DayCourses> days, long now) {
         List<LessonClash> out = new ArrayList<>();
         if (cards == null || days == null || days.isEmpty()) return out;
@@ -173,12 +198,13 @@ final class StudyPlanner {
             DayCourses day = byDate.get(date);
             if (day == null) continue;
             boolean exam = "exam".equals(card.kind);
+            long examEnd = exam ? card.deadline + examDurationMinutes(card) * 60_000L : card.deadline;
             for (TodayPlan.Course lesson : day.courses) {
                 if (lesson == null || lesson.start.isEmpty() || lesson.end.isEmpty()) continue;
                 long start = StudyRoomPlan.at(date, lesson.start);
                 long end = StudyRoomPlan.at(date, lesson.end);
                 if (start < 0 || end <= start) continue;
-                boolean hit = exam ? (card.deadline >= start && card.deadline < end)
+                boolean hit = exam ? (card.deadline < end && examEnd > start)
                         : (card.deadline > start && card.deadline < end);
                 if (!hit || sameCourse(card, lesson.name)) continue;
                 String key = card.id + "|" + lesson.name + "|" + start;
@@ -246,7 +272,7 @@ final class StudyPlanner {
                 Calendar cal = Calendar.getInstance(StudyRoomPlan.CHINA);
                 cal.setTimeInMillis(c.deadline);
                 int s = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE);
-                clampAdd(busy, s, Math.min(STUDY_DAY_END, s + 120), winStart, winEnd);
+                clampAdd(busy, s, Math.min(STUDY_DAY_END, s + examDurationMinutes(c)), winStart, winEnd);
             }
         }
         busy.sort((a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0]) : Integer.compare(a[1], b[1]));

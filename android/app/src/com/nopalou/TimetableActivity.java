@@ -244,7 +244,9 @@ public class TimetableActivity extends Activity {
                     unitEndMins[num] = clock(time.optString("end"));
                 }
             }
-            boolean isCurrentWeek = week == table.currentWeek();
+            int currentWeek = table.currentWeek();
+            boolean isCurrentWeek = week == currentWeek;
+            boolean isPastWeek = week < currentWeek;
             Calendar nowCal = Calendar.getInstance();
             int todayWeekday = nowCal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY ? 7 : nowCal.get(Calendar.DAY_OF_WEEK) - 1;
             int nowMinutes = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
@@ -267,8 +269,8 @@ public class TimetableActivity extends Activity {
                 card.setPadding(dp(6), dp(7), dp(3), dp(5));
                 int blockStartMin = block.start >= 1 && block.start <= units ? unitStartMins[block.start] : -1;
                 int blockEndMin = block.end >= 1 && block.end <= units ? unitEndMins[block.end] : -1;
-                boolean pastBlock = isCurrentWeek && (block.weekday < todayWeekday
-                        || (block.weekday == todayWeekday && blockEndMin >= 0 && nowMinutes >= blockEndMin));
+                boolean pastBlock = isPastWeek || (isCurrentWeek && (block.weekday < todayWeekday
+                        || (block.weekday == todayWeekday && blockEndMin >= 0 && nowMinutes >= blockEndMin)));
                 boolean ongoingBlock = isCurrentWeek && block.weekday == todayWeekday
                         && blockStartMin >= 0 && blockEndMin >= 0 && nowMinutes >= blockStartMin && nowMinutes < blockEndMin;
                 android.graphics.drawable.Drawable face = courseFace(fill(color), ink(color));

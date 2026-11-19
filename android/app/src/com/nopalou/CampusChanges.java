@@ -90,6 +90,7 @@ final class CampusChanges {
             Engine.SchoolExam x = new Engine.SchoolExam();
             x.course = e.course;
             x.place = e.location;
+            x.clockRange = (!e.start.isEmpty() && !e.end.isEmpty()) ? (e.start + "–" + e.end) : "";
             x.finished = e.finished;
             x.start = millis(e.date, e.start);
             x.dateOnly = x.start > 0 && e.start.isEmpty();

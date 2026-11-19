@@ -2,6 +2,19 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.85（两行极简分组卡片、移除撞车横幅、考试时长撞课判定与往周课表柔化）
+
+- **首页轻薄分组两行列表与零跳动冲突呈现**：
+  1. [MainActivity.java](android/app/src/com/nopalou/MainActivity.java) 将同日期分组事项收进同一张白底细描边圆角卡（`Ui.group` + 缩进细线分隔），收紧上下内边距与行距实现轻薄对称卡面，每行精简为「左标题 + 右对齐等宽时间」，第二行只保留简洁的「来源（群名/教务系统）· 关键行动点（考场/提交渠道/待核对）· 可选冲突」（不加来源小方块图标与发送者，完整信息收进点击后的详情底抽屉）。
+  2. 彻底移除会顶开页面的顶部橙色 `clashBanner` 横幅，保留原版顶部日期问候、状态胶囊与概览统计行，存在冲突时仅在统计行末尾静默并入可点计数（如 `待确认 1 件 · 共 5 件未完成 · 1 处撞车 ›`），页面结构永不跳动；[HomeCardSheets.java](android/app/src/com/nopalou/HomeCardSheets.java) 在卡片详情的时间块内列出具体冲突；[test_home_visual.cjs](eval/test_home_visual.cjs) 同步锁定新极简契约。
+- **往周课表统一柔化**：
+  1. [TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java) 修复仅判断 `isCurrentWeek` 导致翻到上周及更早教学周时已上过的课程反呈高亮的问题，现 `week < currentWeek` 的全部过往周课程块统一按 `52%` 透明度柔化。
+- **考试持续时长区间重叠撞课判定**：
+  1. [StudyPlanner.java](android/app/src/com/nopalou/StudyPlanner.java) 新增 `examDurationMinutes`（优先从原文或教务同步时段如 `18:30–20:30` 读取，否则默认 120 分钟），`findLessonClashes` 与 `firstFreeGap` 均按 `[examStart, examEnd)` 区间重叠判定与后续课程的冲突。
+  2. [Engine.java](android/app/src/com/nopalou/Engine.java) 与 [CampusChanges.java](android/app/src/com/nopalou/CampusChanges.java) 在同步教务考试卡时透传起止时段 `clockRange`；[Step61Test.java](android/test/Step61Test.java) 新增考试区间重叠与显式 90 分钟/整点边界回归用例。
+
+---
+
 ## v0.84（修复课表与考试成绩空态标题左偏对齐）
 
 - **空态引导页标题居中修复**：[TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java)（`把这一学期，装进口袋`）与 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java)（`考试和成绩，一处看全`）空态标题在纵向 `LinearLayout` 中默认拉满宽且未设 `Gravity.CENTER` 导致偏左，现统一补齐居中对齐并统一两页空态左右留白与垂直重心。
