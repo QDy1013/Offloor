@@ -539,7 +539,7 @@ public class TimetableActivity extends Activity {
         holder[0] = Ui.sheet(this, body, footer);
     }
     void empty(LinearLayout root) {
-        LinearLayout center = CourseUi.column(this); center.setGravity(Gravity.CENTER); center.setPadding(dp(20), 0, dp(20), 0);
+        LinearLayout center = CourseUi.column(this); center.setGravity(Gravity.CENTER); center.setPadding(dp(32), 0, dp(32), dp(40));
         root.addView(center, new LinearLayout.LayoutParams(-1, 0, 1));
         FrameLayout mark = new FrameLayout(this);
         mark.setBackground(Ui.disc(this, Ui.ACCENT_BG));
@@ -547,7 +547,10 @@ public class TimetableActivity extends Activity {
         glyph.setImageDrawable(new AppNavigation.TabIcon(this, true, Ui.ACCENT));
         mark.addView(glyph, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
         center.addView(mark, new LinearLayout.LayoutParams(dp(84), dp(84)));
-        CourseUi.gap(center, 22); center.addView(text("把这一学期，装进口袋", 21, Ui.TEXT, true));
+        CourseUi.gap(center, 22);
+        TextView headline = text("把这一学期，装进口袋", 21, Ui.TEXT, true);
+        headline.setGravity(Gravity.CENTER);
+        center.addView(headline);
         CourseUi.gap(center, 12); TextView tip = text("选择学校，输入账号密码，导入本学期课表", 13, Ui.SUB, false);
         tip.setGravity(Gravity.CENTER); center.addView(tip); CourseUi.gap(center, 28);
         center.addView(CourseUi.action(this, "一键导入课表", true, () -> importTable(false)), CourseUi.row(dp(50)));

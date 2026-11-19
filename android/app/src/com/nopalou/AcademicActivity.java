@@ -159,7 +159,10 @@ public class AcademicActivity extends Activity {
         ImageView glyph = new ImageView(this); glyph.setImageDrawable(new AppNavigation.TabIcon(this, AppNavigation.ACADEMIC, Ui.ACCENT));
         mark.addView(glyph, new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER));
         box.addView(mark, new LinearLayout.LayoutParams(dp(84), dp(84)));
-        CourseUi.gap(box, 22); box.addView(text("考试和成绩，一处看全", 21, Ui.TEXT, true));
+        CourseUi.gap(box, 22);
+        TextView headline = text("考试和成绩，一处看全", 21, Ui.TEXT, true);
+        headline.setGravity(Gravity.CENTER);
+        box.addView(headline);
         CourseUi.gap(box, 12);
         TextView d = text("登录教务系统一次，自动读取考试安排、\n各学期成绩和总绩点", 13, Ui.SUB, false);
         d.setGravity(Gravity.CENTER); d.setLineSpacing(dp(4), 1f); box.addView(d);

@@ -148,7 +148,7 @@ Offloor/
 │   └── build.py / prepare_updates.py # 跨平台零 Gradle 构建脚本与更新清单校验
 ├── docs/                             # 设计文档、真机记录、规则说明与 UI 重构截图
 ├── .github/                          # CI 自动检查与预览版/正式版带 NDK APK 构建流
-├── CHANGELOG.md                      # v0.9 ~ v0.83 完整版本演进与候选分支记录
+├── CHANGELOG.md                      # v0.9 ~ v0.84 完整版本演进与候选分支记录
 └── README.md                         # 本文件
 ```
 

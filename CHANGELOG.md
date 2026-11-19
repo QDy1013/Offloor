@@ -2,6 +2,12 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.84（修复课表与考试成绩空态标题左偏对齐）
+
+- **空态引导页标题居中修复**：[TimetableActivity.java](android/app/src/com/nopalou/TimetableActivity.java)（`把这一学期，装进口袋`）与 [AcademicActivity.java](android/app/src/com/nopalou/AcademicActivity.java)（`考试和成绩，一处看全`）空态标题在纵向 `LinearLayout` 中默认拉满宽且未设 `Gravity.CENTER` 导致偏左，现统一补齐居中对齐并统一两页空态左右留白与垂直重心。
+
+---
+
 ## v0.83（校园余额格式统一、本机模型快捷复测与真机端侧实测）
 
 - **校园账户总览金额格式统一**：[CampusSummary.java](android/app/src/com/nopalou/CampusSummary.java) 将 `network`（校园网）与 `card`（一卡通）数值余额统一经 `CampusBalance.money(...)` 格式化为 `¥XX.XX`（与宿舍电量保持一致），同步更新 [CampusAutoTest.java](android/test/CampusAutoTest.java) 与 [CampusScopeTest.java](android/test/CampusScopeTest.java)。
