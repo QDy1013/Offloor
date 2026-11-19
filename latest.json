@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 82,
-      "versionName": "0.82",
+      "versionCode": 83,
+      "versionName": "0.83",
       "size": 2570282,
-      "sha256": "53fa76e62265be7a7ae0863bb6790ddf79c1bcbe1745f6e125bd34043b77a1c7",
+      "sha256": "29bb8c924188fd600fb2409a55d23288dfb8ec4b8d855680f9ea85a7e04838f0",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/53fa76e62265be7a7ae0863bb6790ddf79c1bcbe1745f6e125bd34043b77a1c7/offloor.apk",
-      "notes": "v0.82: 双端分布外评测对齐、30天过期清理、校园同步脱敏自检与课表自习空档直达"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/29bb8c924188fd600fb2409a55d23288dfb8ec4b8d855680f9ea85a7e04838f0/offloor.apk",
+      "notes": "v0.83: 校园余额统一¥格式、AI页本机模型快捷复测、端侧1.5B真机实测与无隐私新截图"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
