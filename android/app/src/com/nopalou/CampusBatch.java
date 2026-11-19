@@ -59,7 +59,7 @@ final class CampusBatch {
         if (focused) { try { setup="\nNwpuAuto.setClassroomQuery("+query.encode()+");"; } catch (Exception e) { throw new IllegalArgumentException(e); } }
         this.activity=activity; this.stage=stage; this.saved=data; this.owner=data.owner; this.run=run; this.scripts=campus+"\n"+sso+"\n"+auto+setup; this.autoScript=auto; this.listener=listener;
         String academic="";
-        try {
+        if (!focused) try {
             java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
             for (String file:new String[]{"nwpu-import.js","nwpu-academic.js"}) try (java.io.InputStream in=activity.getAssets().open(file)) { byte[] buffer=new byte[4096]; int n; while ((n=in.read(buffer))!=-1) out.write(buffer,0,n); out.write('\n'); }
             academic=out.toString("UTF-8");
@@ -80,6 +80,7 @@ final class CampusBatch {
     }
     void start() { for (int i=0;i<(focused?1:3);i++) lanes.add(new Lane()); pump(); }
     WebView classroomWeb() { return focused && !stopped && !lanes.isEmpty()?lanes.get(0).web:null; }
+    JSONObject classroomResult() { return focused && !stopped?saved.module("classroom"):null; }
     void stop() {
         if (stopped) return; stopped=true; handler.removeCallbacksAndMessages(null);
         for (Lane lane:lanes) { lane.generation++; lane.web.stopLoading(); stage.removeView(lane.web); lane.web.destroy(); }
@@ -108,6 +109,7 @@ final class CampusBatch {
     }
     private void store(Lane lane,JSONObject module,boolean ok) {
         if (!alive() || lane.writing || lane.service==null) return;
+        if (focused && !ok) { completeLane(lane,null,false,false); return; }
         lane.writing=true; int generation=lane.generation; String id=lane.service.id;
         if (focused) { try { module.put("queryToken",run); } catch (Exception e) { listener.complete(0,1); return; } }
         io.execute(() -> {
@@ -261,6 +263,7 @@ final class CampusBatch {
             } else timeout();
         }
         void read(JSONObject r,String url) {
+            if (focused && r.optBoolean("classroomFailed")) { fail("unavailable"); return; }
             JSONObject fresh=r.optJSONObject("snapshot"), module=fresh==null || fresh.optJSONObject("modules")==null?null:fresh.optJSONObject("modules").optJSONObject(service.id);
             if (module==null) { timeout(); return; }
             if (r.optBoolean("settling") || !collection.stable(module,r.optInt("pending"))) { timeout(); return; }
@@ -268,7 +271,7 @@ final class CampusBatch {
             JSONArray actions=r.optJSONArray("actions"); JSONObject first=actions==null?null:actions.optJSONObject(0);
             boolean prepare=r.optBoolean("preparing");
             try { collection.remember(actions); if (!prepare && (state.equals("ok") || state.equals("empty"))) collection.add(module); } catch (Exception e) { collection.markIncomplete(); }
-            preview();
+            if (!focused) preview();
             JSONObject routes=fresh.optJSONObject("routes"); String route=routes==null?"":routes.optString(service.id);
             if (CampusData.count(module)==0 && CampusServices.readUrl(route) && !route.equals(url) && collection.visit("page:"+route)) { deadline=SystemClock.elapsedRealtime()+15_000; navigate(route); return; }
             for (int i=0;actions!=null && i<actions.length();i++) {

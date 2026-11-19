@@ -17,19 +17,21 @@ import org.json.JSONTokener;
 final class CampusBusRefresh {
     interface Listener { void finished(JSONArray trips,String error); }
     private final Activity host;
-    private final Listener listener;
+    private Listener listener;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private WebView web;
     private android.app.Dialog cashierDialog;
     private FrameLayout stage;
     private boolean stopped,submitted,portalOpened,portalClicked;
-    private String script,loginScript,campusScript,ssoScript,date,account;
-    private long deadline;
-    CampusBusRefresh(Activity host,Listener listener) { this.host=host; this.listener=listener; }
-    void start(CampusData data,String date) {
+    private boolean querying,inspecting,pollingBus,ready;
+    private int query;
+    private String script,loginScript,campusScript,ssoScript,date,account,owner;
+    CampusBusRefresh(Activity host) { this.host=host; }
+    void start(CampusData data,String date,Listener listener) {
+        this.listener=listener;
         CampusCredentials.Login login=CampusCredentials.load(host);
         if (data==null || login==null || !data.owner.equals(login.owner)) { finish(null,"请先连接校园账号，再查询实时余位"); return; }
-        this.account=login.account; this.date=date;
+        this.account=login.account; this.owner=login.owner;
         try {
             script=CampusSilentRefresh.asset(host,"nwpu-bus.js");
             loginScript=CampusSilentRefresh.asset(host,"nwpu-login.js");
@@ -44,41 +46,70 @@ final class CampusBusRefresh {
             web.getSettings().setAllowFileAccess(false); web.getSettings().setAllowContentAccess(false);
             web.getSettings().setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             web.setWebViewClient(new WebViewClient() {
+                @Override public void onPageFinished(WebView v,String url) {
+                    if (querying && !inspecting && url.equals(v.getUrl())) {
+                        handler.removeCallbacks(tick);
+                        handler.post(tick);
+                    }
+                }
                 @Override public boolean shouldOverrideUrlLoading(WebView v,android.webkit.WebResourceRequest r) { return !CampusServices.allowed(r.getUrl().toString()); }
                 @Override public boolean shouldOverrideUrlLoading(WebView v,String url) { return !CampusServices.allowed(url); }
                 @Override public void onReceivedSslError(WebView v,android.webkit.SslErrorHandler h,android.net.http.SslError e) { h.cancel(); finish(null,"校方连接证书校验失败，请稍后重试"); }
                 @Override public void onReceivedError(WebView v,android.webkit.WebResourceRequest r,android.webkit.WebResourceError e) { if (r.isForMainFrame()) finish(null,"校车系统连接失败，请稍后重试"); }
             });
-            deadline=android.os.SystemClock.elapsedRealtime()+60_000;
-            web.loadUrl(CampusServices.BUS_RESERVATION); handler.postDelayed(tick,800);
+            beginQuery(date);
+            web.loadUrl(CampusServices.BUS_RESERVATION);
+            schedule();
         } catch (Exception e) { finish(null,"实时校车查询暂时无法启动"); }
     }
+    boolean refresh(CampusData data,String date,Listener listener) {
+        if (!ready || stopped || busy || data==null || !data.owner.equals(owner)
+                || web==null || web.getUrl()==null || !web.getUrl().startsWith(CampusServices.BUS_RESERVATION)) return false;
+        this.listener=listener;
+        beginQuery(date);
+        handler.post(tick);
+        return true;
+    }
+    private void beginQuery(String date) {
+        this.date=date;
+        query++;
+        ready=false;
+        querying=true;
+        pollingBus=false;
+        submitted=false;
+        portalOpened=false;
+        portalClicked=false;
+        handler.postDelayed(timeout,60_000);
+    }
+    private final Runnable timeout=() -> finish(null,"本次未读到实时人数，请稍后重试");
     private final Runnable tick=this::inspect;
     private void inspect() {
-        if (stopped) return;
-        if (android.os.SystemClock.elapsedRealtime()>deadline) { finish(null,"本次未读到实时人数，请稍后重试"); return; }
+        if (stopped || !querying || inspecting) return;
         String url=web.getUrl();
         if (!CampusServices.allowed(url)) { schedule(); return; }
         String hostName=Uri.parse(url).getHost();
-        if ("hq-bus.nwpu.edu.cn".equals(hostName)) {
-            web.evaluateJavascript(script+";NwpuBus.start("+JSONObject.quote(date)+","+JSONObject.quote(account)+");JSON.stringify(window.__louBus)", value -> {
-                if (stopped) return;
-                if (!url.equals(web.getUrl())) { schedule(); return; }
-                JSONObject result=parse(value); String phase=result.optString("phase");
+        if (url.startsWith(CampusServices.BUS_RESERVATION)) {
+            String status="JSON.stringify(window.__louBus)";
+            String request=pollingBus?status:"if(document.readyState!=='loading'){if(typeof NwpuBus==='undefined'){"
+                    +script+"}\nNwpuBus.start("+JSONObject.quote(date)+","+JSONObject.quote(account)+","+query+");"+status+"}";
+            evaluate(url,request,result -> {
+                pollingBus=result.optInt("query",-1)==query;
+                if (!pollingBus) { schedule(250); return; }
+                String phase=result.optString("phase");
                 if ("ready".equals(phase)) {
-                    handler.removeCallbacksAndMessages(null);
+                    querying=false;
+                    ready=true;
+                    handler.removeCallbacks(timeout);
                     listener.finished(result.optJSONArray("items"),"");
                 }
                 else if ("error".equals(phase)) {
                     if (!portalOpened) { portalOpened=true; web.loadUrl(CampusServices.PORTAL_SSO); schedule(); }
                     else finish(null,"校方暂未返回实时人数，请稍后重试或更新校园登录状态");
-                } else schedule();
+                } else schedule(250);
             });
         } else if ("uis.nwpu.edu.cn".equals(hostName)) {
-            web.evaluateJavascript(loginScript+";JSON.stringify(NwpuLogin.inspect())", value -> {
-                if (stopped) return;
-                if (!url.equals(web.getUrl())) { schedule(); return; }
-                String phase=parse(value).optString("phase");
+            evaluate(url,loginScript+";JSON.stringify(NwpuLogin.inspect())", result -> {
+                String phase=result.optString("phase");
                 if ("challenge".equals(phase)) { finish(null,"学校要求安全验证，请在校园页完成验证后重试"); return; }
                 if ("error".equals(phase)) { finish(null,"校园登录状态需要更新"); return; }
                 if ("ready".equals(phase) && !submitted) {
@@ -90,20 +121,27 @@ final class CampusBusRefresh {
                 schedule();
             });
         } else if ("ecampus.nwpu.edu.cn".equals(hostName)) {
-            web.evaluateJavascript(campusScript+";"+ssoScript+";JSON.stringify({phase:NwpuSso.inspect().phase,clicked:NwpuSso.click('bus','bus-live')})", value -> {
-                if (stopped) return;
-                JSONObject result=parse(value);
+            evaluate(url,campusScript+";"+ssoScript+";JSON.stringify({phase:NwpuSso.inspect().phase,clicked:NwpuSso.click('bus','bus-live')})", result -> {
                 if (result.optBoolean("clicked")) portalClicked=true;
                 if (!portalClicked && "ready".equals(result.optString("phase"))) web.loadUrl(CampusServices.BUS_RESERVATION);
                 schedule();
             });
         } else { schedule(); }
     }
+    private void evaluate(String url,String code,java.util.function.Consumer<JSONObject> callback) {
+        inspecting=true;
+        web.evaluateJavascript(code,value -> {
+            inspecting=false;
+            if (stopped || !querying) return;
+            if (!url.equals(web.getUrl())) { schedule(); return; }
+            callback.accept(parse(value));
+        });
+    }
     interface TicketListener { void finished(JSONObject result,String error); }
     private int operation;
     private boolean busy;
     void ticket(String method,JSONObject trip,String expectedFee,boolean agreed,TicketListener callback) {
-        if (stopped || busy || web==null || web.getUrl()==null || !web.getUrl().startsWith(CampusServices.BUS_RESERVATION)) { callback.finished(null,"会话已失效，请刷新班次后重试"); return; }
+        if (stopped || !ready || busy || web==null || web.getUrl()==null || !web.getUrl().startsWith(CampusServices.BUS_RESERVATION)) { callback.finished(null,"会话已失效，请刷新班次后重试"); return; }
         CampusCredentials.Login login=CampusCredentials.load(host);
         if (login==null || !account.equals(login.account)) { callback.finished(null,"校园账号已变化，请重新查询"); return; }
         if (!java.util.Arrays.asList("quote","submit","prepare").contains(method)) return;
@@ -129,7 +167,7 @@ final class CampusBusRefresh {
     }
     void openCashier(String order,String prepay,Runnable returned,TicketListener callback) {
         CampusCredentials.Login login=CampusCredentials.load(host);
-        if (stopped || busy || web==null || login==null || !account.equals(login.account)) { callback.finished(null,"请先刷新订单状态"); return; }
+        if (stopped || !ready || busy || web==null || login==null || !account.equals(login.account)) { callback.finished(null,"请先刷新订单状态"); return; }
         busy=true;
         String js="window.__louCashier=null;NwpuBus.cashier("+JSONObject.quote(account)+","+JSONObject.quote(order)+","+JSONObject.quote(prepay)+").then(function(r){window.__louCashier=r}).catch(function(){window.__louCashier={error:true}});";
         web.evaluateJavascript(js,null);
@@ -163,7 +201,13 @@ final class CampusBusRefresh {
             });
         }}; handler.postDelayed(poll,300);
     }
-    private void schedule() { if (!stopped) handler.postDelayed(tick,800); }
+    private void schedule() { schedule(800); }
+    private void schedule(long delay) {
+        if (!stopped && querying) {
+            handler.removeCallbacks(tick);
+            handler.postDelayed(tick,delay);
+        }
+    }
     private static JSONObject parse(String value) {
         try { Object raw=new JSONTokener(value).nextValue(); return new JSONObject(raw instanceof String?(String)raw:"{}"); }
         catch (Exception e) { return new JSONObject(); }

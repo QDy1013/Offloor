@@ -10,6 +10,8 @@ import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import java.util.function.Consumer;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -122,19 +124,20 @@ final class StudyRoomSession {
             });
         }
     }};
-    void run(String method,JSONObject args,Callback callback) {
+    void run(String method,JSONObject args,Consumer<JSONArray> preview,Callback callback) {
         if (stopped || !ready || web==null || !allowed(web.getUrl()) || !HOME.equals(origin(web.getUrl())) || !validAccount()) { ready=false; callback.finished(null,"会话已失效，请重新连接"); return; }
         if (busy) { callback.finished(null,"上一请求尚未完成，请稍候"); return; }
         if (!java.util.Arrays.asList("query","mine","members","captcha","submit","cancel").contains(method)) { callback.finished(null,"不支持的操作"); return; }
         busy=true; pending=callback; int token=++generation;
         boolean write="submit".equals(method) || "cancel".equals(method); writing=write;
         String url=web.getUrl();
-        web.evaluateJavascript("window.__louStudyResult=null;NwpuStudyRoom.run("+JSONObject.quote(method)+","+args.toString()+","+JSONObject.quote(account)+").then(function(r){window.__louStudyResult={result:r};});",null);
+        String onPreview=preview==null?"null":"function(rows){op.preview=rows;}";
+        web.evaluateJavascript("(function(op){NwpuStudyRoom.run("+JSONObject.quote(method)+","+args+","+JSONObject.quote(account)+","+onPreview+").then(function(r){op.result=r;});})(window.__louStudyOperation={});",null);
         long until=SystemClock.elapsedRealtime()+40_000;
         Runnable poll=new Runnable() { public void run() {
             if (stopped || token!=generation) return;
             if (!validAccount() || !url.equals(web.getUrl())) { ready=false; resolve(null,write?"请求结果未确认，请先重新连接并查询我的预约，勿重复操作":"会话发生变化，请重新连接"); return; }
-            web.evaluateJavascript("JSON.stringify(window.__louStudyResult)",value -> {
+            web.evaluateJavascript("(function(op){if(!op)return null;var value=JSON.stringify(op);delete op.preview;return value;})(window.__louStudyOperation)",value -> {
                 if (stopped || token!=generation) return;
                 JSONObject result=parse(value);
                 if (result.has("result")) {
@@ -143,7 +146,11 @@ final class StudyRoomSession {
                 } else if (SystemClock.elapsedRealtime()>until) {
                     ready=false; ++generation;
                     resolve(null,write?"请求结果未确认，请重新连接并先查询我的预约，勿重复操作":"请求超时，请重新连接");
-                } else handler.postDelayed(this,80);
+                } else {
+                    JSONArray rooms=result.optJSONArray("preview");
+                    if (preview!=null && rooms!=null) preview.accept(rooms);
+                    handler.postDelayed(this,80);
+                }
             });
         }};
         handler.postDelayed(poll,40);

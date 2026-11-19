@@ -33,9 +33,10 @@
         for (const el of root.document.querySelectorAll('#room-borrow-app,.container')) {
             const v=el.__vue__; if (v && typeof v.queryFreeList==='function' && v.freeListParam && Array.isArray(v.campusList)) { vm=v; break; }
         }
-        if (!vm) return null;
+        if (!vm) return {ready:false};
         if (!state.classroom) {
             const sites=vm.campusList.filter(o=>o && o.value!==undefined && String(o.value) && text(o.text));
+            if (!sites.length) return {ready:false};
             const requested=state.classroomRequest;
             const site=requested?sites.find(o=>text(o.text)===requested.campus):(sites.find(o=>String(o.value)===String(vm.freeListParam.campusId)) || sites.find(o=>/长安/.test(o.text)) || sites[0]);
             if (state.classroomConfigInvalid || (requested && !site)) return {condition:'',ready:false,failed:true,rows:0};
@@ -43,7 +44,7 @@
             const now=new Date(Date.now()+8*60*60*1000), min=Math.min(1438,now.getUTCHours()*60+now.getUTCMinutes());
             const time=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
             const date=requested?requested.date:now.toISOString().slice(0,10), start=requested?requested.start:time(min), end=requested?requested.end:time(Math.min(1439,min+60));
-            const beforeRooms=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
+            const beforeRooms=!vm.posted && Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
             const query=state.classroom={vm,campus:String(site.value),date,start,end,condition:text(site.text)+' · '+date+' '+start+'—'+end,failed:false,called:false,resultSeen:false,beforeRooms,beforePosted:vm.posted && vm.posted.freeListParam};
             vm.byWeek=false; vm.byTime=true; vm.freeListParam.campusId=String(site.value);
             const run=()=>{try {
@@ -52,21 +53,19 @@
                 query.called=true;
                 // Watch the room list itself: unrelated long requests on the academic page
                 // must not keep the whole page "pending" forever.
-                if (typeof vm.$watch==='function') { try { vm.$watch('freeRooms',()=>{query.resultSeen=true;},{deep:true}); } catch (_) {} }
+                if (!vm.posted && typeof vm.$watch==='function') { try { vm.$watch('freeRooms',()=>{query.resultSeen=true;},{deep:true}); } catch (_) {} }
                 vm.queryFreeList();
             } catch (_) {query.failed=true;} };
             if (typeof vm.$nextTick==='function') vm.$nextTick(run); else Promise.resolve().then(run);
         }
         const q=state.classroom;
         const rooms=Array.isArray(vm.freeRooms)?vm.freeRooms.length:0;
-        const roomSignature=Array.isArray(vm.freeRooms)?JSON.stringify(vm.freeRooms):'';
-        const resultChanged=roomSignature!==q.beforeRooms;
-        const empty=Array.from(root.document.querySelectorAll('.el-table__empty-text,.ant-empty-description,.dataTables_empty,.no-data,.empty-data')).some(e=>visible(e) && /暂无(?:数据|记录)|无(?:数据|记录)|没有(?:数据|记录)/.test(label(e)));
         // Only the school's successful query callback sets posted.freeListParam.
         // Page mutations and campus-option requests are not room-query responses.
         const posted=vm.posted && vm.posted.freeListParam, segment=posted && posted.dateTimeSegmentCmd;
         const matched=posted && posted!==q.beforePosted && String(posted.campusId)===q.campus && segment && segment.startDateTime===q.date && segment.endDateTime===q.date && segment.startTime===q.start && segment.endTime===q.end;
-        const settled=q.called && (matched || (!vm.posted && q.resultSeen && resultChanged));
+        const settled=q.called && (matched || (!vm.posted && q.resultSeen && JSON.stringify(vm.freeRooms)!==q.beforeRooms));
+        const empty=settled && !Array.isArray(vm.freeRooms) && Array.from(root.document.querySelectorAll('.el-table__empty-text,.ant-empty-description,.dataTables_empty,.no-data,.empty-data')).some(e=>visible(e) && /暂无(?:数据|记录)|无(?:数据|记录)|没有(?:数据|记录)/.test(label(e)));
         return {condition:q.condition,ready:!!(settled && (Array.isArray(vm.freeRooms) || empty)),failed:q.failed,rows:rooms};
     }
     function install() {
@@ -228,25 +227,35 @@
     function inspect(kind, visited, context) {
         install();
         if (!root.NwpuCampus.allowed(root.location.href)) return {pending: 0, actions: [], settling: false};
-        const loading = Array.from(root.document.querySelectorAll('.el-loading-mask,.ant-spin-spinning,[aria-busy="true"]')).some(visible);
         const room=kind==='classroom' && state.focus?classroom():null;
-        const seen = new Set(visited || []), snapshot = root.NwpuCampus.capture(kind, scope()), m = snapshot.modules[kind];
-        if (room && room.failed) { m.state='unavailable'; m.fields=[]; m.tables=[]; m.links=[]; }
-        if (room && room.ready && !room.failed) {
-            if (room.rows===0) m.state='empty';
-            if (m.state==='ok' || m.state==='empty') m.fields=[{label:'查询条件',value:room.condition}];
+        if (room) {
+            state.planned=[];
+            const waiting={pending:1,settling:true,preparing:true,actions:[]};
+            if (!room.ready && !room.failed) return waiting;
+            const snapshot=room.rows>0 && !room.failed
+                ? root.NwpuCampus.capture(kind,scope())
+                : {modules:{classroom:{state:room.failed?'unavailable':'empty',source:baseUrl(),fields:[],tables:[],links:[]}}};
+            const module=snapshot.modules.classroom;
+            if (!room.failed) {
+                // A successful Vue response can precede its table render.
+                if (room.rows>0 && module.state!=='ok') return waiting;
+                module.fields=[{label:'查询条件',value:room.condition}];
+            }
+            return {pending:0,settling:false,preparing:false,snapshot,actions:[],classroomFailed:!!room.failed};
         }
+        const loading = Array.from(root.document.querySelectorAll('.el-loading-mask,.ant-spin-spinning,[aria-busy="true"]')).some(visible);
+        const seen = new Set(visited || []), snapshot = root.NwpuCampus.capture(kind, scope()), m = snapshot.modules[kind];
         const group = text(context || state.detail || [filterContext(filters(scope())), customFilters(scope()).map(f => f.value).filter(v => v && !/^(全部|所有|不限)/.test(v)).join(' · ')].filter(Boolean).join(' · ')).slice(0, 180);
         if (group) {
             for (const f of m.fields) { f.group = group; f.record = (baseUrl() + (state.detailKey || '')).slice(0, 2500); }
             for (const t of m.tables) t.title = (group + (t.title ? ' · ' + t.title : '')).slice(0, 100);
         }
-        const actions = room?[]:candidates(kind, seen).filter(a => !seen.has(a.key));
+        const actions = candidates(kind, seen).filter(a => !seen.has(a.key));
         state.planned = actions;
         const query = Array.from(scope().querySelectorAll('button,input[type="button"],input[type="submit"],[role="button"]')).find(e => visible(e) && /^(查询|搜索|查找)$/.test(label(e)) && !disabled(e));
         const queryKey = query && viewKey() + '|query:' + label(query) + ':' + filterKey(filters(scope())) + customKey(customFilters(scope()));
-        return {pending: room?(room.ready?0:1):state.pending, settling: room?(!room.ready && !room.failed):(loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160), pageKey: pageKey(), snapshot,
-            preparing: room?(!room.ready && !room.failed):!!query && !seen.has(queryKey),
+        return {pending: state.pending, settling: loading || state.pending > 0 || root.document.readyState === 'loading' || Date.now() - state.changed < 160, pageKey: pageKey(), snapshot,
+            preparing: !!query && !seen.has(queryKey),
             actions: actions.map(a => ({key: a.key, type: a.type, label: a.label, url: a.url || '', context: a.context || ''}))};
     }
     function act(kind, key) {

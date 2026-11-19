@@ -10,14 +10,20 @@ import java.nio.charset.StandardCharsets;
 final class CampusStore {
     private static final java.util.List<java.lang.ref.WeakReference<Runnable>> observers=new java.util.ArrayList<>();
     private static final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
+    // Display snapshots are read-only and published only after validation and a successful write.
+    private static volatile CampusData snapshot;
     static synchronized void observe(Runnable callback) { unobserve(callback); observers.add(new java.lang.ref.WeakReference<>(callback)); }
     static synchronized void unobserve(Runnable callback) { observers.removeIf(ref -> ref.get()==null || ref.get()==callback); }
     private static void changed() { for (java.lang.ref.WeakReference<Runnable> ref:observers) { Runnable callback=ref.get(); if (callback!=null) main.post(callback); } }
     static synchronized void signalChanged() { changed(); }
     private static AtomicFile file(Context c) { return new AtomicFile(new File(c.getFilesDir(), "campus.json")); }
+    static CampusData peek() { return snapshot; }
     static synchronized CampusData load(Context c) throws Exception {
+        if (snapshot!=null) return snapshot;
         CampusData raw=loadRaw(c);
-        return raw==null?null:CampusScope.compact(busFallback(c,raw));
+        CampusData result=raw==null?null:CampusScope.compact(busFallback(c,raw));
+        snapshot=result;
+        return result;
     }
     private static CampusData loadRaw(Context c) throws Exception {
         AtomicFile f = file(c);
@@ -38,7 +44,7 @@ final class CampusStore {
         // Merge against the complete disk snapshot. Hiding a feature never deletes its stored data.
         CampusData old=loadRaw(c), next=busFallback(c,CampusData.merge(old,fresh,System.currentTimeMillis(),expectedOwner));
         CampusData selected=CampusScope.compact(next);
-        write(c,next); changed(); CampusChanges.campus(c,selected); return selected;
+        write(c,next); snapshot=selected; changed(); CampusChanges.campus(c,selected); return selected;
     }
     private static void write(Context c,CampusData next) throws Exception {
         byte[] bytes = next.encode().getBytes(StandardCharsets.UTF_8);
@@ -70,10 +76,11 @@ final class CampusStore {
         String previousOwner=old==null || old.owner.isEmpty()?key:old.owner;
         AcademicStore.stampOwner(c,previousOwner); TimetableStore.stampOwner(c,previousOwner);
         write(c,next);
+        snapshot=null;
         // 新快照写入后，旧账号文件即使在清理中被杀进程，也会被账号边界隐藏。
         if (otherAccount) { AcademicStore.clear(c); TimetableStore.clear(c); }
         if (old==null || !key.equals(old.owner)) c.getSharedPreferences("campus-binding",Context.MODE_PRIVATE).edit().clear().apply();
-        changed(); CampusChanges.campus(c,next); return next;
+        snapshot=next; changed(); CampusChanges.campus(c,next); return next;
     }
     static synchronized Academic updateAcademic(Context c,String fresh,String owner,String run) throws Exception {
         CampusData current=load(c);
@@ -81,5 +88,5 @@ final class CampusStore {
         Academic result=AcademicStore.update(c,fresh); changed(); return result;
     }
     static synchronized void clearAll(Context c) { CampusCredentials.clear(c); AcademicStore.clear(c); TimetableStore.clear(c); clear(c); }
-    static synchronized void clear(Context c) { file(c).delete(); c.getSharedPreferences("campus-binding", Context.MODE_PRIVATE).edit().clear().apply(); changed(); }
+    static synchronized void clear(Context c) { file(c).delete(); snapshot=null; c.getSharedPreferences("campus-binding", Context.MODE_PRIVATE).edit().clear().apply(); changed(); }
 }

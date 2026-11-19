@@ -84,6 +84,23 @@ check('page mutations and unrelated pending requests cannot complete a room quer
     r = f.inspect(); assert.equal(r.settling, true); assert.equal(r.pending, 1);
     assert.equal(f.school.calls, 1);
 });
+check('pending requests skip table capture and wait for campus metadata', () => {
+    const f = fixture(undefined, []); f.api.setClassroomQuery(request);
+    const capture = f.root.NwpuCampus.capture;
+    let captures = 0;
+    f.root.NwpuCampus.capture = () => { captures++; return capture(); };
+    assert.equal(f.inspect().settling, true);
+    assert.equal(f.school.calls, 0);
+    assert.equal(captures, 0);
+    f.school.campusList = [{value: 'observed-y', text: '友谊校区'}];
+    f.school.queryFreeList = function () { this.calls++; };
+    assert.equal(f.inspect().settling, true);
+    assert.equal(f.school.calls, 1);
+    assert.equal(captures, 0);
+    f.school.posted.freeListParam = JSON.parse(JSON.stringify(f.school.freeListParam));
+    assert.equal(f.inspect().settling, false);
+    assert.equal(captures, 1);
+});
 check('a fresh successful empty response completes only the matching query', () => {
     const f = fixture();
     f.school.freeRooms = []; f.school.queryFreeList = function () { this.calls++; };

@@ -26,18 +26,20 @@ public class CampusActivity extends Activity {
     private boolean busWeekend;
     private String busRoute="",busPlace="";
     private CampusBusRefresh busRefresh;
-    private JSONArray busTrips;
     private String busDate=CampusClassroomQuery.today(System.currentTimeMillis()),busError="";
-    private boolean busAttempted,busLoading,busHidePast=true;
-    private long busUpdated;
+    private String busOwner="";
+    private boolean busAttempted,busLoading,busReady,busHidePast=true;
+    private int busGeneration;
+    private final Runnable busQuery=this::runBusQuery;
+    private final java.util.Set<String> expandedBusRoutes=new java.util.HashSet<>();
     private CampusClassroomRefresh classroomRefresh;
-    private boolean roomAttempted,roomLoading;
-    private String roomCampus="长安校区",roomDate="",roomToken="",roomError="";
+    private boolean roomAutoQuery=true,roomLoading;
+    private String roomCampus="长安校区",roomToken="",roomLabel="",roomError="";
+    private JSONObject roomModule;
+    private java.util.List<CampusClassroomResult.Room> roomRows=java.util.Collections.emptyList();
     private String busLiveRoute="";
     private int roomStart,roomEnd,roomLimit=40;
     private final java.util.Set<String> selectedRoomLocations=new java.util.LinkedHashSet<>();
-    private final java.util.Set<String> submittedRoomLocations=new java.util.LinkedHashSet<>();
-    private final java.util.List<String> roomLocations=new java.util.ArrayList<>();
     private boolean resumed;
     private LinearLayout list;
     private ScrollView scroll;
@@ -51,32 +53,22 @@ public class CampusActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module");
         busWeekend=b==null?CampusBusSchedule.weekend(System.currentTimeMillis()):b.getBoolean("bus_weekend");
-        busRoute=b==null?"":b.getString("bus_route",""); busPlace=b==null?"":b.getString("bus_place",""); render();
+        busRoute=b==null?"":b.getString("bus_route",""); busPlace=b==null?"":b.getString("bus_place","");
+        data=CampusStore.peek(); loaded=data!=null;
+        if ("classroom".equals(detail)) {
+            initClassroom();
+            setRoomModule(data==null?null:data.module("classroom"));
+        }
+        render();
     }
     @Override public void onSaveInstanceState(Bundle b) {
         b.putBoolean("bus_weekend",busWeekend); b.putString("bus_route",busRoute); b.putString("bus_place",busPlace); super.onSaveInstanceState(b);
     }
     @Override public void onResume() {
         super.onResume(); resumed=true;
-        if ("classroom".equals(detail) && roomDate.isEmpty()) {
-            roomDate=CampusClassroomQuery.today(System.currentTimeMillis());
-            int[] range=CampusClassroomQuery.defaultRange(System.currentTimeMillis()); roomStart=range[0]; roomEnd=range[1];
-            roomCampus=getSharedPreferences("classroom-live",MODE_PRIVATE).getString("campus","长安校区");
-            Intent in=getIntent();
-            int preStart=in.getIntExtra("prefill_start",-1), preEnd=in.getIntExtra("prefill_end",-1);
-            if (preStart>=0 && preEnd>preStart && preEnd<=1439) {
-                roomStart=preStart; roomEnd=preEnd;
-                in.removeExtra("prefill_start"); in.removeExtra("prefill_end");
-            }
-            String preCampus=in.getStringExtra("prefill_campus");
-            if ("长安校区".equals(preCampus) || "友谊校区".equals(preCampus)) {
-                roomCampus=preCampus;
-                in.removeExtra("prefill_campus");
-            }
-            if (!"友谊校区".equals(roomCampus)) roomCampus="长安校区";
-            roomAttempted=false; roomToken=""; roomError=""; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLoading=false;
-        }
-        CampusStore.observe(changed); CampusAutoRefresh.maybeRefresh(this); reload(); updates.postDelayed(clock,60_000);
+        CampusStore.observe(changed);
+        if (!"classroom".equals(detail) && !"bus".equals(detail)) CampusAutoRefresh.maybeRefresh(this);
+        reload(); updates.postDelayed(clock,60_000);
     }
     private void reload() {
         if (isDestroyed() || io.isShutdown()) return;
@@ -84,8 +76,19 @@ public class CampusActivity extends Activity {
             CampusData d=null; boolean broken=false;
             try { d=CampusStore.load(getApplicationContext()); } catch (Exception e) { broken=true; }
             CampusData result=d; boolean bad=broken;
-            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); data=result; loaded=true;
-                if ("bus".equals(detail) && resumed && !busAttempted) startBusQuery();
+            runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); CampusData previous=data; data=result; loaded=true;
+                if ("bus".equals(detail) && resumed) syncBus();
+                if ("classroom".equals(detail)) {
+                    if (previous!=null && (result==null || !previous.owner.equals(result.owner))) {
+                        resetRoomQuery();
+                        setRoomModule(null);
+                        roomAutoQuery=true;
+                    }
+                    setRoomModule(result==null?null:result.module("classroom"));
+                    if (resumed && roomAutoQuery && result!=null && !result.owner.isEmpty()) {
+                        updates.post(() -> { if (resumed && roomAutoQuery) startClassroomQuery(); });
+                    }
+                }
                 render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); if (bad) toast("校园存档无法读取"); });
         });
     }
@@ -108,7 +111,9 @@ public class CampusActivity extends Activity {
         if (service==null) head.addView(CourseUi.icon(this,"more","校园设置",this::settings));
         scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
         list=CourseUi.column(this); list.setPadding(dp(18),dp(4),dp(18),dp(28)); scroll.addView(list); root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        if (!loaded) note("正在读取本机数据…");
+        if (service!=null && "classroom".equals(detail)) renderClassroom();
+        else if (service!=null && "bus".equals(detail)) renderBus(data==null?null:data.module("bus"));
+        else if (!loaded) note("正在读取本机数据…");
         else if (service!=null) renderDetail(service);
         else renderOverview();
         if (service==null) {
@@ -250,8 +255,6 @@ public class CampusActivity extends Activity {
     }
     private void renderDetail(CampusServices.Service s) {
         JSONObject m=data==null?null:data.module(s.id); int count=CampusData.count(m);
-        if ("bus".equals(s.id)) { renderBus(m); return; }
-        if ("classroom".equals(s.id)) { renderClassroom(m); return; }
         LinearLayout intro=card(); intro.addView(text(s.detail,15,Ui.TEXT,true)); CourseUi.gap(intro,10);
         intro.addView(text(m==null?"尚未同步":CampusServices.status(m.optString("state"))+" · "+time(m.optLong("updated")),12,Ui.SUB,false));
         if (m!=null && m.optBoolean("partial")) { CourseUi.gap(intro,8); intro.addView(text("部分信息已读取，剩余内容会自动重试。",12,Ui.SUB,false)); }
@@ -323,31 +326,63 @@ public class CampusActivity extends Activity {
         String src=m.optString("source");
         try { note("来源："+new java.net.URI(src).getHost()+" · "+time(m.optLong("updated"))+"\n仅展示同步时已加载的内容，以校方系统为准。"); } catch (Exception ignored) { }
     }
+    private void initClassroom() {
+        Intent intent=getIntent();
+        int[] range=CampusClassroomQuery.defaultRange(System.currentTimeMillis());
+        int start=intent.getIntExtra("prefill_start",-1),end=intent.getIntExtra("prefill_end",-1);
+        boolean validRange=start>=0 && start<end && end<=1439;
+        roomStart=validRange?start:range[0];
+        roomEnd=validRange?end:range[1];
+        String campus=intent.getStringExtra("prefill_campus");
+        if (!"长安校区".equals(campus) && !"友谊校区".equals(campus)) {
+            campus=getSharedPreferences("classroom-live",MODE_PRIVATE).getString("campus","长安校区");
+        }
+        roomCampus="友谊校区".equals(campus)?campus:"长安校区";
+    }
+    private void setRoomModule(JSONObject module) {
+        if (module==roomModule) return;
+        if (module!=null && roomModule!=null) {
+            long updated=module.optLong("updated"),shown=roomModule.optLong("updated");
+            if (updated<shown || (updated==shown && module.optString("queryToken").equals(roomModule.optString("queryToken"))
+                    && module.optString("state").equals(roomModule.optString("state"))
+                    && module.optBoolean("partial")==roomModule.optBoolean("partial"))) return;
+        }
+        roomModule=module;
+        roomRows=CampusClassroomResult.rooms(module);
+    }
     private void stopClassroomQuery() { if (classroomRefresh!=null) { classroomRefresh.stop(); classroomRefresh=null; } }
-    private void startClassroomQuery(boolean repaint) {
-        roomAttempted=true; submittedRoomLocations.clear(); submittedRoomLocations.addAll(selectedRoomLocations);
-        if (data==null || data.owner.isEmpty()) { roomLoading=false; roomError="请先登录校园账号"; return; }
+    private void resetRoomQuery() {
+        stopClassroomQuery();
+        roomLoading=false; roomToken=""; roomLabel=""; roomError="";
+    }
+    private void startClassroomQuery() {
+        if (!loaded || data==null || data.owner.isEmpty()) return;
         CampusClassroomQuery query;
-        try { roomDate=CampusClassroomQuery.today(System.currentTimeMillis()); query=new CampusClassroomQuery(roomCampus,roomDate,roomStart,roomEnd); }
-        catch (Exception e) { roomLoading=false; toast("结束时间需要晚于开始时间"); return; }
-        stopClassroomQuery(); roomToken=java.util.UUID.randomUUID().toString(); String token=roomToken;
-        roomLoading=true; roomError=""; roomLimit=40;
-        CampusClassroomRefresh reader=new CampusClassroomRefresh(this,token,error -> {
+        try { query=new CampusClassroomQuery(roomCampus,CampusClassroomQuery.today(System.currentTimeMillis()),roomStart,roomEnd); }
+        catch (IllegalArgumentException e) { toast("结束时间需要晚于开始时间"); return; }
+        if (roomLoading && query.label().equals(roomLabel)) return;
+        roomAutoQuery=false;
+        resetRoomQuery();
+        roomToken=java.util.UUID.randomUUID().toString(); String token=roomToken;
+        roomLabel=query.label(); roomLoading=true; roomLimit=40;
+        renderRoomPage();
+        CampusClassroomRefresh reader=new CampusClassroomRefresh(this,token,(module,error) -> {
             if (!token.equals(roomToken)) return;
-            roomLoading=false; roomError=error; reload();
+            roomLoading=false; roomError=error;
+            if (module!=null) setRoomModule(module);
+            renderRoomPage();
         });
         classroomRefresh=reader; reader.start(data,query);
-        if (repaint) renderRoomPage();
     }
     private void roomOptionsChanged() {
-        stopClassroomQuery(); roomAttempted=false; roomLoading=false; roomToken=""; roomError=""; renderRoomPage();
+        roomAutoQuery=false; resetRoomQuery(); renderRoomPage();
     }
     private void renderRoomPage() {
         int y=scroll==null?0:scroll.getScrollY(); render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y));
     }
     private void showLocationPicker(java.util.List<String> locations) {
         if (locations.isEmpty()) return;
-        java.util.Set<String> draft=new java.util.LinkedHashSet<>(selectedRoomLocations);
+        java.util.Set<String> draft=new java.util.LinkedHashSet<>(selectedRoomLocations.isEmpty()?locations:selectedRoomLocations);
         LinearLayout body=CourseUi.column(this);
         body.setPadding(0,dp(4),0,dp(16));
         LinearLayout header=new LinearLayout(this);
@@ -430,8 +465,10 @@ public class CampusActivity extends Activity {
         confirm.setOnClickListener(v -> {
             if (draft.isEmpty()) { toast("请至少选择一个教学楼"); return; }
             v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
-            selectedRoomLocations.clear(); selectedRoomLocations.addAll(draft);
-            dialog.dismiss(); roomOptionsChanged();
+            selectedRoomLocations.clear();
+            if (draft.size()!=locations.size()) selectedRoomLocations.addAll(draft);
+            roomLimit=40;
+            dialog.dismiss(); renderRoomPage();
         });
     }
     private void chooseRoomTime(boolean start) {
@@ -443,19 +480,15 @@ public class CampusActivity extends Activity {
                     roomOptionsChanged();
                 });
     }
-    private void renderClassroom(JSONObject module) {
-        boolean current=CampusClassroomResult.current(module,roomToken,CampusClassroomQuery.today(System.currentTimeMillis()));
-        java.util.List<CampusClassroomResult.Room> allRooms=current?CampusClassroomResult.rooms(module):java.util.Collections.emptyList();
-        if (roomLocations.isEmpty()) {
-            if ("长安校区".equals(roomCampus)) for (String building:new String[]{"教学东楼A座","教学东楼B座","教学东楼C座","教学东楼D座","教学西楼A座","教学西楼B座","教学西楼C座","教学西楼D座"}) roomLocations.add(building);
-            else { roomLocations.add("诚字楼"); roomLocations.add("研究生西馆"); }
-        }
-        java.util.List<CampusClassroomResult.Room> knownRooms=CampusClassroomResult.rooms(module);
-        for (String place:CampusClassroomResult.locations(knownRooms)) if (!roomLocations.contains(place) && knownRooms.stream().anyMatch(r -> r.location.equals(place) && r.detail.contains(roomCampus))) roomLocations.add(place);
-        java.util.List<String> locations=new java.util.ArrayList<>(roomLocations);
-        selectedRoomLocations.retainAll(locations);
-        if (selectedRoomLocations.isEmpty() && !locations.isEmpty()) selectedRoomLocations.add(locations.get(0));
-        String locationLabel=selectedRoomLocations.isEmpty()?"选择教学楼"
+    private void renderClassroom() {
+        JSONObject module=roomModule;
+        long now=System.currentTimeMillis();
+        String today=CampusClassroomQuery.today(now);
+        boolean current=CampusClassroomResult.current(module,roomToken,today);
+        boolean cached=!current && CampusClassroomResult.recent(module,roomCampus,today,roomStart,roomEnd,now);
+        java.util.List<String> locations=CampusClassroomResult.availableLocations(roomCampus,module,roomRows);
+        for (String selected:selectedRoomLocations) if (!locations.contains(selected)) locations.add(selected);
+        String locationLabel=selectedRoomLocations.isEmpty()?"全部教学楼"
                 :(selectedRoomLocations.size()==1?selectedRoomLocations.iterator().next()
                 :selectedRoomLocations.iterator().next()+" 等"+selectedRoomLocations.size()+"处");
         LinearLayout query=card(); query.setPadding(0,0,0,0);
@@ -464,7 +497,7 @@ public class CampusActivity extends Activity {
         rowCampus.setPadding(dp(16),dp(11),dp(12),dp(11));
         LinearLayout campusTitle=CourseUi.column(this);
         campusTitle.addView(text("校区",12,Ui.MUTE,false));
-        campusTitle.addView(text("今天 · "+CampusClassroomQuery.today(System.currentTimeMillis()),11,Ui.SUB,false));
+        campusTitle.addView(text("今天 · "+today,11,Ui.SUB,false));
         rowCampus.addView(campusTitle,new LinearLayout.LayoutParams(0,-2,1));
         LinearLayout seg=new LinearLayout(this); seg.setPadding(dp(2),dp(2),dp(2),dp(2));
         seg.setBackground(Ui.round(this,Ui.FILL,9));
@@ -475,7 +508,7 @@ public class CampusActivity extends Activity {
             tab.setBackground(Ui.ripple(this,on?Ui.roundStroke(this,Ui.CARD,Ui.LINE,7,0.75f):null,Ui.press(),7));
             tab.setOnClickListener(v -> {
                 if (cName.equals(roomCampus)) return;
-                roomCampus=cName; selectedRoomLocations.clear(); submittedRoomLocations.clear(); roomLocations.clear();
+                roomCampus=cName; selectedRoomLocations.clear();
                 getSharedPreferences("classroom-live",MODE_PRIVATE).edit().putString("campus",roomCampus).apply();
                 roomOptionsChanged();
             });
@@ -531,27 +564,34 @@ public class CampusActivity extends Activity {
 
         LinearLayout actionWrap=CourseUi.column(this);
         actionWrap.setPadding(dp(12),dp(2),dp(12),dp(12));
-        TextView submit=CourseUi.action(this,roomLoading?"重新查询此时段":"查询此时段",true,() -> startClassroomQuery(true));
+        TextView submit=CourseUi.action(this,roomLoading?"正在查询…":"查询此时段",true,this::startClassroomQuery);
         submit.setMinHeight(dp(42));
+        submit.setEnabled(loaded && data!=null && !data.owner.isEmpty() && !roomLoading);
+        if (!submit.isEnabled()) submit.setAlpha(.55f);
         actionWrap.addView(submit,new LinearLayout.LayoutParams(-1,dp(42)));
         query.addView(actionWrap);
+        if (!loaded) { note("正在读取本机数据…"); return; }
         if (data==null || data.owner.isEmpty()) {
             note("登录校园账号后可查询当日的空闲教室。"); LinearLayout login=card(); login.addView(CourseUi.action(this,"登录校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48))); return;
         }
-        if (roomLoading) {
+        if (roomLoading || roomAutoQuery) {
             android.widget.ProgressBar bar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal); bar.setIndeterminate(true);
             bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT)); list.addView(bar,CourseUi.row(dp(4)));
-            note("正在重新查询今天所选时段，可以返回或继续操作。");
+            note("正在向教务系统查询所选时段…");
         }
-        if (!roomError.isEmpty()) { note(roomError); return; }
-        if (!current) {
-            if (!roomLoading) note("选择校区与时段后查询，旧结果不会作为本次结果展示。"); return;
+        if (!roomError.isEmpty()) note(roomError);
+        if (!current && !cached) {
+            if (!roomLoading && !roomAutoQuery && roomError.isEmpty()) note("选择校区与时段后查询。");
+            return;
         }
-        java.util.List<CampusClassroomResult.Room> rooms=CampusClassroomResult.atLocations(allRooms,submittedRoomLocations);
-        if (rooms.isEmpty()) { if (!roomLoading) note("所选教学楼在本次结果中暂无可展示的空闲教室。"); return; }
+        java.util.List<CampusClassroomResult.Room> rooms=selectedRoomLocations.isEmpty()?roomRows:CampusClassroomResult.atLocations(roomRows,selectedRoomLocations);
+        if (rooms.isEmpty()) {
+            if (current) note(module.optBoolean("partial")?"本次读取的部分结果中暂无空闲教室。":"所选教学楼和时段暂无空闲教室。");
+            return;
+        }
         LinearLayout roomHead=new LinearLayout(this); roomHead.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams rhl=new LinearLayout.LayoutParams(-1,-2); rhl.topMargin=dp(18); rhl.bottomMargin=dp(8);
-        TextView rhTitle=text("找到 "+rooms.size()+" 间空闲教室",14,Ui.SUB,true); rhTitle.setPadding(dp(4),0,0,0);
+        TextView rhTitle=text((cached?"上次查询 · ":"")+"找到 "+rooms.size()+" 间空闲教室",14,Ui.SUB,true); rhTitle.setPadding(dp(4),0,0,0);
         roomHead.addView(rhTitle,new LinearLayout.LayoutParams(0,-2,1));
         TextView copyRooms=smallAction("复制列表",Ui.ACCENT,Ui.ACCENT_BG,true,() -> {
             StringBuilder sb=new StringBuilder();
@@ -569,21 +609,26 @@ public class CampusActivity extends Activity {
         });
         roomHead.addView(copyRooms);
         list.addView(roomHead,rhl);
-        note(CampusSummary.field(module,"查询条件")+(submittedRoomLocations.isEmpty()?"":" · "+String.join("、",submittedRoomLocations)));
+        note(CampusSummary.field(module,"查询条件")+(selectedRoomLocations.isEmpty()?"":" · "+String.join("、",selectedRoomLocations)));
         LinearLayout result=card();
         for (int i=0;i<Math.min(roomLimit,rooms.size());i++) {
             CampusClassroomResult.Room room=rooms.get(i);
             LinearLayout item=CourseUi.column(this); item.setPadding(dp(4),dp(8),dp(4),dp(8));
-            item.setBackground(Ui.ripple(this,null,Ui.press(),12));
-            item.addView(text(room.name+"  ›",15,Ui.TEXT,true));
+            boolean canOpen=current && !roomLoading && classroomRefresh!=null;
+            item.addView(text(room.name+(canOpen?"  ›":""),15,Ui.TEXT,true));
             if (!room.detail.isEmpty()) { CourseUi.gap(item,4); item.addView(text(room.detail,11,Ui.SUB,false)); }
-            CourseUi.gap(item,4); item.addView(text("查看今天各节占用",11,Ui.ACCENT,false));
-            item.setFocusable(true); item.setEnabled(!roomLoading);
-            item.setContentDescription(room.name+"，查看今天各节占用"); item.setOnClickListener(v -> showRoomDay(room)); result.addView(item);
+            if (canOpen) {
+                item.setBackground(Ui.ripple(this,null,Ui.press(),12));
+                CourseUi.gap(item,4); item.addView(text("查看今天各节占用",11,Ui.ACCENT,false));
+                item.setFocusable(true);
+                item.setContentDescription(room.name+"，查看今天各节占用");
+                item.setOnClickListener(v -> showRoomDay(room));
+            }
+            result.addView(item);
             if (i<Math.min(roomLimit,rooms.size())-1) { CourseUi.gap(result,12); View line=new View(this); line.setBackgroundColor(Ui.LINE); result.addView(line,CourseUi.row(1)); CourseUi.gap(result,12); }
         }
         if (roomLimit<rooms.size()) result.addView(CourseUi.action(this,"继续查看教室",false,() -> { int y=scroll.getScrollY(); roomLimit+=40; render(); scroll.post(() -> scroll.scrollTo(0,y)); }),CourseUi.row(dp(48)));
-        if (module.optBoolean("partial")) note("当前为本次已读取的部分结果。");
+        if (module.optBoolean("partial")) note("仅展示已读取到的部分结果。");
     }
 
     private void quickRoomPreset(int hours) {
@@ -591,19 +636,22 @@ public class CampusActivity extends Activity {
         int nowMin = Math.min(1438, cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE));
         roomStart = nowMin;
         roomEnd = Math.min(1439, nowMin + hours * 60);
-        startClassroomQuery(true);
+        if (loaded && data!=null && !data.owner.isEmpty()) startClassroomQuery();
+        else renderRoomPage();
     }
 
     private void showRoomDay(CampusClassroomResult.Room room) {
         if (classroomRefresh==null) { toast("请重新查询教室后查看"); return; }
+        CampusClassroomRefresh reader=classroomRefresh;
         LinearLayout body=CourseUi.column(this); body.setPadding(dp(20),dp(12),dp(20),dp(12));
         ScrollView pane=new ScrollView(this); pane.addView(body);
         body.addView(text("正在读取今天各节占用…",13,Ui.SUB,false));
         AlertDialog dialog=new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle(room.name+" · 今天").setView(pane).setPositiveButton("关闭",null).create(); dialog.show();
-        classroomRefresh.day(room.name,CampusClassroomQuery.today(System.currentTimeMillis()),(result,error) -> {
+        dialog.setOnDismissListener(ignored -> reader.cancelDay());
+        reader.day(room.name,CampusClassroomQuery.today(System.currentTimeMillis()),(result,error) -> {
             if (!dialog.isShowing() || isDestroyed()) return;
             body.removeAllViews();
-            if (!error.isEmpty()) { body.addView(text(error,13,Ui.SUB,false)); return; }
+            if (result==null || !error.isEmpty()) { body.addView(text(error.isEmpty()?"未读到今天的节次状态":error,13,Ui.SUB,false)); return; }
             JSONArray items=result.optJSONArray("items");
             for (int i=0;items!=null && i<items.length();i++) {
                 JSONObject item=items.optJSONObject(i); if (item==null) continue;
@@ -617,23 +665,67 @@ public class CampusActivity extends Activity {
         });
     }
 
-    private void startBusQuery() {
-        ticketBusy=false;
+    private void syncBus() {
+        String owner=data==null?"":data.owner;
+        if (!busOwner.equals(owner)) {
+            stopBusQuery();
+            busOwner=owner;
+        }
+        if (!busAttempted && busLinked()) startBusQuery();
+    }
+    private void stopBusQuery() {
+        busGeneration++;
+        updates.removeCallbacks(busQuery);
         if (busRefresh!=null) busRefresh.stop();
-        busAttempted=true; busLoading=true; busError=""; busTrips=null; busUpdated=0;
-        busRefresh=new CampusBusRefresh(this,(trips,error) -> {
-            busLoading=false; busTrips=trips; busError=error;
-            if (trips!=null) busUpdated=System.currentTimeMillis();
+        busRefresh=null;
+        busAttempted=false;
+        busLoading=false;
+        busReady=false;
+        busError="";
+        ticketBusy=false;
+    }
+    private void startBusQuery() {
+        if (!resumed || !busLinked() || ticketBusy) return;
+        busGeneration++;
+        busAttempted=true;
+        busLoading=true;
+        busReady=false;
+        busError="";
+        updates.removeCallbacks(busQuery);
+        // Give the native view time to draw before constructing the school browser.
+        updates.postDelayed(busQuery,80);
+    }
+    private void runBusQuery() {
+        if (!resumed || isFinishing() || !busLinked()) return;
+        int generation=busGeneration;
+        String date=busDate, owner=data.owner;
+        CampusBusRefresh.Listener listener=(trips,error) -> {
+            if (!resumed || generation!=busGeneration || !busLinked() || !owner.equals(data.owner)) return;
+            busLoading=false;
+            busError=error;
+            busReady=trips!=null;
+            if (busReady) CampusBusSnapshots.save(owner,date,trips);
+            int y=scroll==null?0:scroll.getScrollY();
             render();
-        });
-        busRefresh.start(data,busDate);
+            if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y));
+        };
+        if (busRefresh!=null && busRefresh.refresh(data,date,listener)) return;
+        if (busRefresh!=null) busRefresh.stop();
+        busRefresh=new CampusBusRefresh(this);
+        busRefresh.start(data,date,listener);
     }
     private boolean busLinked() { return data!=null && !data.owner.isEmpty(); }
     private void chooseBusDate() {
+        if (ticketBusy) return;
         java.util.Calendar day=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
         String[] days=new String[3];
         for (int i=0;i<days.length;i++) { days[i]=CampusClassroomQuery.today(day.getTimeInMillis()); day.add(java.util.Calendar.DAY_OF_MONTH,1); }
-        new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择乘车日期").setItems(days,(d,which) -> { busDate=days[which]; startBusQuery(); render(); }).show();
+        new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("选择乘车日期").setItems(days,(d,which) -> {
+            if (!busDate.equals(days[which])) expandedBusRoutes.clear();
+            busDate=days[which];
+            startBusQuery();
+            render();
+        }).show();
     }
     private String busDateLabel() {
         try {
@@ -658,9 +750,10 @@ public class CampusActivity extends Activity {
         v.setPadding(dp(14),dp(11),dp(14),dp(11)); v.setBackground(Ui.round(this,fill,14));
         return v;
     }
-    private TextView remainingTag(JSONObject trip,boolean open) {
+    private TextView remainingTag(JSONObject trip,boolean open,boolean current) {
         if (trip.isNull("remaining")) return Ui.tag(this,"余位待读",Ui.SUB,Ui.FILL);
         int remaining=trip.optInt("remaining");
+        if (!current) return Ui.tag(this,"上次余 "+remaining+" 位",Ui.SUB,Ui.CARD);
         if (remaining<=0) return Ui.tag(this,"已满",Ui.RED,Ui.RED_BG);
         if (!open) return Ui.tag(this,"已停售",Ui.MUTE,Ui.FILL);
         if (remaining<=5) return Ui.tag(this,"余 "+remaining+" 位",Ui.ORANGE,Ui.ORANGE_BG);
@@ -688,7 +781,7 @@ public class CampusActivity extends Activity {
         String booked=String.valueOf(trip.optInt("booked"));
         return trip.isNull("capacity")?"已订 "+booked+" 人":"已订 "+booked+" / "+trip.optInt("capacity")+" 人";
     }
-    private View busTripRow(JSONObject trip) {
+    private View busTripRow(JSONObject trip,boolean canBook) {
         LinearLayout row=CourseUi.column(this); row.setPadding(dp(14),dp(13),dp(14),dp(13));
         row.setBackground(Ui.ripple(this,Ui.round(this,Ui.FILL,16),Ui.press(),16));
         boolean open=trip.optBoolean("open");
@@ -697,14 +790,14 @@ public class CampusActivity extends Activity {
         TextView route=text(trip.optString("route"),13,Ui.SUB,true);
         route.setSingleLine(true); route.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams routeParams=new LinearLayout.LayoutParams(0,-2,1); routeParams.leftMargin=dp(10); top.addView(route,routeParams);
-        top.addView(remainingTag(trip,open)); row.addView(top);
+        top.addView(remainingTag(trip,open,canBook)); row.addView(top);
         CourseUi.gap(row,7);
         LinearLayout meta=new LinearLayout(this); meta.setGravity(Gravity.CENTER_VERTICAL); meta.setBaselineAligned(false);
         String deadline=busDeadline(trip.optString("deadline"));
         TextView info=text(bookedText(trip)+(deadline.isEmpty()?"":" · 截止 "+deadline),11,Ui.SUB,false);
         info.setSingleLine(true); info.setEllipsize(android.text.TextUtils.TruncateAt.END);
         meta.addView(info,new LinearLayout.LayoutParams(0,-2,1));
-        if (!trip.optString("id").isEmpty()) {
+        if (canBook && !trip.optString("id").isEmpty()) {
             TextView action=smallAction(open?"购票":"查看订单",open?Ui.ON_ACCENT:Ui.TEXT,open?Ui.ACCENT:Ui.CARD,true,() -> ticketQuote(trip));
             LinearLayout.LayoutParams actionParams=new LinearLayout.LayoutParams(-2,-2); actionParams.leftMargin=dp(8); meta.addView(action,actionParams);
         }
@@ -718,11 +811,19 @@ public class CampusActivity extends Activity {
         return row;
     }
     private void renderBusLive() {
+        CampusBusSnapshots.Snapshot snapshot=CampusBusSnapshots.load(data==null?"":data.owner,busDate);
+        JSONArray busTrips=snapshot==null?null:snapshot.trips;
+        boolean current=busReady && snapshot!=null;
         LinearLayout live=card();
         LinearLayout head=new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL); head.setBaselineAligned(false);
         head.addView(text("实时余位与已订人数",17,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
         if (busLinked()) head.addView(smallAction("刷新",Ui.ACCENT,Ui.ACCENT_BG,!busLoading,() -> { startBusQuery(); render(); }));
         live.addView(head);
+        if (!loaded) {
+            CourseUi.gap(live,10);
+            live.addView(text("正在读取本机时刻表…",12,Ui.SUB,false));
+            return;
+        }
         if (!busLinked()) {
             CourseUi.gap(live,10);
             TextView hint=text("连接校园账号后，可查看各班次的实时余位、已订人数并购买车票。",12,Ui.SUB,false);
@@ -740,8 +841,10 @@ public class CampusActivity extends Activity {
             TextView pastToggle=smallAction(busHidePast?"只看未发车":"全部班次",busHidePast?Ui.ON_ACCENT:Ui.TEXT,busHidePast?Ui.ACCENT:Ui.FILL,true,() -> { busHidePast=!busHidePast; render(); });
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-2,-2); tp.leftMargin=dp(8); dateRow.addView(pastToggle,tp);
         }
-        if (busUpdated>0) {
-            TextView updated=text("更新于 "+new SimpleDateFormat("HH:mm",Locale.CHINA).format(new Date(busUpdated)),11,Ui.MUTE,false);
+        if (snapshot!=null) {
+            SimpleDateFormat format=new SimpleDateFormat("HH:mm",Locale.CHINA);
+            format.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+            TextView updated=text((current?"更新于 ":"上次查询 ")+format.format(new Date(snapshot.updated)),11,Ui.MUTE,false);
             updated.setGravity(Gravity.END); dateRow.addView(updated,new LinearLayout.LayoutParams(0,-2,1));
         }
         live.addView(dateRow);
@@ -751,20 +854,18 @@ public class CampusActivity extends Activity {
             bar.setIndeterminate(true); bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
             live.addView(bar,CourseUi.row(dp(3)));
             CourseUi.gap(live,10);
-            live.addView(text("正在向校方查询 "+busDateLabel()+" 的实时班次…",12,Ui.SUB,false));
-            return;
+            live.addView(text(snapshot==null?"正在查询实时班次…":"正在刷新余位，以下为上次查询结果。",12,Ui.SUB,false));
+            if (snapshot==null) return;
         }
         if (!busError.isEmpty()) {
             CourseUi.gap(live,12); live.addView(banner(busError,Ui.RED,Ui.RED_BG));
-            CourseUi.gap(live,12);
-            live.addView(CourseUi.action(this,"重试",false,() -> { startBusQuery(); render(); }),CourseUi.row(dp(44)));
-            return;
+            if (snapshot==null) return;
         }
         if (busTrips==null || busTrips.length()==0) {
             CourseUi.gap(live,12);
-            live.addView(banner("校方暂未返回这一天的可查询班次。",Ui.SUB,Ui.FILL));
-            CourseUi.gap(live,10);
-            live.addView(text("可以换一天再查，或到下方参考时刻表查看固定发车时间。",11,Ui.MUTE,false));
+            String message=snapshot==null?"可刷新查询这一天的班次。"
+                    :current?"校方暂未返回这一天的可查询班次。":"上次查询没有返回可查询班次。";
+            live.addView(banner(message,Ui.SUB,Ui.FILL));
             return;
         }
         int nowMins=isBusToday&&busHidePast?nowMinutesShanghai():-1;
@@ -795,9 +896,9 @@ public class CampusActivity extends Activity {
         }
         if (!busLiveRoute.isEmpty() && !allRoutes.contains(busLiveRoute)) busLiveRoute="";
         CourseUi.gap(live,10);
-        String busSummary=(isBusToday&&busHidePast?"未发车 ":"共 ")+visibleTrips.size()+" 班 · 可购 "+openCount+" 班"
-                +(nextOpenTime.isEmpty()?"":" · 最近可购 "+nextOpenTime);
-        live.addView(text(busSummary,11,openCount>0?Ui.GREEN:Ui.SUB,true));
+        String busSummary=(isBusToday&&busHidePast?"未发车 ":"共 ")+visibleTrips.size()+" 班";
+        if (current) busSummary+=" · 可购 "+openCount+" 班"+(nextOpenTime.isEmpty()?"":" · 最近可购 "+nextOpenTime);
+        live.addView(text(busSummary,11,current && openCount>0?Ui.GREEN:Ui.SUB,true));
         if (allRoutes.size()>1) {
             CourseUi.gap(live,10);
             android.widget.HorizontalScrollView routeScroll=new android.widget.HorizontalScrollView(this);
@@ -838,9 +939,20 @@ public class CampusActivity extends Activity {
             LinearLayout.LayoutParams labelParams=new LinearLayout.LayoutParams(0,-2,1); labelParams.leftMargin=dp(8); groupHead.addView(label,labelParams);
             groupHead.addView(text(group.getValue().size()+" 班",11,Ui.MUTE,false));
             live.addView(groupHead);
-            for (JSONObject trip:group.getValue()) {
+            java.util.List<JSONObject> routeTrips=group.getValue();
+            int shown=expandedBusRoutes.contains(name)?routeTrips.size():Math.min(routeTrips.size(),6);
+            for (int i=0;i<shown;i++) {
                 LinearLayout.LayoutParams rowParams=new LinearLayout.LayoutParams(-1,-2);
-                rowParams.topMargin=dp(8); live.addView(busTripRow(trip),rowParams);
+                rowParams.topMargin=dp(8); live.addView(busTripRow(routeTrips.get(i),current),rowParams);
+            }
+            if (shown<routeTrips.size()) {
+                CourseUi.gap(live,8);
+                live.addView(CourseUi.action(this,"展开其他 "+(routeTrips.size()-shown)+" 班",false,() -> {
+                    int y=scroll.getScrollY();
+                    expandedBusRoutes.add(name);
+                    render();
+                    scroll.post(() -> scroll.scrollTo(0,y));
+                }),CourseUi.row(dp(36)));
             }
             firstGroup=false;
         }
@@ -849,7 +961,8 @@ public class CampusActivity extends Activity {
     }
     private boolean ticketBusy;
     private void ticketQuote(JSONObject trip) {
-        if (ticketBusy || busRefresh==null) return;
+        if (ticketBusy || busRefresh==null || !busReady) return;
+        int generation=busGeneration;
         ticketBusy=true; toast("正在查询票价和订单…");
         busRefresh.ticket("quote",trip,"",false,(result,error) -> {
             ticketBusy=false;
@@ -868,7 +981,9 @@ public class CampusActivity extends Activity {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
                 agreement.setOnCheckedChangeListener((button,checked) -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(checked));
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    dialog.dismiss(); ticketBusy=true;
+                    dialog.dismiss();
+                    if (generation!=busGeneration || !busReady || busRefresh==null) { toast("请刷新班次后重试"); return; }
+                    ticketBusy=true;
                     busRefresh.ticket("submit",trip,result.optString("fee"),true,(order,err) -> {
                         ticketBusy=false;
                         if (order==null) { new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("订单结果未确认").setMessage(err).setPositiveButton("查询订单",(a,b) -> ticketQuote(trip)).setNegativeButton("稍后查询",null).show(); return; }
@@ -882,18 +997,24 @@ public class CampusActivity extends Activity {
     }
     private void ticketPrepare(JSONObject trip,String order,int attempt) {
         if (ticketBusy || busRefresh==null || !resumed) return;
+        int generation=busGeneration;
         ticketBusy=true;
         busRefresh.ticket("prepare",trip,order,false,(result,error) -> {
             ticketBusy=false;
             if (result==null) { toast(error); return; }
             if (result.optBoolean("paid")) { ticketQuote(trip); return; }
             if (result.optBoolean("preparing") && attempt<10) {
-                updates.postDelayed(() -> ticketPrepare(trip,order,attempt+1),2000); return;
+                updates.postDelayed(() -> {
+                    if (generation==busGeneration) ticketPrepare(trip,order,attempt+1);
+                },2000); return;
             }
             String prepay=result.optString("prepay");
             if (prepay.isEmpty()) { toast("支付单尚未就绪，请稍后点击查看订单继续"); return; }
             new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("订单待支付").setMessage("订单："+order+"\n应付：¥"+result.optString("fee")+"\n在应用内的校方收银台完成支付后，将查询校方订单结果。")
-                .setNegativeButton("稍后支付",null).setPositiveButton("去支付",(d,w) -> busRefresh.openCashier(order,prepay,() -> ticketQuote(trip),(r,e) -> toast(e))).show();
+                .setNegativeButton("稍后支付",null).setPositiveButton("去支付",(d,w) -> {
+                    if (generation!=busGeneration || !busReady || busRefresh==null) { toast("请刷新班次后查询订单"); return; }
+                    busRefresh.openCashier(order,prepay,() -> ticketQuote(trip),(r,e) -> toast(e));
+                }).show();
         });
     }
     private void showTicketNotice(String url) {
@@ -906,7 +1027,21 @@ public class CampusActivity extends Activity {
         notice.loadUrl(url);
     }
     private void renderBus(JSONObject module) {
+        long now=System.currentTimeMillis();
+        boolean weekendToday=CampusBusSchedule.weekend(now);
+        int minute=CampusBusSchedule.minute(now);
+        java.util.List<CampusBusSchedule.Route> todayRoutes=CampusBusSchedule.routes(module,weekendToday);
+        if (!todayRoutes.isEmpty()) {
+            LinearLayout nextBus=card();
+            nextBus.addView(text("今天下一班 · 学期内参考",14,Ui.TEXT,true));
+            for (CampusBusSchedule.Route route:todayRoutes) {
+                CampusBusSchedule.Departure next=route.next(minute);
+                CourseUi.gap(nextBus,7);
+                nextBus.addView(text(route.name+"  ·  "+(next==null?"已无后续班次":next.time),13,Ui.SUB,false));
+            }
+        }
         renderBusLive();
+        if (module==null && !loaded) return;
         section("学期内参考时刻表");
         LinearLayout filterCard=card(); filterCard.setPadding(dp(10),dp(10),dp(10),dp(10));
         LinearLayout controls=new LinearLayout(this); controls.setPadding(dp(4),dp(4),dp(4),dp(4)); controls.setBackground(Ui.round(this,Ui.FILL,14));
@@ -919,7 +1054,7 @@ public class CampusActivity extends Activity {
             controls.addView(tab,new LinearLayout.LayoutParams(0,dp(42),1));
             tab.setOnClickListener(v -> { if (busWeekend!=weekend) { busWeekend=weekend; busRoute=""; busPlace=""; render(); } });
         }
-        java.util.List<CampusBusSchedule.Route> available=CampusBusSchedule.routes(module,busWeekend);
+        java.util.List<CampusBusSchedule.Route> available=busWeekend==weekendToday?todayRoutes:CampusBusSchedule.routes(module,busWeekend);
         java.util.List<String> routeNames=CampusBusSchedule.routeNames(available);
         if (!busRoute.isEmpty() && !routeNames.contains(busRoute)) busRoute="";
         java.util.List<String> availablePlaces=CampusBusSchedule.places(CampusBusSchedule.filter(available,busRoute,""));
@@ -954,7 +1089,7 @@ public class CampusActivity extends Activity {
         placeFilter.setBackground(Ui.ripple(this,Ui.roundStroke(this,Ui.CARD,Ui.LINE,9,0.75f),Ui.press(),9));
         LinearLayout.LayoutParams placeFilterParams=new LinearLayout.LayoutParams(0,dp(36),1); placeFilterParams.leftMargin=dp(8); filters.addView(placeFilter,placeFilterParams);
         java.util.List<CampusBusSchedule.Route> routes=CampusBusSchedule.filter(available,busRoute,busPlace);
-        long now=System.currentTimeMillis(); boolean today=busWeekend==CampusBusSchedule.weekend(now); int minute=CampusBusSchedule.minute(now);
+        boolean today=busWeekend==weekendToday;
         if (available.isEmpty()) { note("暂未读到这一天的校车班次，可查看校方原始公告。"); }
         else if (routes.isEmpty()) { note("没有符合当前路线和上车点的班次。"); }
         for (CampusBusSchedule.Route route:routes) {
@@ -1046,6 +1181,6 @@ public class CampusActivity extends Activity {
         toast("已复制脱敏同步自检信息（不含账号、密码和余额）");
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
-    @Override public void onPause() { resumed=false; if (busRefresh!=null) busRefresh.stop(); busAttempted=false; busLoading=false; busTrips=null; ticketBusy=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
+    @Override public void onPause() { resumed=false; if ("bus".equals(detail)) stopBusQuery(); CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
     @Override public void onDestroy() { if (busRefresh!=null) busRefresh.stop(); stopClassroomQuery(); CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
 }

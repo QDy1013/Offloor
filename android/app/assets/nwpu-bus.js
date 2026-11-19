@@ -29,20 +29,25 @@
         const data = await post('/api/GetRouteByType', {type: '通勤车', no: account});
         if (!data || !Array.isArray(data.filteredBusRoutes)) throw new Error('format');
         const result = [];
-        const parts = date.split('-').map(Number), rq = parts[0] + '/' + parts[1] + '/' + parts[2];
-        for (const route of data.filteredBusRoutes) {
-            if (!route.Objid) throw new Error('format');
-            const items = await post('/api/GetReserveInfoList', {rq, xllx: '通勤车', xlId: route.Objid, gh: account, no: account});
-            if (!Array.isArray(items)) throw new Error('format');
-            result.push(...trips(items, route));
+        const rq = schoolDate(date), routes = data.filteredBusRoutes;
+        if (routes.some(route => !route || !route.Objid)) throw new Error('format');
+        // The two directions use independent read requests. Limit concurrency if more routes are added.
+        for (let i = 0; i < routes.length; i += 2) {
+            const batches = await Promise.all(routes.slice(i, i + 2).map(async route => {
+                const items = await post('/api/GetReserveInfoList', {rq, xllx: '通勤车', xlId: route.Objid, gh: account, no: account});
+                if (!Array.isArray(items)) throw new Error('format');
+                return trips(items, route);
+            }));
+            for (const batch of batches) result.push(...batch);
         }
         return result;
     }
-    function start(date, account) {
-        if (root.__louBus) return;
-        root.__louBus = {phase: 'loading'};
-        collect(date, account).then(items => { root.__louBus = {phase: 'ready', items}; })
-            .catch(() => { root.__louBus = {phase: 'error'}; });
+    function start(date, account, query) {
+        if (root.__louBus && root.__louBus.query === query) return;
+        const state = {query, phase: 'loading'};
+        root.__louBus = state;
+        collect(date, account).then(items => { state.items = items; state.phase = 'ready'; })
+            .catch(() => { state.phase = 'error'; });
     }
     async function ticketPost(name, fields, account) {
         if (root.location.origin !== 'https://hq-bus.nwpu.edu.cn' || !root.location.pathname.startsWith('/h5/')) throw new Error('origin');

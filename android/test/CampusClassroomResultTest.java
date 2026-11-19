@@ -40,6 +40,14 @@ public class CampusClassroomResultTest {
         check("legacy untagged cache is replaced",CampusClassroomResult.rooms(replaced.module("classroom")).size()==1 && CampusClassroomResult.current(replaced.module("classroom"),"new-query",date));
         check("stale tokens and old dates cannot become current results",!CampusClassroomResult.current(current,"old-query",date) && !CampusClassroomResult.current(current,"new-query","2026-11-10") && !CampusClassroomResult.current(current,"",date));
         check("failed reads never count as successful current results",!CampusClassroomResult.current(new JSONObject(current.toString()).put("state","network"),"new-query",date));
+        long afterCache=60_100;
+        check("same-day recent cache can cover all of a narrower query",CampusClassroomResult.recent(current,"长安校区",date,850,950,afterCache));
+        check("a shifted time or a different campus never uses the cached list",
+                !CampusClassroomResult.recent(current,"长安校区",date,845,965,afterCache)
+                        && !CampusClassroomResult.recent(current,"友谊校区",date,850,950,afterCache));
+        check("stale and previous-day results stay hidden",
+                !CampusClassroomResult.recent(current,"长安校区",date,850,950,360_100)
+                        && !CampusClassroomResult.recent(current,"长安校区","2026-11-10",850,950,afterCache));
         JSONObject empty=module("empty-query",date,"unused").put("state","empty").put("tables",new JSONArray());
         CampusData noRooms=merge(fresh,empty);
         check("explicit empty responses clear previous rooms",CampusClassroomResult.current(noRooms.module("classroom"),"empty-query",date) && CampusClassroomResult.rooms(noRooms.module("classroom")).isEmpty());
@@ -60,6 +68,8 @@ public class CampusClassroomResultTest {
                 {"C0101翱翔体育馆主馆篮球场","长安校区","1","翱翔体育馆（主馆）","30"},
                 {"C2-999","长安校区","9","","40"}});
         java.util.List<String> locations=CampusClassroomResult.locations(located);
+        check("standard building filters match the inferred wing names",
+                CampusClassroomResult.atLocations(located,java.util.Collections.singleton("教学西楼B座")).size()==2);
         check("teaching buildings are extracted instead of the earlier floor column",located.get(0).location.equals("教学西楼 · A座"));
         check("teaching-room codes distinguish all four wings",locations.containsAll(java.util.Arrays.asList("教学西楼 · A座","教学西楼 · B座","教学西楼 · C座","教学西楼 · D座")));
         check("same building and wing yield one dropdown option",java.util.Collections.frequency(locations,"教学西楼 · B座")==1);

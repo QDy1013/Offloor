@@ -42,13 +42,14 @@ public class StudyRoomActivity extends Activity {
     private StudyRoomSession session;
     private CampusData campus;
     private Timetable timetable;
-    private boolean ready, busy, mine, active, reconciled, pageMore = true, onlyAvailable;
+    private boolean ready, busy, loadingLocal, mine, active, reconciled, pageMore = true, onlyAvailable;
     private int page = 1, epoch, count = -1;
     private long updatedAt;
     private String date = CampusClassroomQuery.today(System.currentTimeMillis()), selectedCampus = "", error = "", message = "", queryDiag = "";
     private String prefillDate = "", prefillTheme = "";
     private int prefillStart = -1, prefillEnd = -1;
     private JSONArray rows;
+    private StudyRoomCatalog catalog;
     private static final class CachedRooms {
         final JSONArray rows; final int count; final boolean more; final String diag; final long at;
         CachedRooms(JSONArray rows, int count, boolean more, String diag, long at) {
@@ -117,25 +118,35 @@ public class StudyRoomActivity extends Activity {
         super.onStart(); active=true;
         // 页面可能在后台放了一夜，恢复时把日期拉回今天，别停在一个约不到的昨天。
         String today = CampusClassroomQuery.today(System.currentTimeMillis());
-        if (!StudyRoomPlan.validDate(date) || date.compareTo(today) < 0) date = today;
+        if (!StudyRoomPlan.validDate(date) || date.compareTo(today) < 0) { date = today; page = 1; }
+        loadingLocal = true; campus = null; timetable = null;
         render(); int token=++epoch;
         io.execute(() -> {
-            CampusData loaded = null; Timetable table = null;
-            try { loaded = CampusStore.load(getApplicationContext()); } catch (Exception ignored) { }
-            // 课表只用来提示“会不会撞课”，读不到也不影响预约。
-            try { table = TimetableStore.load(getApplicationContext()); } catch (Exception ignored) { }
-            CampusData value = loaded; Timetable schedule = table;
+            CampusData loaded = CampusStore.peek();
+            if (loaded == null) {
+                try { loaded = CampusStore.load(getApplicationContext()); } catch (Exception ignored) { }
+            }
+            CampusData value = loaded;
+            CampusCredentials.Login login = CampusCredentials.load(getApplicationContext());
+            StudyRoomCatalog saved = value != null && login != null && value.owner.equals(login.owner)
+                    ? StudyRoomCatalog.load(getApplicationContext(), value.owner) : null;
             runOnUiThread(() -> {
                 if (!active || token != epoch) return;
-                campus = value; timetable = schedule;
-                if (pendingWrite()) { mine = true; message = "上次请求结果尚未核对，请先查询我的预约，勿重复操作。"; }
+                loadingLocal = false; campus = value; catalog = saved;
+                if (pendingWrite()) { mine = true; page = 1; message = "上次请求结果尚未核对，请先查询我的预约，勿重复操作。"; }
                 connect();
             });
+            // 课表只用于冲突提示，不阻塞研修室连接和查询。
+            try {
+                Timetable schedule = TimetableStore.load(getApplicationContext());
+                runOnUiThread(() -> { if (active && campus == value) timetable = schedule; });
+            } catch (Exception ignored) { }
         });
     }
 
     @Override public void onStop() {
         active=false; ++epoch; ready=false; busy=false; rows=null; reconciled=false;
+        catalog = null; myBookings = null; updatedAt = 0;
         invalidateRoomCache();
         if (form != null) { form.dismiss(); form = null; }
         if (session != null) { session.stop(); session = null; }
@@ -145,7 +156,7 @@ public class StudyRoomActivity extends Activity {
     private void invalidateRoomCache() { roomCache.clear(); }
 
     private boolean restoreCachedDay() {
-        if (mine || page != 1) return false;
+        if (!ready || mine || page != 1) return false;
         CachedRooms hit = roomCache.get(date);
         if (hit == null || System.currentTimeMillis() - hit.at >= 60_000L) return false;
         rows = hit.rows; count = hit.count; pageMore = hit.more; queryDiag = hit.diag; updatedAt = hit.at;
@@ -153,7 +164,7 @@ public class StudyRoomActivity extends Activity {
         return true;
     }
 
-    @Override public void onDestroy() { io.shutdownNow(); super.onDestroy(); }
+    @Override public void onDestroy() { io.shutdown(); super.onDestroy(); }
 
     // ---------- 小控件 ----------
 
@@ -264,23 +275,35 @@ public class StudyRoomActivity extends Activity {
         scroll.addView(body); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         statusCard();
-        if (!ready) return;
-        modeRow();
+        if (ready) modeRow();
         if (mine) {
+            if (!ready) return;
             mineHint();
             list();
         } else {
             dateStrip();
-            LinkedHashMap<String, List<JSONObject>> grouped = groupRooms();
-            String activeCampus = isCampusChoice(grouped, selectedCampus) ? selectedCampus : "";
-            campusStrip(grouped, activeCampus);
-            roomGroups(grouped, activeCampus);
+            JSONArray liveRows = ready ? rows : null;
+            boolean preview = liveRows == null && page == 1 && catalog != null;
+            JSONArray shown = preview ? catalog.rows : liveRows;
+            if (preview) {
+                String at = StudyRoomPlan.relative(StudyRoomPlan.day(catalog.at), System.currentTimeMillis());
+                TextView hint = text("房间目录 · " + at + " " + clockOf(catalog.at)
+                        + (busy ? " · 正在查询可约时段" : " · 刷新后查看可约时段"), 12, Ui.SUB, false);
+                hint.setPadding(dp(4), 0, dp(4), dp(10));
+                body.addView(hint);
+            }
+            LinkedHashMap<String, List<JSONObject>> grouped = groupRooms(shown);
+            String activeCampus = isCampusChoice(grouped, selectedCampus) && (!preview || grouped.containsKey(selectedCampus))
+                    ? selectedCampus : "";
+            campusStrip(grouped, activeCampus, shown, preview);
+            roomGroups(grouped, activeCampus, shown, preview);
         }
-        paging();
+        if (ready) paging();
     }
 
     /** 顶部状态区：已连接且无异常时仅用一行细字提示更新时间，不再堆叠卡片与大按钮。 */
     private void statusCard() {
+        boolean loading = loadingLocal || busy;
         boolean quietOk = ready && !busy && error.isEmpty() && message.isEmpty() && !pendingWrite();
         if (quietOk) {
             if (updatedAt > 0) {
@@ -293,15 +316,15 @@ public class StudyRoomActivity extends Activity {
         LinearLayout intro = card();
         LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(text("西工大图书馆研修室", 16, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
-        TextView status = text(busy ? "连接中" : ready ? "已连接" : "未连接", 12,
-                busy ? Ui.AMBER_TX : ready ? Ui.GREEN : Ui.MUTE, true);
+        TextView status = text(loading ? (ready ? "查询中" : "连接中") : ready ? "已连接" : "未连接", 12,
+                loading ? Ui.AMBER_TX : ready ? Ui.GREEN : Ui.MUTE, true);
         head.addView(status);
         intro.addView(head);
         CourseUi.gap(intro, 6);
         intro.addView(text(ready ? "需手动确认后提交或取消"
-                : busy ? "正在连接图书馆系统，可能需要校园网环境…"
+                : loading ? "正在连接图书馆系统，可能需要校园网环境…"
                 : "连接校方账号后可查询预约，验证时将打开官方页面。", 12, Ui.SUB, false));
-        if (busy) {
+        if (loading) {
             CourseUi.gap(intro, 12);
             android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
             bar.setIndeterminate(true);
@@ -319,7 +342,7 @@ public class StudyRoomActivity extends Activity {
             intro.addView(note);
         }
         if (!ready) {
-            if (!busy) {
+            if (!loading) {
                 CourseUi.gap(intro, 12);
                 TextView retry = CourseUi.action(this, session != null ? "去官方页面完成验证" : "重新连接", true,
                         session != null ? () -> session.openOfficial(this::reconnectFromOfficial) : this::connect);
@@ -404,20 +427,16 @@ public class StudyRoomActivity extends Activity {
     private void addDayChip(LinearLayout line, String day, String today) {
         String label = (day.equals(today) ? "今天" : StudyRoomPlan.relative(day, System.currentTimeMillis()))
                 + " " + day.substring(5).replace('-', '/');
-        TextView view = chip(line, label, day.equals(date), () -> {
-            if (busy || day.equals(date)) return;
-            date = day; page = 1; rows = null; count = -1; error = "";
-            if (!restoreCachedDay()) query();
-        });
+        TextView view = chip(line, label, day.equals(date), () -> selectDay(day));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2); p.rightMargin = dp(8);
         line.addView(view, p);
     }
 
-    private LinkedHashMap<String, List<JSONObject>> groupRooms() {
+    private LinkedHashMap<String, List<JSONObject>> groupRooms(JSONArray shown) {
         LinkedHashMap<String, List<JSONObject>> buckets = new LinkedHashMap<>();
-        if (rows == null) return buckets;
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject row = rows.optJSONObject(i); if (row == null) continue;
+        if (shown == null) return buckets;
+        for (int i = 0; i < shown.length(); i++) {
+            JSONObject row = shown.optJSONObject(i); if (row == null) continue;
             String site = StudyRoomPlan.campusOf(row.optString("campus"), row.optString("location"),
                     row.optString("kind"), row.optString("name"));
             List<JSONObject> items = buckets.get(site);
@@ -442,21 +461,23 @@ public class StudyRoomActivity extends Activity {
         return !key.isEmpty() && ("长安校区".equals(key) || "友谊校区".equals(key) || grouped.containsKey(key));
     }
 
-    private void campusStrip(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus) {
-        if (rows == null) return;
+    private void campusStrip(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus, JSONArray shown, boolean preview) {
+        if (shown == null) return;
         LinearLayout line = horizontalScroll(body, 12);
-        addCampusChip(line, "", "全部 " + rows.length(), activeCampus.isEmpty());
-        int usableTotal = 0;
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject r = rows.optJSONObject(i);
-            if (r != null && r.optBoolean("available")) usableTotal++;
+        addCampusChip(line, "", "全部 " + shown.length(), activeCampus.isEmpty());
+        if (!preview) {
+            int usableTotal = 0;
+            for (int i = 0; i < shown.length(); i++) {
+                JSONObject r = shown.optJSONObject(i);
+                if (r != null && r.optBoolean("available")) usableTotal++;
+            }
+            TextView availChip = chip(line, "只看可约 " + usableTotal, onlyAvailable, () -> {
+                onlyAvailable = !onlyAvailable;
+                render();
+            });
+            LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, -2); ap.rightMargin = dp(8);
+            line.addView(availChip, ap);
         }
-        TextView availChip = chip(line, "只看可约 " + usableTotal, onlyAvailable, () -> {
-            onlyAvailable = !onlyAvailable;
-            render();
-        });
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, -2); ap.rightMargin = dp(8);
-        line.addView(availChip, ap);
         List<String> keys = new ArrayList<>();
         keys.add("长安校区");
         keys.add("友谊校区");
@@ -479,33 +500,41 @@ public class StudyRoomActivity extends Activity {
         line.addView(view, p);
     }
 
-    private void roomGroups(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus) {
-        if (rows == null) {
-            if (!busy) body.addView(text("暂时没有数据，点右上角刷新重试", 13, Ui.SUB, false));
+    private void roomGroups(LinkedHashMap<String, List<JSONObject>> grouped, String activeCampus, JSONArray shownRows, boolean preview) {
+        if (preview) {
+            for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
+                if (!activeCampus.isEmpty() && !activeCampus.equals(entry.getKey())) continue;
+                campusHeading(entry.getKey(), entry.getValue(), true);
+                for (JSONObject row : entry.getValue()) roomCard(row, true);
+            }
+            return;
+        }
+        if (shownRows == null) {
+            if (ready && !busy) body.addView(text("暂时没有数据，点右上角刷新重试", 13, Ui.SUB, false));
             return;
         }
         if (!activeCampus.isEmpty()) {
             List<JSONObject> items = filterAvailable(grouped.get(activeCampus));
             if (items != null && !items.isEmpty()) {
-                campusHeading(activeCampus, items);
-                for (JSONObject row : items) roomCard(row);
+                campusHeading(activeCampus, items, false);
+                for (JSONObject row : items) roomCard(row, false);
             } else if (onlyAvailable && grouped.get(activeCampus) != null && !grouped.get(activeCampus).isEmpty()) {
-                campusHeading(activeCampus, java.util.Collections.emptyList());
+                campusHeading(activeCampus, java.util.Collections.emptyList(), false);
                 emptyFilteredCard();
             } else {
-                campusHeading(activeCampus, java.util.Collections.emptyList());
+                campusHeading(activeCampus, java.util.Collections.emptyList(), false);
                 emptyCampusCard(activeCampus);
             }
             return;
         }
-        if (rows.length() == 0) { emptyCard(); return; }
+        if (shownRows.length() == 0) { emptyCard(); return; }
         int shown = 0;
         for (java.util.Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
             List<JSONObject> items = filterAvailable(entry.getValue());
             if (items.isEmpty()) continue;
             shown += items.size();
-            campusHeading(entry.getKey(), items);
-            for (JSONObject row : items) roomCard(row);
+            campusHeading(entry.getKey(), items, false);
+            for (JSONObject row : items) roomCard(row, false);
         }
         if (onlyAvailable && shown == 0) { emptyFilteredCard(); return; }
         if (!grouped.containsKey("长安校区") || !grouped.containsKey("友谊校区")) {
@@ -563,14 +592,14 @@ public class StudyRoomActivity extends Activity {
         }
     }
 
-    private void campusHeading(String campusName, List<JSONObject> items) {
+    private void campusHeading(String campusName, List<JSONObject> items, boolean preview) {
         int usable = 0;
         for (JSONObject row : items) if (row.optBoolean("available")) usable++;
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(2), dp(4), dp(2), dp(8));
         row.addView(text(campusName, 15, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
-        row.addView(text("共 " + items.size() + " 间 · " + usable + " 间可约", 12,
+        row.addView(text("共 " + items.size() + " 间" + (preview ? "" : " · " + usable + " 间可约"), 12,
                 usable > 0 ? Ui.GREEN : Ui.SUB, false));
         body.addView(row);
     }
@@ -592,7 +621,7 @@ public class StudyRoomActivity extends Activity {
         if (mine) upcomingBookingHero();
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.optJSONObject(i); if (row == null) continue;
-            if (mine) bookingCard(row); else roomCard(row);
+            if (mine) bookingCard(row); else roomCard(row, false);
         }
     }
 
@@ -649,12 +678,12 @@ public class StudyRoomActivity extends Activity {
 
     // ---------- 房间卡片 ----------
 
-    private void roomCard(JSONObject row) {
+    private void roomCard(JSONObject row, boolean preview) {
         LinearLayout c = card();
         LinearLayout head = new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(text(row.optString("name", "研修室"), 17, Ui.TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
         boolean available = row.optBoolean("available");
-        head.addView(tag(available ? "可预约" : "暂不可约", available ? Ui.GREEN : Ui.SUB,
+        if (!preview) head.addView(tag(available ? "可预约" : "暂不可约", available ? Ui.GREEN : Ui.SUB,
                 available ? Ui.GREEN_BG : Ui.FILL));
         c.addView(head);
         CourseUi.gap(c, 6);
@@ -672,6 +701,7 @@ public class StudyRoomActivity extends Activity {
                     .append(" 分钟 · 间隔 ").append(rule.optString("interval")).append(" 分钟");
         }
         if (meta.length() > 0) { CourseUi.gap(c, 4); c.addView(text(meta.toString(), 12, Ui.SUB, false)); }
+        if (preview) return;
 
         JSONArray periods = row.optJSONArray("periods");
         StringBuilder open = new StringBuilder();
@@ -841,13 +871,14 @@ public class StudyRoomActivity extends Activity {
     // ---------- 会话 ----------
 
     private void connect() {
-        if (busy || !active) return;
+        if (busy || loadingLocal || !active) return;
         if (session != null) session.stop();
         ready = false; rows = null; reconciled = false; error = ""; busy = true; int token = ++epoch;
         session = new StudyRoomSession(this); render();
         session.start(campus, (result, problem) -> {
             if (!active || token != epoch) return;
-            busy = false; error = problem; ready = problem.isEmpty(); render(); if (ready) query();
+            busy = false; error = problem; ready = problem.isEmpty();
+            if (ready) query(); else render();
         });
     }
 
@@ -859,7 +890,8 @@ public class StudyRoomActivity extends Activity {
         render();
         session.reconnect(campus, (result, problem) -> {
             if (!active || token != epoch) return;
-            busy = false; error = problem; ready = problem.isEmpty(); render(); if (ready) query();
+            busy = false; error = problem; ready = problem.isEmpty();
+            if (ready) query(); else render();
         });
     }
 
@@ -871,7 +903,13 @@ public class StudyRoomActivity extends Activity {
     private boolean call(String method, JSONObject args, Result done, Runnable failed) {
         if (busy || !ready || session == null) return false;
         busy = true; error = ""; render(); int token = epoch;
-        session.run(method, args, (result, problem) -> {
+        java.util.function.Consumer<JSONArray> preview = "query".equals(method) && catalog == null && page == 1
+                ? rooms -> {
+                    if (!active || token != epoch || rooms.length() == 0) return;
+                    catalog = new StudyRoomCatalog(rooms, System.currentTimeMillis());
+                    render();
+                } : null;
+        session.run(method, args, preview, (result, problem) -> {
             if (!active || token != epoch) return;
             busy = false; ready = session != null && session.isReady();
             if (!problem.isEmpty()) {
@@ -916,6 +954,7 @@ public class StudyRoomActivity extends Activity {
     }
 
     private void query() {
+        if (!ready) { render(); return; }
         pageMore = true;
         if (!mine) queryDiag = "";
         call(mine ? "mine" : "query", args("date", date, "page", page), result -> {
@@ -930,17 +969,29 @@ public class StudyRoomActivity extends Activity {
                     roomCache.remove(roomCache.keySet().iterator().next());
                 }
                 roomCache.put(date, new CachedRooms(rows, count, pageMore, queryDiag, updatedAt));
+                StudyRoomCatalog fresh = StudyRoomCatalog.fromQuery(rows, updatedAt);
+                if (fresh != null && campus != null) {
+                    catalog = fresh;
+                    String owner = campus.owner;
+                    io.execute(() -> StudyRoomCatalog.save(getApplicationContext(), owner, fresh));
+                }
             }
         });
     }
 
+    private void selectDay(String day) {
+        if ((busy && ready) || day.equals(date)) return;
+        date = day; page = 1; rows = null; count = -1;
+        if (ready) error = "";
+        if (!restoreCachedDay()) query();
+    }
+
     private void chooseDate() {
+        if (busy && ready) return;
         long now = System.currentTimeMillis();
         String[] parts = date.split("-");
         DatePickerDialog dialog = new DatePickerDialog(this, (view, y, m, d) -> {
-            date = String.format(Locale.ROOT, "%04d-%02d-%02d", y, m + 1, d);
-            page = 1; rows = null; count = -1; error = "";
-            if (!restoreCachedDay()) query();
+            selectDay(String.format(Locale.ROOT, "%04d-%02d-%02d", y, m + 1, d));
         }, Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) - 1, Integer.parseInt(parts[2]));
         try {
             // 只能选今天到未来 30 天；具体能不能约仍由校方规则判断。

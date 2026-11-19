@@ -24,6 +24,40 @@ async function main() {
     check('queries return parsed counts', () => assert.equal(result[0].remaining,38));
     check('query uses official read endpoints only', () => assert.deepEqual(calls.map(x=>x.path),['/api/GetRouteByType','/api/GetReserveInfoList']));
     check('date and identity belong to current query', () => { const body=new URLSearchParams(calls[1].options.body); assert.equal(body.get('rq'),'2026/11/10'); assert.equal(body.get('no'),'synthetic-account'); assert.equal(body.get('xlId'),'route-1'); });
+    const routes=['A','B','C'];
+    const pending=new Map();
+    const response=data=>({ok:true,json:async()=>({isSuccess:true,data})});
+    const flush=()=>new Promise(resolve=>setImmediate(resolve));
+    context.fetch=async (path,options) => {
+        if (path.includes('GetRouteByType')) return response({filteredBusRoutes:routes.map(id=>({Objid:id,Name:id}))});
+        const id=new URLSearchParams(options.body).get('xlId');
+        return new Promise(resolve=>pending.set(id,()=>resolve(response([{fcsj:'08:00'}]))));
+    };
+    const parallel=context.module.exports.collect('2026-11-10','synthetic-account');
+    await flush();
+    check('independent route requests overlap with bounded concurrency', () => assert.deepEqual([...pending.keys()],['A','B']));
+    pending.get('B')();
+    pending.get('A')();
+    await flush();
+    pending.get('C')();
+    const ordered=await parallel;
+    check('route order is stable even when a later request completes first', () => assert.deepEqual(Array.from(ordered,t=>t.route),routes));
+
+    let routeCalls=0;
+    context.fetch=async (path,options)=>{
+        if (path.includes('GetRouteByType')) {
+            routeCalls++;
+            return response({filteredBusRoutes:[{Objid:'A',Name:'A'}]});
+        }
+        return response([{objId:new URLSearchParams(options.body).get('rq'),fcsj:'08:00'}]);
+    };
+    context.module.exports.start('2026-11-10','synthetic-account',1);
+    context.module.exports.start('2026-11-10','synthetic-account',1);
+    await flush();
+    check('polling does not repeat the in-flight read', () => assert.equal(routeCalls,1));
+    context.module.exports.start('2026-11-11','synthetic-account',2);
+    await flush();
+    check('a new query refreshes the date in the existing browser', () => assert.equal(context.__louBus.items[0].id,'2026/11/11'));
     context.fetch=async () => ({ok:true,json:async () => ({isSuccess:false})});
     await assert.rejects(context.module.exports.collect('2026-11-10','synthetic-account')); checks++;
     context.location.origin='https://uis.nwpu.edu.cn';

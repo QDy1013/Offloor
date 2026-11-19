@@ -6,10 +6,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
+import org.json.JSONObject;
 
 /** A single current query, independent of the long academic sync and its lease. */
 final class CampusClassroomRefresh {
-    interface Listener { void finished(String error); }
+    interface Listener { void finished(JSONObject module,String error); }
     private final Activity host;
     private final String token;
     private final Listener listener;
@@ -30,7 +31,7 @@ final class CampusClassroomRefresh {
                 public void progress(int done,int total,int success,int failed,String active) { }
                 public void challenge(WebView view,boolean visible) { if (visible) finish("学校要求安全验证，请先到校园页完成验证后重试"); }
                 public void loginRequired() { finish("校园登录状态需要更新，请先完成登录后重试"); }
-                public void complete(int success,int failed) { finish(success>0 && failed==0?"":"本次未读到可靠结果，请稍后重试"); }
+                public void complete(int success,int failed) { finish(success>0?"":"本次未读到可靠结果，请稍后重试"); }
             },query);
             batch.start();
         } catch (Exception e) { finish("教室查询暂时无法启动，请稍后重试"); }
@@ -38,10 +39,17 @@ final class CampusClassroomRefresh {
     private void finish(String error) {
         if (stopped || finished) return;
         finished=true;
+        JSONObject module=error.isEmpty() && batch!=null?batch.classroomResult():null;
         if (!error.isEmpty()) stop();
-        if (!host.isFinishing() && !host.isDestroyed()) listener.finished(error);
+        if (!host.isFinishing() && !host.isDestroyed()) listener.finished(module,error);
     }
     interface DayListener { void finished(org.json.JSONObject result,String error); }
+    void cancelDay() {
+        dayOperation++;
+        handler.removeCallbacksAndMessages(null);
+        WebView web=batch==null?null:batch.classroomWeb();
+        if (!stopped && web!=null) web.evaluateJavascript("if(window.NwpuRoomDay)NwpuRoomDay.cancel()",null);
+    }
     void day(String name,String date,DayListener callback) {
         WebView web=batch==null?null:batch.classroomWeb();
         if (stopped || !finished || web==null) { callback.finished(null,"查询会话已失效，请重新查询教室"); return; }

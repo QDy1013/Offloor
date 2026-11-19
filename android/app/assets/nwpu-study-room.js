@@ -557,7 +557,7 @@
         }
         return false;
     }
-    async function tryBatch(items, buildParams) {
+    async function tryBatch(items, buildParams, fetchReserve) {
         const pairs = [];
         for (const item of (items || [])) {
             if (!item) continue;
@@ -569,7 +569,7 @@
         const results = new Array(pairs.length).fill(null);
         const runOne = async idx => {
             try {
-                const r = await request('reserve', pairs[idx].p);
+                const r = await fetchReserve(pairs[idx].p);
                 results[idx] = {ok: !!(r && Array.isArray(r.data)), res: r};
             } catch (e) {
                 results[idx] = {ok: false, error: e};
@@ -632,11 +632,22 @@
         if (!anyValid) return {ok: false, error: lastErr, missed};
         return {ok: true, data: merged, count: merged.length, more, missed};
     }
-    async function queryReserve(key, page) {
+    async function queryReserve(key, page, preview) {
+        const requests = new Map();
+        const fetchReserve = params => {
+            const key = JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
+            if (!requests.has(key)) {
+                requests.set(key, request('reserve', params).catch(error => {
+                    requests.delete(key);
+                    throw error;
+                }));
+            }
+            return requests.get(key);
+        };
         const curToken = storedUser().token || '';
         let firstErr = null, firstRes = null;
         if (!curToken || unfilteredRejectedToken !== curToken) {
-            try { firstRes = await request('reserve', {sysKind: 1, resvDates: key, page, pageSize: 40}); }
+            try { firstRes = await fetchReserve({sysKind: 1, resvDates: key, page, pageSize: 40}); }
             catch (e) {
                 firstErr = e;
                 if (e && e.definite && curToken) unfilteredRejectedToken = curToken;
@@ -645,6 +656,7 @@
         if (firstRes && Array.isArray(firstRes.data) && firstRes.data.length > 0 && hasBothCampuses(firstRes.data)) {
             return {res: firstRes, out: null};
         }
+        if (preview && firstRes && Array.isArray(firstRes.data) && firstRes.data.length) preview(firstRes.data);
         const out = await loadMenu();
         const hasMenu = !!(out.leafIds.size || out.kindIds.size || out.labIds.size || out.roomIds.size || out.parentIds.size || out.devIds.size);
         if (firstRes && Array.isArray(firstRes.data) && (!hasMenu || page > 1)) {
@@ -662,6 +674,7 @@
                 const k = roomKey(item);
                 if (!agg.seen.has(k)) { agg.seen.add(k); agg.items.push(item); }
             }
+            if (preview && agg.items.length) preview(agg.items);
             if (fromBatch) {
                 agg.multiBatch = true;
                 if (res.more) agg.more = true;
@@ -692,7 +705,7 @@
         let lastErr = firstErr;
         for (const params of singleAttempts) {
             try {
-                const res = await request('reserve', params);
+                const res = await fetchReserve(params);
                 if (res && Array.isArray(res.data)) {
                     mergeInto(res, false);
                     const moreAxes = labs.length > 0 || kinds.length > 1 || leaves.length > 1 || parents.length > 0;
@@ -707,7 +720,7 @@
         }
         const runPlan = async (items, fn) => {
             if (!items || !items.length) return [];
-            const res = await tryBatch(items, fn);
+            const res = await tryBatch(items, fn, fetchReserve);
             if (!res || !res.ok) { if (res && res.error) lastErr = res.error; return items; }
             mergeInto(res, true);
             return res.missed;
@@ -797,10 +810,23 @@
         }
         throw lastErr || firstErr;
     }
-    async function query(args, account) {
+    async function query(args, account, onPreview) {
         await identity(account); const date = clean(args.date, 10), key = dateKey(date);
         rooms.clear();
-        const {res: result, out} = await queryReserve(key, args.page || 1);
+        let previewSent = false;
+        const preview = typeof onPreview !== 'function' ? null : items => {
+            if (previewSent) return;
+            const catalog = [];
+            for (const raw of items) {
+                if (!raw || !id(raw.devId) || Number(raw.classKind) > 1) continue;
+                catalog.push({name: clean(raw.devName), location: clean(raw.labName), kind: clean(raw.kindName),
+                    campus: clean(raw.campusName || raw.campus), min: posInt(raw.minUser) || null,
+                    max: posInt(raw.maxUser) || null});
+                if (catalog.length >= 40) break;
+            }
+            if (catalog.length) { previewSent = true; onPreview(catalog); }
+        };
+        const {res: result, out} = await queryReserve(key, args.page || 1, preview);
         const items = array(result.data), safe = [];
         for (const raw of items) { const room = safeRoom(raw, date); if (room) { rooms.set(String(room.id), raw); safe.push(room); } }
         const diag = out ? {
@@ -937,14 +963,14 @@
         const data = await new Promise((resolve, reject) => { const reader = new root.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
         return {mode, notice, image: data};
     }
-    async function run(method, args, account) {
+    async function run(method, args, account, onPreview) {
         if (busy) return {error: '上一请求尚未完成，请稍候'};
         busy = true;
         try {
             origin();
             const operations = {ready: async (_, who) => { await identity(who); return {ready: true}; }, query, mine, members: findMembers, submit, cancel, captcha};
             if (!Object.prototype.hasOwnProperty.call(operations, method)) fail('不支持的操作');
-            return await operations[method](args || {}, account);
+            return await operations[method](args || {}, account, onPreview);
         } catch (e) { return {error: clean(e.message) || '请求未完成，请稍后重试'}; }
         finally { busy = false; }
     }
