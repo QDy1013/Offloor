@@ -54,11 +54,11 @@ flowchart TD
 
 客户端采用自研无第三方重型 UI 框架的原生视图组件体系（`Ui.java` / `CourseUi.java`），`v0.80` 起全面切换为**暖羊皮纸 `#FAF9F5` / 深墨 `#141413` + 素白细描边卡片 + 陶土赤陶 `#C96442`（深色 `#D97757`）单强调色**的极简学习工作台：紧迫度与状态克制区分，全局启用等宽数字（`tnum`）对齐时间与金额，支持浅色 / 深色主题与独立拆分的底部操作面板（[HomeCardSheets.java](android/app/src/com/nopalou/HomeCardSheets.java)、[HomeOpsSheets.java](android/app/src/com/nopalou/HomeOpsSheets.java)）。
 
-| 浅色模式（v0.80 重构前参考图） | 深色模式（v0.80 重构前参考图） |
-| :---: | :---: |
-| <img src="docs/界面重构/after_light.png" alt="浅色模式界面" width="320" /> | <img src="docs/界面重构/after_dark.png" alt="深色模式界面" width="320" /> |
+| 浅色模式（暖纸主题 · 离线演示） | 深色模式（深墨主题 · 离线演示） | 卡片详情与来源追溯 |
+| :---: | :---: | :---: |
+| <img src="docs/界面重构/v083_home_light.png" alt="浅色模式界面" width="240" /> | <img src="docs/界面重构/v083_home_dark.png" alt="深色模式界面" width="240" /> | <img src="docs/界面重构/v083_detail_light.png" alt="卡片详情与来源追溯" width="240" /> |
 
-> 注：以上两张截图为 `v0.80` 极简重构前的界面参考；`v0.80+` 暖纸极简新版截图待真机复测后替换。
+> 以上三张截图均为 `v0.83` 真机（vivo V2505A · Android 16）在内置「离线演示」模式下的实拍画面，展示撞车提醒、接龙状态追踪、考试/作业卡片与来源轨迹，不含任何真实个人隐私数据。
 
 ---
 
@@ -107,6 +107,7 @@ flowchart TD
 - **核心与适配器全量校验**（`python eval/run_checks.py --android-jar ... --json-jar ...`）：**95 组检查、0 组失败**（免 Android SDK 运行 78 组；传入 jar 跑满 95 组，覆盖 `EngineTest`、`Step3~Step65` Java 引擎及跨源学习闭环/课表/校园/AI 适配器测试，以及时间解析、撤回规则、考试边界、去重排序、`test_strict_benchmark` 等 16 项 Python 脚本）。
 - **页面与校园服务契约回归**（`python eval/run_browser_checks.py`）：**19 组检查、0 组失败**（覆盖首页视觉 `test_home_visual.cjs`、用户须知 `test_home_usage_notice.cjs`、校园网/一卡通余额同步 `test_campus_balance_sync.cjs`、课表导入、电费/空教室、校车与图书馆研修室等 19 项浏览器/节点脚本）。
 - **状态持久性、有状态序列与演示回放**：`python eval/run_reliability.py`（20/20 边界分支全过）、`python eval/run_sequence_eval.py --require-stateful-pass`（主序列与 `exam_cancel_review_cases.json` 双端全过）、`python eval/run_showcase.py`（3 条演示分支各 7 态完整导出）。
+- **端侧 1.5B 小模型与核心链路真机实测（2026-11-19，vivo V2505A · Android 16 · arm64-v8a）**：已加载 `Qwen2.5-1.5B-Instruct Q4_K_M`（`1.04 GB`）并实跑 `liboffloor_llm.so` + GBNF 试跑，**冷加载试跑耗时 `2.927 秒`、页缓存温态 `2.357 秒`**；进程 PSS 内存 `251.4 MB → 1.79 GB 峰值 → 256.8 MB`（推理结束自动即时释放约 `1.58 GB`，无泄漏），电池温度 `34.8°C → 34.8°C`，校园三栏余额（`¥` 统一格式）、课表空档直达空教室/研修室与通知监听保活均实机验证通过（`0` 崩溃 / `0` ANR；中低端机型耗时、多批耗电及 1.5B vs 云端同集质量对照仍待补充）。
 
 ---
 
@@ -147,7 +148,7 @@ Offloor/
 │   └── build.py / prepare_updates.py # 跨平台零 Gradle 构建脚本与更新清单校验
 ├── docs/                             # 设计文档、真机记录、规则说明与 UI 重构截图
 ├── .github/                          # CI 自动检查与预览版/正式版带 NDK APK 构建流
-├── CHANGELOG.md                      # v0.9 ~ v0.82 完整版本演进与候选分支记录
+├── CHANGELOG.md                      # v0.9 ~ v0.83 完整版本演进与候选分支记录
 └── README.md                         # 本文件
 ```
 

@@ -90,7 +90,7 @@ public class CampusAutoTest {
         check("retains earlier portal balances even if catalog tab hides widgets",scan.observe(appsOnly,11_600)==CampusPortalScan.Step.DONE && scan.modules.has("network") && scan.modules.has("card"));
         check("synjones auth token URLs are never persisted as read URLs",!CampusServices.readUrl("https://yktapp.nwpu.edu.cn/plat?synjones-auth=SECRET") && CampusServices.readUrl("https://yktapp.nwpu.edu.cn/plat"));
         JSONObject altCard=module("ok").put("fields",new JSONArray().put(new JSONObject().put("label","剩余金额").put("value","19.80 元")));
-        check("summary recognizes alternative balance field labels","19.80 元".equals(CampusSummary.of("card",altCard,0).value));
+        check("summary recognizes alternative balance field labels","¥19.80".equals(CampusSummary.of("card",altCard,0).value));
         System.out.println(count+" checks passed");
     }
 }

@@ -22,7 +22,9 @@ final class CampusSummary {
     static CampusSummary of(String id,JSONObject module,long now,double price) {
         if (id.equals("network") || id.equals("card")) {
             String balance=field(module,"余额|可用金额|剩余金额|卡内金额|主钱包");
-            return new CampusSummary(balance.isEmpty()?"余额暂未读到":balance,id.equals("network")?field(module,"套餐|到期|剩余流量"):recent(module));
+            Double yuan=ChangeDiff.firstNumber(balance);
+            String display=yuan!=null?CampusBalance.money(yuan):(balance.isEmpty()?"余额暂未读到":balance);
+            return new CampusSummary(display,id.equals("network")?field(module,"套餐|到期|剩余流量"):recent(module));
         }
         if (id.equals("electric")) {
             Double kwh=ChangeDiff.firstNumber(field(module,"剩余电量|当前电量|电量余额"));

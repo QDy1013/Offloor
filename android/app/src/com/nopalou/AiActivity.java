@@ -137,7 +137,10 @@ public class AiActivity extends Activity {
         CourseUi.gap(localBox, 6);
         localBox.addView(CourseUi.action(this, "下载推荐模型", true, this::download), CourseUi.row(dp(48)));
         CourseUi.gap(localBox, 10);
-        localBox.addView(CourseUi.action(this, "从文件导入 .gguf", false, this::pickModel), CourseUi.row(dp(48)));
+        LinearLayout localActions = new LinearLayout(this);
+        localActions.addView(CourseUi.action(this, "测试模型", false, this::test), weight(1, 0));
+        localActions.addView(CourseUi.action(this, "导入 .gguf", false, this::pickModel), weight(1, 10));
+        localBox.addView(localActions);
         CourseUi.gap(localBox, 10);
         localBox.addView(CourseUi.action(this, "删除模型 / 取消下载", false, () -> {
             try { LocalModelStore.delete(this); }
@@ -534,9 +537,11 @@ public class AiActivity extends Activity {
     }
 
     private void testLocal(AiConfig cfg) {
-        if (!LocalLlm.supported()) { say("本机模型不可用：" + LocalLlm.unavailableReason()); return; }
-        if (!LocalModelStore.present(this)) { say("先下载或导入模型文件"); return; }
-        say("正在加载本机模型并试跑，首次约 5~20 秒…");
+        if (!LocalLlm.supported()) { String m = "本机模型不可用：" + LocalLlm.unavailableReason(); say(m); sayLocal(m); return; }
+        if (!LocalModelStore.present(this)) { String m = "先下载或导入模型文件"; say(m); sayLocal(m); return; }
+        String loading = "正在加载本机模型并试跑，首次约 5~20 秒…";
+        say(loading);
+        sayLocal(loading);
         io.execute(() -> {
             String msg;
             boolean ok;
@@ -562,7 +567,9 @@ public class AiActivity extends Activity {
             renderSteps();
             // 测试通过且已开启：顺手把之前漏审的待确认事项补上。
             int n = ok ? backfill() : 0;
-            say(n > 0 ? msg + "\n已把之前 " + n + " 件时间待确认的事项交给 AI 补审。" : msg);
+            String out = n > 0 ? msg + "\n已把之前 " + n + " 件时间待确认的事项交给 AI 补审。" : msg;
+            say(out);
+            if (cfg.local) sayLocal(out);
         });
     }
 

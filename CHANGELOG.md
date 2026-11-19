@@ -2,6 +2,14 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.83（校园余额格式统一、本机模型快捷复测与真机端侧实测）
+
+- **校园账户总览金额格式统一**：[CampusSummary.java](android/app/src/com/nopalou/CampusSummary.java) 将 `network`（校园网）与 `card`（一卡通）数值余额统一经 `CampusBalance.money(...)` 格式化为 `¥XX.XX`（与宿舍电量保持一致），同步更新 [CampusAutoTest.java](android/test/CampusAutoTest.java) 与 [CampusScopeTest.java](android/test/CampusScopeTest.java)。
+- **AI 识别页本机模型快捷复测**：[AiActivity.java](android/app/src/com/nopalou/AiActivity.java) 在「本机小模型」设置卡片内新增与「导入 .gguf」并列的**「测试模型」**按钮，并将加载/耗时结果同步回显在卡内状态框，无需重新走完四步向导即可直接复测。
+- **真机实测与无隐私界面截图更新**：在 vivo V2505A（Android 16 · arm64-v8a）完成 `v0.83` 全链路与端侧 `Qwen2.5-1.5B-Instruct Q4_K_M`（1.04 GB）真机实测（冷加载试跑 `2.927s` / 温态 `2.357s`，PSS `251.4 MB → 1.79 GB → 256.8 MB` 即时释放，`0` 崩溃 / `0` ANR），并在 [README.md](README.md)、[方案书对照.md](docs/方案书对照.md)、[端侧小模型.md](docs/端侧小模型.md) 与 [演示与答辩要点.md](docs/演示与答辩要点.md) 中补齐实测数据与内置「离线演示」无隐私浅色/深色/详情截图。
+
+---
+
 ## v0.82（双端分布外评测对齐、30 天过期清理、校园同步脱敏自检与课表自习空档直达）
 
 - **APK Java 引擎与 Python 引擎规则对齐（分布外评测达平齐）**：

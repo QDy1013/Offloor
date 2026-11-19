@@ -22,7 +22,7 @@ public class CampusScopeTest {
         check("upgrade retains owner and selected balances",compact.owner.equals(old.owner) && compact.module("network")!=null);
         check("electricity keeps only necessary housing location fields",compact.module("housing").getJSONArray("fields").length()==1);
         CampusSummary balance=CampusSummary.of("network",compact.module("network"),0);
-        check("fee card shows its actual balance directly",balance.value.equals("12.5 元"));
+        check("fee card shows its actual balance directly",balance.value.equals("¥12.50"));
         check("missing balance is never rendered as zero",!CampusSummary.of("network",null,0).value.contains("0"));
         CampusData cleanup=CampusScope.compact(CampusData.merge(null,new JSONObject().put("version",1).put("school","西北工业大学").put("identity","123").put("modules",new JSONObject().put("electric",module("当前剩余电量","42 度").put("fields",new JSONArray().put(new JSONObject().put("label","当前剩余电量").put("value","42 度")).put(new JSONObject().put("label","宿舍").put("value","合成宿舍")))).put("classroom",module("查询日期","2099-01-01"))).toString(),100,null));
         check("electricity display excludes housing details",cleanup.module("electric").getJSONArray("fields").length()==1);
