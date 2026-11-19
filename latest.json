@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 83,
-      "versionName": "0.83",
+      "versionCode": 84,
+      "versionName": "0.84",
       "size": 2570282,
-      "sha256": "29bb8c924188fd600fb2409a55d23288dfb8ec4b8d855680f9ea85a7e04838f0",
+      "sha256": "7f37984716a0b9d994fd0b0970e9c63c5ba84eeb2bf84b41a40c2d8ba011cf26",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/29bb8c924188fd600fb2409a55d23288dfb8ec4b8d855680f9ea85a7e04838f0/offloor.apk",
-      "notes": "v0.83: 校园余额统一¥格式、AI页本机模型快捷复测、端侧1.5B真机实测与无隐私新截图"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/7f37984716a0b9d994fd0b0970e9c63c5ba84eeb2bf84b41a40c2d8ba011cf26/offloor.apk",
+      "notes": "v0.84: 修复课表与考试成绩空态标题左偏对齐"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
