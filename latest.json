@@ -2,13 +2,13 @@
   "schema": 1,
   "packages": {
     "com.nopalou": {
-      "versionCode": 84,
-      "versionName": "0.84",
+      "versionCode": 85,
+      "versionName": "0.85",
       "size": 2570282,
-      "sha256": "7f37984716a0b9d994fd0b0970e9c63c5ba84eeb2bf84b41a40c2d8ba011cf26",
+      "sha256": "11eb9e56e671779fe2a408ac7088a3c6355f07fbc6f730c64ca04ac48e2b2bde",
       "certificateSha256": "0300e27e9f92906725d1e530e56964f24ec49c4dcf81de6e33f3d9c6a3ddcfa3",
-      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/7f37984716a0b9d994fd0b0970e9c63c5ba84eeb2bf84b41a40c2d8ba011cf26/offloor.apk",
-      "notes": "v0.84: 修复课表与考试成绩空态标题左偏对齐"
+      "url": "https://raw.githubusercontent.com/QDy1013/Offloor/updates/apks/11eb9e56e671779fe2a408ac7088a3c6355f07fbc6f730c64ca04ac48e2b2bde/offloor.apk",
+      "notes": "v0.85: 轻薄分组两行卡片、零跳动冲突呈现、考试时长撞课判定与往周课表柔化"
     },
     "com.nopalou.preview": {
       "versionCode": 31,
