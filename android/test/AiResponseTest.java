@@ -58,6 +58,28 @@ public final class AiResponseTest {
         JSONObject req = AiClient.buildJudgeRequest(sent, engine.effectiveProfile(), true, 1800000000000L, null);
         check("课表课程注入 AI 请求画像", req.getJSONObject("me").getJSONArray("courses").toString().contains("大学物理"));
         check("AI 请求附带匹配到的课程名", "大学物理".equals(req.getJSONArray("messages").getJSONObject(0).optString("matched_course")));
+        // 端侧小模型非对称权限护栏：允许补全已有卡片，禁止对未出卡消息凭空新建待办
+        Engine.Escalation existingEsc = sent.get(0);
+        existingEsc.profileKey = engine.profileKey();
+        Engine.Escalation uncarded = new Engine.Escalation();
+        uncarded.epoch = engine.aiEpoch();
+        uncarded.profileKey = engine.profileKey();
+        uncarded.scopeVersion = existingEsc.scopeVersion;
+        uncarded.msg = new Engine.Msg("joke1", "group", "大学物理课程群", "同学甲",
+                "哈哈哈交了个寂寞", "com.tencent.mm", 1800000005000L);
+        Map<String, Engine.Escalation> localMap = new HashMap<>();
+        localMap.put("1", existingEsc);
+        localMap.put("2", uncarded);
+        List<Engine.AiVerdict> localVerdicts = AiClient.parseVerdicts(new JSONObject(
+                "{\"items\":["
+                        + "{\"id\":\"1\",\"todo\":true,\"kind\":\"todo\",\"title\":\"提交物理实验报告\",\"deadline\":\"\",\"time_sure\":false,\"place\":\"\",\"channel\":\"\",\"bring\":\"\",\"confidence\":0.92,\"note\":\"整理标题\"},"
+                        + "{\"id\":\"2\",\"todo\":true,\"kind\":\"todo\",\"title\":\"交寂寞\",\"deadline\":\"\",\"time_sure\":false,\"place\":\"\",\"channel\":\"\",\"bring\":\"\",\"confidence\":0.95,\"note\":\"误判\"}"
+                        + "]}"), localMap, true);
+        check("端侧复核标记 fromLocalModel", localVerdicts.size() == 2 && localVerdicts.get(0).fromLocalModel && localVerdicts.get(1).fromLocalModel);
+        boolean existingUpdated = engine.applyAi(localVerdicts.get(0), 1800000010000L);
+        boolean uncardedBlocked = !engine.applyAi(localVerdicts.get(1), 1800000010000L);
+        check("端侧小模型允许补全已有待确认卡标题", existingUpdated && "提交物理实验报告".equals(engine.all().get(0).title));
+        check("端侧小模型禁止对未出卡消息凭空新建待办", uncardedBlocked && engine.all().size() == 1);
         System.out.println("PASS " + checks);
     }
 }

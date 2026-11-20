@@ -176,13 +176,13 @@ final class AiClient implements AutoCloseable {
             if (cfg.local) {
                 String out = local(JUDGE_SYSTEM, req.toString(), LocalLlmCore.judgeGrammar(items.size()), LocalLlmCore.JUDGE_MAX_TOKENS);
                 try {
-                    return parseVerdicts(new JSONObject(stripFence(out)), byId);
+                    return parseVerdicts(new JSONObject(stripFence(out)), byId, true);
                 } catch (JSONException ex) {
                     throw new BadRequestException("本机模型输出不完整（可能超出长度上限）");
                 }
             }
             JSONObject res = new JSONObject(stripFence(chat(cfg.model, msgs, 1500, true)));
-            return parseVerdicts(res, byId);
+            return parseVerdicts(res, byId, false);
         } catch (JSONException ex) {
             throw new IOException("AI 返回内容无法解析", ex);
         }
@@ -191,6 +191,11 @@ final class AiClient implements AutoCloseable {
     /** 模型输出是外部数据：缺少判定或把握时，保留本机卡片，不当成“不是待办”。 */
     static List<Engine.AiVerdict> parseVerdicts(JSONObject res, Map<String, Engine.Escalation> byId)
             throws IOException {
+        return parseVerdicts(res, byId, false);
+    }
+
+    static List<Engine.AiVerdict> parseVerdicts(JSONObject res, Map<String, Engine.Escalation> byId,
+                                                boolean fromLocalModel) throws IOException {
         List<Engine.AiVerdict> out = new ArrayList<>();
         JSONArray got = res.optJSONArray("items");
         if (got == null) throw new IOException("AI 返回格式不对");
@@ -235,6 +240,7 @@ final class AiClient implements AutoCloseable {
             v.bring = grounded(o.optString("bring", ""), e.msg.text);
             v.confidence = confidence;
             v.note = o.optString("note", "");
+            v.fromLocalModel = fromLocalModel;
             out.add(v);
         }
         return out;

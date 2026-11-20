@@ -545,19 +545,21 @@ def main() -> None:
             "models": {},
         }
 
-        def apply_and_score_hybrid(resp_path: Path, tag: str, run_res: dict) -> tuple[dict, dict]:
+        def apply_and_score_hybrid(resp_path: Path, tag: str, run_res: dict, guarded: bool = False) -> tuple[dict, dict]:
             apply_out_path = args.cache_dir / f"apply_{tag}.json"
+            extra = ("local_guarded",) if guarded else ()
             run_java_bridge(
                 cp, "apply",
                 str(ROOT / "android/app/assets/model.tsv"),
                 str(args.ood),
                 str(resp_path),
                 str(apply_out_path),
+                *extra,
             )
             apply_out = json.loads(apply_out_path.read_text(encoding="utf-8"))
             return apply_out, score_hybrid(rows, apply_out, run_res)
 
-        # 2. 端侧 1.5B 模型评测（含 GBNF 消融 + 完整端侧闭环 + 100 条直抽）
+        # 2. 端侧 1.5B 模型评测（含 GBNF 消融 + 加护栏前后对比 + 100 条直抽）
         print(f"\n2. 启动 llama-server 加载端侧模型：{args.small_name} ...", flush=True)
         with LlamaServer(args.llama_server, args.small_gguf, ngl=args.ngl, disable_thinking=False) as srv:
             print(f"   就绪（模型加载 {srv.load_seconds}s）", flush=True)
@@ -567,13 +569,21 @@ def main() -> None:
                 "server_load_s": srv.load_seconds,
             }
             p_h_gbnf = args.cache_dir / "small_hybrid_gbnf.json"
-            r_h_gbnf = run_batches(srv.url, exported["hybrid_batches"], True, False, "1.5B hybrid + GBNF", p_h_gbnf)
-            a_h_gbnf, m_h_gbnf = apply_and_score_hybrid(p_h_gbnf, "small_hybrid_gbnf", r_h_gbnf)
-            report["baselines"]["apk_java_plus_1.5b_gbnf"] = m_h_gbnf
+            r_h_gbnf = run_batches(srv.url, exported["hybrid_batches"], True, False, "1.5B hybrid + GBNF (unconstrained)", p_h_gbnf)
+            a_h_gbnf, m_h_gbnf = apply_and_score_hybrid(p_h_gbnf, "small_hybrid_gbnf", r_h_gbnf, guarded=False)
+            report["baselines"]["apk_java_plus_1.5b_unconstrained"] = m_h_gbnf
+
+            p_h_guard = args.cache_dir / "small_hybrid_guarded_gbnf.json"
+            r_h_guard = run_batches(
+                srv.url, exported["hybrid_local_guarded_batches"], True, False,
+                "1.5B hybrid + GBNF (v0.86 guarded)", p_h_guard,
+            )
+            _, m_h_guard = apply_and_score_hybrid(p_h_guard, "small_hybrid_guarded_gbnf", r_h_guard, guarded=True)
+            report["baselines"]["apk_java_plus_1.5b_v086_guarded"] = m_h_guard
 
             p_h_nogbnf = args.cache_dir / "small_hybrid_nogbnf.json"
             r_h_nogbnf = run_batches(srv.url, exported["hybrid_batches"], False, False, "1.5B hybrid NO GBNF", p_h_nogbnf)
-            a_h_nogbnf, m_h_nogbnf = apply_and_score_hybrid(p_h_nogbnf, "small_hybrid_nogbnf", r_h_nogbnf)
+            a_h_nogbnf, m_h_nogbnf = apply_and_score_hybrid(p_h_nogbnf, "small_hybrid_nogbnf", r_h_nogbnf, guarded=False)
             report["gbnf_ablation"]["small_1.5b_without_gbnf"] = summarize_ablation(a_h_nogbnf, r_h_nogbnf)
             report["gbnf_ablation"]["small_1.5b_with_gbnf"] = summarize_ablation(a_h_gbnf, r_h_gbnf)
             report["baselines"]["apk_java_plus_1.5b_no_gbnf"] = m_h_nogbnf

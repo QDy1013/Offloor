@@ -3,16 +3,19 @@ package com.nopalou;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -498,5 +501,225 @@ final class HomeOpsSheets {
         row.setOnClickListener(v -> run.run());
         if (n > 1) a.setupBody.addView(Ui.hairline(a));
         a.setupBody.addView(row, a.lp(-1, -2));
+    }
+
+    static void showRecognitionMenu(MainActivity a) {
+        android.app.Dialog[] holder = new android.app.Dialog[1];
+        LinearLayout body = new LinearLayout(a);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.addView(a.sheetTitle("AI 与截图识别"));
+        a.menuSection(body, null);
+        a.menuRow(body, holder, "AI 识别", AiConfig.load(a).enabled ? AiConfig.summary(a)
+                        : "未开启 · 帮规则找回漏掉的待办、补全时间地点", Ui.TEXT,
+                () -> a.startActivity(new Intent(a, AiActivity.class)));
+        a.menuRow(body, holder, "截图识别", "选一张群聊天截图，逐条转写成待办", Ui.TEXT,
+                () -> a.startActivity(new Intent(a, ShotActivity.class).putExtra(ShotActivity.EXTRA_PICK, true)));
+        holder[0] = a.showSheet(body, null);
+    }
+
+    static void showManageMenu(MainActivity a) {
+        android.app.Dialog[] holder = new android.app.Dialog[1];
+        LinearLayout body = new LinearLayout(a);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.addView(a.sheetTitle("提醒与按群管理"));
+        a.menuSection(body, "提醒");
+        a.menuRow(body, holder, "到期提醒", ReminderReceiver.isEnabled(a) ? "已开启 · 到期前两小时提醒" : "已关闭",
+                Ui.TEXT, a::showDeadlineReminderSettings);
+        a.menuRow(body, holder, "成绩与课表提醒", "出成绩、考试改期、课表变化、余额阈值提醒", Ui.TEXT,
+                a::showCampusAlerts);
+        a.menuSection(body, "整理");
+        a.menuRow(body, holder, "按群管理", a.groupMenuHint(), Ui.TEXT, a::showGroupManager);
+        a.menuRow(body, holder, "已移除的卡片", "误删的卡片可以在这里恢复", Ui.TEXT, a::showRemovedCards);
+        holder[0] = a.showSheet(body, null);
+    }
+
+    static void showToolsMenu(MainActivity a) {
+        android.app.Dialog[] holder = new android.app.Dialog[1];
+        LinearLayout body = new LinearLayout(a);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.addView(a.sheetTitle("诊断、备份与演示"));
+        a.menuSection(body, "排查与维护");
+        a.menuRow(body, holder, "扫描通知栏历史", "重新识别通知栏里挂着的未读会话消息", Ui.TEXT, a::scanHistory);
+        a.menuRow(body, holder, "自动读取自检", "检查通知权限、连接状态和后台限制", Ui.TEXT, a::showHealthCheck);
+        a.menuRow(body, holder, "系统通知使用权", "跳转到系统通知读取授权页", Ui.TEXT,
+                () -> a.startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
+        a.menuRow(body, holder, "诊断日志", "最近 30 条读取与处理记录", Ui.TEXT, a::showDiagLog);
+        a.menuRow(body, holder, "存档与恢复", EngineHolder.storageIssue == null ? "本机存档与有效备份"
+                : EngineHolder.storageIssue, EngineHolder.storageBlocked() ? Ui.RED : Ui.TEXT, a::showStorageState);
+        a.menuRow(body, holder, "桌面小组件", "把今天的课和最近的待办放到桌面", Ui.TEXT, () -> {
+            if (!TodayWidget.requestPin(a)) {
+                a.alert().setTitle("手动添加小组件")
+                        .setMessage("这台手机的桌面不支持应用直接添加。请长按桌面空白处 → 小组件（或“安卓组件”），找到“楼外 / Offloor · 今日课程与待办”，拖到桌面。")
+                        .setPositiveButton("知道了", null).show();
+            }
+        });
+        a.menuSection(body, "演示工具");
+        a.menuRow(body, holder, "情境演示", "分步演示改期、歧义核对和取消场景", Ui.TEXT,
+                () -> a.startActivity(new Intent(a, ShowcaseActivity.class)));
+        a.menuRow(body, holder, a.demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, a::toggleDemo);
+        a.menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, a::startReplay);
+        a.menuSection(body, null);
+        a.menuRow(body, holder, "清空本机数据", "清空全部待办、已移除卡片和近期消息", Ui.RED, () ->
+                a.alert()
+                        .setTitle("清空待办和近期消息？")
+                        .setMessage("会清空本机的全部待办、已移除卡片，以及这次运行中用于识别的近期消息。")
+                        .setPositiveButton("清空", (dialog, w) -> {
+                            a.engine.clearLocalData();
+                            try { AiQueue.clear(a); }
+                            catch (RuntimeException error) { EngineHolder.diag(a, "队列", "旧请求已失效，队列文件清理未成功"); }
+                            boolean saved = EngineHolder.storageBlocked() ? EngineHolder.rebuildStorage(a) : EngineHolder.save(a);
+                            if (!saved) Toast.makeText(a, "当前列表已清空，但存档未保存，请检查存档与恢复", Toast.LENGTH_LONG).show();
+                        })
+                        .setNegativeButton("取消", null)
+                        .show());
+        holder[0] = a.showSheet(body, null);
+    }
+
+    static void showStorageState(MainActivity a) {
+        AlertDialog.Builder dialog = a.alert().setTitle("存档与恢复")
+                .setMessage(EngineHolder.storageIssue == null
+                        ? "每次成功保存会保留上一份有效存档。读取时会核对完整性，损坏时尝试有效备份；没有可用备份时会暂停覆盖并保留原文件。"
+                        : EngineHolder.storageIssue);
+        if (EngineHolder.storageBlocked()) {
+            dialog.setPositiveButton("保留副本并重建", (d, w) -> a.alert()
+                    .setTitle("以当前列表建立新存档？")
+                    .setMessage("会先保留原文件副本，再保存当前列表。当前未恢复的旧事项不会自动出现在新列表中。")
+                    .setPositiveButton("保留副本并保存", (confirm, which) -> {
+                        boolean ok = EngineHolder.rebuildStorage(a);
+                        Toast.makeText(a, ok ? "已保存当前列表，原文件副本保留" : "保存未成功，原文件仍保留", Toast.LENGTH_LONG).show();
+                    }).setNegativeButton("返回", null).show());
+        }
+        dialog.setNegativeButton("关闭", null).show();
+    }
+
+    static void showCampusAlerts(MainActivity a) {
+        SharedPreferences p = CampusChanges.prefs(a);
+        CampusChanges.migrate(p);
+        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric", "network"};
+        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）",
+                "电费低于阈值时提醒", "网费低于阈值时提醒"};
+        boolean[] checked = new boolean[keys.length];
+        for (int i = 0; i < keys.length; i++) checked[i] = p.getBoolean(keys[i], true);
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(MainActivity.dp(a, 22), 0, MainActivity.dp(a, 22), 0);
+        TextView hint = a.uiText("电费按电价折算成金额后再判断；读不到余额时不提醒，也不会显示 0 元。", 12, Ui.SUB, false);
+        hint.setPadding(0, 0, 0, MainActivity.dp(a, 12));
+        hint.setLineSpacing(MainActivity.dp(a, 3), 1);
+        box.addView(hint, a.lp(-1, -2));
+        EditText price = numberField(a, "电价（元/度）", CampusChanges.price(p));
+        EditText electric = numberField(a, "电费提醒阈值（元）", CampusChanges.electricThreshold(p));
+        EditText network = numberField(a, "网费提醒阈值（元）", CampusChanges.networkThreshold(p));
+        box.addView(price, a.lp(-1, -2));
+        box.addView(electric, a.lp(-1, -2));
+        box.addView(network, a.lp(-1, -2));
+        ScrollView sv = new ScrollView(a);
+        sv.addView(box);
+        a.alert()
+                .setTitle("成绩、课表与余额提醒")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setView(sv)
+                .setPositiveButton("保存", (d, w) -> {
+                    SharedPreferences.Editor e = p.edit();
+                    for (int i = 0; i < keys.length; i++) e.putBoolean(keys[i], checked[i]);
+                    Double pv = ChangeDiff.firstNumber(price.getText().toString());
+                    if (pv != null && CampusBalance.validPrice(pv)) e.putFloat(CampusChanges.KEY_PRICE, pv.floatValue());
+                    Double ev = ChangeDiff.firstNumber(electric.getText().toString());
+                    if (ev != null && CampusBalance.validThreshold(ev)) {
+                        e.putFloat(CampusChanges.KEY_ELECTRIC_YUAN, ev.floatValue()).putBoolean("electric_low", false);
+                    }
+                    Double nv = ChangeDiff.firstNumber(network.getText().toString());
+                    if (nv != null && CampusBalance.validThreshold(nv)) {
+                        e.putFloat(CampusChanges.KEY_NETWORK_YUAN, nv.floatValue()).putBoolean("network_low", false);
+                    }
+                    e.apply();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private static EditText numberField(MainActivity a, String hint, double value) {
+        EditText field = new EditText(a);
+        field.setHint(hint);
+        field.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        field.setText(CampusChanges.trim(value));
+        return field;
+    }
+
+    static void scanHistory(MainActivity a) {
+        if (a.demo != null) return;
+        if (!NotifListener.canScan()) {
+            a.alert().setTitle("还不能扫描")
+                    .setMessage("通知读取还没连上，扫描需要先在「通知使用权」里打开「Offloor」。")
+                    .setPositiveButton("去开启", (d, w) -> {
+                        try {
+                            a.startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+                        } catch (Exception e) {
+                            Toast.makeText(a, "请到系统设置里搜索「通知使用权」", Toast.LENGTH_LONG).show();
+                        }
+                    })
+                    .setNegativeButton("取消", null).show();
+            return;
+        }
+        NotifListener.ScanResult r = NotifListener.scanNow();
+        if (r == null) {
+            Toast.makeText(a, "扫描失败，稍后再试", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        MainActivity.scanNoticeShownAt = NotifListener.lastScanAt;
+        showScanResult(a, r, true);
+    }
+
+    static void showScanResult(MainActivity a, NotifListener.ScanResult r, boolean manual) {
+        int added = r.newCardIds.size();
+        if (!manual) {
+            if (added > 0) {
+                Toast.makeText(a, "已从通知栏补上 " + added + " 个事项", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        StringBuilder msg = new StringBuilder();
+        msg.append("读了通知栏里 ").append(r.notifications).append(" 条通知、")
+                .append(r.messages).append(" 条消息");
+        if (r.messages > r.fresh) msg.append("（").append(r.messages - r.fresh).append(" 条以前处理过，已跳过）");
+        msg.append("。\n\n");
+        if (added > 0) {
+            msg.append("新增 ").append(added).append(" 个事项：\n");
+            int listed = 0;
+            for (String id : r.newCardIds) {
+                Engine.Card c = findCard(a, id);
+                if (c == null) continue;
+                if (listed == 6) {
+                    msg.append("…\n");
+                    break;
+                }
+                msg.append("· ").append(c.displayTitle());
+                if (c.deadline > 0 && c.deadline <= System.currentTimeMillis()) msg.append("（已过期）");
+                msg.append("\n");
+                listed++;
+            }
+        } else if (r.notifications == 0) {
+            msg.append("通知栏里没有来自微信、QQ 等聊天软件的通知。\n已经清掉的通知、免打扰群的消息扫不到。");
+        } else {
+            msg.append("没有发现新的作业、考试或接龙。");
+        }
+        a.alert().setTitle(added > 0 ? "扫描完成" : "扫描完成，没有新事项")
+                .setMessage(msg.toString().trim())
+                .setPositiveButton(added > 0 ? "查看" : "好", (d, w) -> {
+                    if (added > 0) {
+                        a.newCardsOnly = false;
+                        a.scope = Engine.CardScope.ALL;
+                        a.window = Engine.CardWindow.ANY;
+                        a.resetCardPage();
+                    }
+                })
+                .show();
+        a.render();
+    }
+
+    private static Engine.Card findCard(MainActivity a, String id) {
+        if (id == null || a.engine == null) return null;
+        for (Engine.Card c : a.engine.all()) if (id.equals(c.id)) return c;
+        return null;
     }
 }

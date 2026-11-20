@@ -24,7 +24,7 @@ check('segmented bar keeps 4 quiet tabs, collapsible search and status filters',
     assert.match(main, /searchToggle\.setOnClickListener\(v -> toggleSearch\(\)\)/);
     assert.match(main, /uiHandler\.postDelayed\(searchRefresh, 180\)/);
 });
-const listItem = main.slice(main.indexOf('    View cardView('), main.indexOf('    private static String kindName('));
+const listItem = main.slice(main.indexOf('    View cardView('), main.indexOf('    TextView kindTag('));
 check('cards stay hairline-grouped two-line rows without redundant badges or source clutter', () => {
     assert.match(main, /LinearLayout groupCard = Ui\.group\(this\)/);
     assert.match(listItem, /Ui\.pressScale\(card, 0\.99f\)/);

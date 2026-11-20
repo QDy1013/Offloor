@@ -2,6 +2,20 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.86（端侧 1.5B 非对称权限护栏、首页模块化瘦身与参赛架构/方案材料体系）
+
+- **端侧小模型非对称权限护栏（解决同集评测暴露的 1.5B 迎合误报）**：
+  1. [Engine.java](android/app/src/com/nopalou/Engine.java) 在 `Engine.AiVerdict` 新增 `fromLocalModel` 标记，并在 `applyAi` 的未出卡新建分支中拒绝端侧小模型凭空新建待办（仅允许整理弱标题与补全已有待确认卡片的原文有据字段；云端/较大模型不受此限）。
+  2. [AiClient.java](android/app/src/com/nopalou/AiClient.java) 在本机模型分支调用 `parseVerdicts(..., true)` 标记来源；[AiJob.java](android/app/src/com/nopalou/AiJob.java) 在本机小模型模式下提前跳过 `cardId == null` 的未出卡队列条目，进一步节省端侧算力与电量；[AiResponseTest.java](android/test/AiResponseTest.java) 新增 3 项端侧非对称护栏回归断言。
+  3. 经 [eval/run_llm_comparison.py](eval/run_llm_comparison.py) 同集复测（100 条无泄漏 OOD）：加护栏后 1.5B 端侧复核精确率由 **`88.9%` 恢复至 `97.9%`（+9.0pp）**，F1 由 **`92.3%` 升至 `95.9%`（+3.6pp）**，端侧调用条数再降 **`31.6%`**（`19 → 13` 条 / `7 → 5` 批，总 Token 较纯 1.5B 直抽节省 **`85.3%`**）。
+- **首页模块化瘦身与死代码清零（面向软件工程与 AI 代码评测）**：
+  1. 新增纯逻辑零 Android 依赖的 [HomeConflictState.java](android/app/src/com/nopalou/HomeConflictState.java)（133 行）与来源样式解析器 [HomeSourceStyle.java](android/app/src/com/nopalou/HomeSourceStyle.java)（136 行），并将二级菜单、通知栏历史扫描、存档状态与成绩/余额提醒弹窗整体迁入 [HomeOpsSheets.java](android/app/src/com/nopalou/HomeOpsSheets.java)。
+  2. 清理 [MainActivity.java](android/app/src/com/nopalou/MainActivity.java) 中已废弃的 `kindName`/`dueLabel`/`dueColor` 零引用死方法，主活动行数从 `2,447` 行降至 **`2,030` 行（-17.0%）**；同步更新 [test_home_visual.cjs](eval/test_home_visual.cjs) 切片锚点，95+19+30 全量回归全绿。
+- **软件工程架构与赛题二参赛材料齐备**：
+  1. 新增 [系统架构与模块说明.md](docs/系统架构与模块说明.md)（含分层架构 Mermaid 图、模块职责与可复现验证矩阵）、[参赛方案书大纲_v0.86.md](docs/参赛方案书大纲_v0.86.md)（逐项对标赛题二官方评分与 5 条通用要求）及 [三分钟演示分镜脚本.md](docs/三分钟演示分镜脚本.md)。
+
+---
+
 ## v0.85（两行极简分组卡片、移除撞车横幅、考试时长撞课判定与往周课表柔化）
 
 - **首页轻薄分组两行列表与零跳动冲突呈现**：

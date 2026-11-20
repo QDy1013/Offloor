@@ -2250,6 +2250,8 @@ public class Engine {
         public String place, channel, bring;
         public double confidence;
         public String note;              // 一句话理由，显示在卡片上
+        /** true 表示由端侧小模型（如 1.5B）产出：采取非对称保守策略，只补全已有卡片，不凭空新建待办。 */
+        public boolean fromLocalModel;
     }
 
     static double topProb(double[] sc) {
@@ -2422,6 +2424,7 @@ public class Engine {
             return changed;
         }
         Msg m = v.msg;
+        if (v.fromLocalModel) return false;
         if (m == null || !v.todo || v.confidence < AI_ADD_CONF) return false;
         if (MODE_IGNORE.equals(groupMode(m.groupId))) return false;
         String text = m.text == null ? "" : m.text;

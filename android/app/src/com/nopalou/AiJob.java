@@ -193,7 +193,9 @@ public class AiJob extends JobService {
                 Engine engine = EngineHolder.get(app);
                 for (JSONObject item : batch) {
                     Engine.Escalation request = AiQueue.toEscalation(item);
-                    if (engine != null && engine.currentRequest(request)) current.add(request);
+                    // 本机端侧小模型仅用于已有待确认卡片的标题与字段补全，跳过未出卡边界复判以防迎合误建并节省端侧电量。
+                    boolean allowed = !cfg.local || request.cardId != null;
+                    if (allowed && engine != null && engine.currentRequest(request)) current.add(request);
                     else staleRequests.add(item);
                 }
                 return current;

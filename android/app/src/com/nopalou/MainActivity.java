@@ -72,11 +72,8 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     TextView stats;
     /** 顶部副标题（日期 + 问候），render() 时按小时段刷新。 */
     TextView sub;
-    /** 当前 7 天内的冲突缓存：不在首页插横幅，而是轻附在统计行、对应卡片时间行与详情面板中。 */
-    private List<ClashPlan.Clash> activeTaskClashes = java.util.Collections.emptyList();
-    private List<StudyPlanner.LessonClash> activeLessonClashes = java.util.Collections.emptyList();
-    private final Map<String, List<StudyPlanner.LessonClash>> lessonClashesByCard = new HashMap<>();
-    private final Map<String, ClashPlan.Clash> taskClashByCard = new HashMap<>();
+    /** 当前 7 天内的冲突状态管理器：不插横幅，统一供给统计行、卡片第二行与详情抽屉。 */
+    private final HomeConflictState conflicts = new HomeConflictState();
     private Timetable timetable;
     private int timetableLoadVersion;
     private final Runnable timetableChanged = () -> { if (this.resumed) loadTimetableAsync(); };
@@ -123,7 +120,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     boolean newCardsOnly;
     private NewCardTracker newCardTracker;
     /** 已经提示过的自动扫描时间，避免每次回到前台都重复提示。 */
-    private static long scanNoticeShownAt = 0L;
+    static long scanNoticeShownAt = 0L;
     EditText searchField;
     private TextView searchClear;
     ScrollView listScroll;
@@ -143,10 +140,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     private LinearLayout undoBar;
     private TextView undoText;
     private TextView undoAction;
-    /** 来源 App 图标缓存：只存 ConstantState，每张卡各自 newDrawable，避免共享可变对象。 */
-    private static final Map<String, Drawable.ConstantState> sourceIconCache = new HashMap<>();
-    /** 查询失败也缓存，避免每次 render 反复向 PackageManager 要图标。 */
-    private static final java.util.Set<String> sourceIconMiss = new java.util.HashSet<>();
     String keywords = "";
     Engine.CardScope scope = Engine.CardScope.ALL;
     Engine.CardWindow window = Engine.CardWindow.ANY;
@@ -1061,19 +1054,12 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
                 ? "开启自动读取后，群消息里的作业与通知会整理到这里"
                 : "群里有作业、考试或接龙时，会自动整理到这里");
         String baseStats = TextUtils.join(" · ", parts);
-        int lessonConflicts = activeLessonClashes.size();
-        int taskConflicts = activeTaskClashes.size();
-        int totalConflicts = lessonConflicts + taskConflicts;
-        if (totalConflicts == 0) {
+        String conflictSummary = conflicts.summaryLabel();
+        if (conflictSummary == null) {
             stats.setText(baseStats);
             stats.setOnClickListener(null);
             stats.setClickable(false);
         } else {
-            String conflictSummary = lessonConflicts > 0 && taskConflicts == 0
-                    ? lessonConflicts + " 处撞课 ›"
-                    : lessonConflicts == 0
-                    ? taskConflicts + " 处撞车 ›"
-                    : totalConflicts + " 处冲突 ›";
             SpannableStringBuilder sb = new SpannableStringBuilder(baseStats);
             sb.append(" · ");
             int cs = sb.length();
@@ -1122,91 +1108,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         });
     }
 
-    /** 「扫描历史」：把通知栏里还挂着的消息（含会话通知里折叠的旧消息）重新过一遍，并告诉用户结果。 */
-    private void scanHistory() {
-        if (demo != null) return;
-        if (!NotifListener.canScan()) {
-            alert().setTitle("还不能扫描")
-                    .setMessage("通知读取还没连上，扫描需要先在「通知使用权」里打开「Offloor」。")
-                    .setPositiveButton("去开启", (d, w) -> {
-                        try {
-                            startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-                        } catch (Exception e) {
-                            Toast.makeText(this, "请到系统设置里搜索「通知使用权」", Toast.LENGTH_LONG).show();
-                        }
-                    })
-                    .setNegativeButton("取消", null).show();
-            return;
-        }
-        NotifListener.ScanResult r = NotifListener.scanNow();
-        if (r == null) {
-            Toast.makeText(this, "扫描失败，稍后再试", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        scanNoticeShownAt = NotifListener.lastScanAt;
-        showScanResult(r, true);
-    }
+    /** 「扫描历史」：委托 HomeOpsSheets 重新读取通知栏挂起消息并弹窗反馈。 */
+    void scanHistory() { HomeOpsSheets.scanHistory(this); }
 
-    /** 扫描结果：有新事项时列出标题并切到「全部」方便核对；没有时说明原因。 */
-    private void showScanResult(NotifListener.ScanResult r, boolean manual) {
-        int added = r.newCardIds.size();
-        if (!manual) {
-            if (added > 0) {
-                Toast.makeText(this, "已从通知栏补上 " + added + " 个事项", Toast.LENGTH_LONG).show();
-            }
-            return;
-        }
-        StringBuilder msg = new StringBuilder();
-        msg.append("读了通知栏里 ").append(r.notifications).append(" 条通知、")
-                .append(r.messages).append(" 条消息");
-        if (r.messages > r.fresh) msg.append("（").append(r.messages - r.fresh).append(" 条以前处理过，已跳过）");
-        msg.append("。\n\n");
-        if (added > 0) {
-            msg.append("新增 ").append(added).append(" 个事项：\n");
-            int listed = 0;
-            for (String id : r.newCardIds) {
-                Engine.Card c = findCard(id);
-                if (c == null) continue;
-                if (listed == 6) {
-                    msg.append("…\n");
-                    break;
-                }
-                msg.append("· ").append(c.displayTitle());
-                if (c.deadline > 0 && c.deadline <= System.currentTimeMillis()) msg.append("（已过期）");
-                msg.append("\n");
-                listed++;
-            }
-        } else if (r.notifications == 0) {
-            msg.append("通知栏里没有来自微信、QQ 等聊天软件的通知。\n已经清掉的通知、免打扰群的消息扫不到。");
-        } else {
-            msg.append("没有发现新的作业、考试或接龙。");
-        }
-        alert().setTitle(added > 0 ? "扫描完成" : "扫描完成，没有新事项")
-                .setMessage(msg.toString().trim())
-                .setPositiveButton(added > 0 ? "查看" : "好", (d, w) -> {
-                    if (added > 0) {
-                        // 历史消息里的事项可能已经过期，切到「全部」才看得全。
-                        newCardsOnly = false;
-                        scope = Engine.CardScope.ALL;
-                        window = Engine.CardWindow.ANY;
-                        resetCardPage();
-                    }
-                })
-                .show();
-        render();
-    }
-
-    private Engine.Card findCard(String id) {
-        if (id == null || engine == null) return null;
-        for (Engine.Card c : engine.all()) if (id.equals(c.id)) return c;
-        return null;
-    }
+    private void showScanResult(NotifListener.ScanResult r, boolean manual) { HomeOpsSheets.showScanResult(this, r, manual); }
 
     /**
      * 切换筛选：列表淡入并轻微上浮，替代原来的“瞬间换一屏”；
      * 已经往下翻过的话只滚回筛选栏的位置，不把整页甩回顶部。
      */
-    private void resetCardPage() {
+    void resetCardPage() {
         visibleLimit = PAGE_SIZE;
         render();
         if (cardList != null) {
@@ -1331,140 +1242,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         holder[0] = showSheet(body, null);
     }
 
-    private void showRecognitionMenu() {
-        android.app.Dialog[] holder = new android.app.Dialog[1];
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.addView(sheetTitle("AI 与截图识别"));
-        menuSection(body, null);
-        menuRow(body, holder, "AI 识别", AiConfig.load(this).enabled ? AiConfig.summary(this)
-                        : "未开启 · 帮规则找回漏掉的待办、补全时间地点", Ui.TEXT,
-                () -> startActivity(new Intent(this, AiActivity.class)));
-        menuRow(body, holder, "截图识别", "选一张群聊天截图，逐条转写成待办", Ui.TEXT,
-                () -> startActivity(new Intent(this, ShotActivity.class).putExtra(ShotActivity.EXTRA_PICK, true)));
-        holder[0] = showSheet(body, null);
-    }
+    private void showRecognitionMenu() { HomeOpsSheets.showRecognitionMenu(this); }
 
-    private void showManageMenu() {
-        android.app.Dialog[] holder = new android.app.Dialog[1];
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.addView(sheetTitle("提醒与按群管理"));
-        menuSection(body, "提醒");
-        menuRow(body, holder, "到期提醒", ReminderReceiver.isEnabled(this) ? "已开启 · 到期前两小时提醒" : "已关闭",
-                Ui.TEXT, this::showDeadlineReminderSettings);
-        menuRow(body, holder, "成绩与课表提醒", "出成绩、考试改期、课表变化、余额阈值提醒", Ui.TEXT,
-                this::showCampusAlerts);
-        menuSection(body, "整理");
-        menuRow(body, holder, "按群管理", groupMenuHint(), Ui.TEXT, this::showGroupManager);
-        menuRow(body, holder, "已移除的卡片", "误删的卡片可以在这里恢复", Ui.TEXT, this::showRemovedCards);
-        holder[0] = showSheet(body, null);
-    }
+    private void showManageMenu() { HomeOpsSheets.showManageMenu(this); }
 
-    private void showToolsMenu() {
-        android.app.Dialog[] holder = new android.app.Dialog[1];
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.addView(sheetTitle("诊断、备份与演示"));
-        menuSection(body, "排查与维护");
-        menuRow(body, holder, "扫描通知栏历史", "重新识别通知栏里挂着的未读会话消息", Ui.TEXT, this::scanHistory);
-        menuRow(body, holder, "自动读取自检", "检查通知权限、连接状态和后台限制", Ui.TEXT, this::showHealthCheck);
-        menuRow(body, holder, "系统通知使用权", "跳转到系统通知读取授权页", Ui.TEXT,
-                () -> startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
-        menuRow(body, holder, "诊断日志", "最近 30 条读取与处理记录", Ui.TEXT, this::showDiagLog);
-        menuRow(body, holder, "存档与恢复", EngineHolder.storageIssue == null ? "本机存档与有效备份"
-                : EngineHolder.storageIssue, EngineHolder.storageBlocked() ? Ui.RED : Ui.TEXT, this::showStorageState);
-        menuRow(body, holder, "桌面小组件", "把今天的课和最近的待办放到桌面", Ui.TEXT, () -> {
-            if (!TodayWidget.requestPin(this)) {
-                alert().setTitle("手动添加小组件")
-                        .setMessage("这台手机的桌面不支持应用直接添加。请长按桌面空白处 → 小组件（或“安卓组件”），找到“楼外 / Offloor · 今日课程与待办”，拖到桌面。")
-                        .setPositiveButton("知道了", null).show();
-            }
-        });
-        menuSection(body, "演示工具");
-        menuRow(body, holder, "情境演示", "分步演示改期、歧义核对和取消场景", Ui.TEXT,
-                () -> startActivity(new Intent(this, ShowcaseActivity.class)));
-        menuRow(body, holder, demo == null ? "离线演示" : "退出演示", "用样例群消息体验作业、考试和接龙", Ui.TEXT, this::toggleDemo);
-        menuRow(body, holder, "通知回放", "打开消息回放器，模拟真实通知", Ui.TEXT, this::startReplay);
-        menuSection(body, null);
-        menuRow(body, holder, "清空本机数据", "清空全部待办、已移除卡片和近期消息", Ui.RED, () ->
-                alert()
-                        .setTitle("清空待办和近期消息？")
-                        .setMessage("会清空本机的全部待办、已移除卡片，以及这次运行中用于识别的近期消息。")
-                        .setPositiveButton("清空", (dialog, w) -> {
-                            engine.clearLocalData();
-                            try { AiQueue.clear(this); }
-                            catch (RuntimeException error) { EngineHolder.diag(this, "队列", "旧请求已失效，队列文件清理未成功"); }
-                            boolean saved = EngineHolder.storageBlocked() ? EngineHolder.rebuildStorage(this) : EngineHolder.save(this);
-                            if (!saved) Toast.makeText(this, "当前列表已清空，但存档未保存，请检查存档与恢复", Toast.LENGTH_LONG).show();
-                        })
-                        .setNegativeButton("取消", null)
-                        .show());
-        holder[0] = showSheet(body, null);
-    }
+    private void showToolsMenu() { HomeOpsSheets.showToolsMenu(this); }
 
-    /** 「成绩与课表提醒」：同步后比较新旧数据，有变化才通知；第一次导入不提醒。 */
-    void showStorageState() {
-        android.app.AlertDialog.Builder dialog = alert().setTitle("存档与恢复")
-                .setMessage(EngineHolder.storageIssue == null
-                        ? "每次成功保存会保留上一份有效存档。读取时会核对完整性，损坏时尝试有效备份；没有可用备份时会暂停覆盖并保留原文件。"
-                        : EngineHolder.storageIssue);
-        if (EngineHolder.storageBlocked()) {
-            dialog.setPositiveButton("保留副本并重建", (d, w) -> alert()
-                    .setTitle("以当前列表建立新存档？")
-                    .setMessage("会先保留原文件副本，再保存当前列表。当前未恢复的旧事项不会自动出现在新列表中。")
-                    .setPositiveButton("保留副本并保存", (confirm, which) -> {
-                        boolean ok = EngineHolder.rebuildStorage(this);
-                        Toast.makeText(this, ok ? "已保存当前列表，原文件副本保留" : "保存未成功，原文件仍保留", Toast.LENGTH_LONG).show();
-                    }).setNegativeButton("返回", null).show());
-        }
-        dialog.setNegativeButton("关闭", null).show();
-    }
+    /** 存档状态、成绩与余额提醒设置：委托 HomeOpsSheets 构建。 */
+    void showStorageState() { HomeOpsSheets.showStorageState(this); }
 
-    void showCampusAlerts() {
-        android.content.SharedPreferences p = CampusChanges.prefs(this);
-        CampusChanges.migrate(p);
-        String[] keys = {"grades", "exams", "exam_cards", "timetable", "electric", "network"};
-        String[] labels = {"出新成绩或成绩变动", "考试安排新增或改期", "教务系统的考试自动放进待办", "课表有调整（同一学期内）",
-                "电费低于阈值时提醒", "网费低于阈值时提醒"};
-        boolean[] checked = new boolean[keys.length];
-        for (int i = 0; i < keys.length; i++) checked[i] = p.getBoolean(keys[i], true);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(this, 22), 0, dp(this, 22), 0);
-        TextView hint = uiText("电费按电价折算成金额后再判断；读不到余额时不提醒，也不会显示 0 元。", 12, Ui.SUB, false);
-        hint.setPadding(0, 0, 0, dp(this, 12)); hint.setLineSpacing(dp(this, 3), 1);
-        box.addView(hint, lp(-1, -2));
-        android.widget.EditText price = numberField("电价（元/度）", CampusChanges.price(p));
-        android.widget.EditText electric = numberField("电费提醒阈值（元）", CampusChanges.electricThreshold(p));
-        android.widget.EditText network = numberField("网费提醒阈值（元）", CampusChanges.networkThreshold(p));
-        box.addView(price, lp(-1, -2)); box.addView(electric, lp(-1, -2)); box.addView(network, lp(-1, -2));
-        alert()
-                .setTitle("成绩、课表与余额提醒")
-                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
-                .setView(new android.widget.ScrollView(this) {{ addView(box); }})
-                .setPositiveButton("保存", (d, w) -> {
-                    android.content.SharedPreferences.Editor e = p.edit();
-                    for (int i = 0; i < keys.length; i++) e.putBoolean(keys[i], checked[i]);
-                    Double pv = ChangeDiff.firstNumber(price.getText().toString());
-                    if (pv != null && CampusBalance.validPrice(pv)) e.putFloat(CampusChanges.KEY_PRICE, pv.floatValue());
-                    Double ev = ChangeDiff.firstNumber(electric.getText().toString());
-                    if (ev != null && CampusBalance.validThreshold(ev)) e.putFloat(CampusChanges.KEY_ELECTRIC_YUAN, ev.floatValue()).putBoolean("electric_low", false);
-                    Double nv = ChangeDiff.firstNumber(network.getText().toString());
-                    if (nv != null && CampusBalance.validThreshold(nv)) e.putFloat(CampusChanges.KEY_NETWORK_YUAN, nv.floatValue()).putBoolean("network_low", false);
-                    e.apply();
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private android.widget.EditText numberField(String hint, double value) {
-        android.widget.EditText field = new android.widget.EditText(this);
-        field.setHint(hint);
-        field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        field.setText(CampusChanges.trim(value));
-        return field;
-    }
+    void showCampusAlerts() { HomeOpsSheets.showCampusAlerts(this); }
 
     TextView sheetTitle(String text) {
         TextView t = uiText(text, 20, Ui.TEXT, false);
@@ -1703,40 +1490,10 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         long now = System.currentTimeMillis();
         Engine shown = demo == null ? engine : demo.engine;
         refreshConflicts(shown, now);
-        if (activeTaskClashes.isEmpty() && activeLessonClashes.isEmpty()) return;
-        StringBuilder body = new StringBuilder();
-        if (!activeLessonClashes.isEmpty()) {
-            body.append("与已导入课表冲突：");
-            int limit = Math.min(activeLessonClashes.size(), 6);
-            for (int i = 0; i < limit; i++) {
-                body.append("\n· ").append(activeLessonClashes.get(i).text());
-            }
-            if (activeLessonClashes.size() > limit) body.append("\n· 另有 ").append(activeLessonClashes.size() - limit).append(" 项冲突");
-        }
-        if (!activeTaskClashes.isEmpty()) {
-            if (body.length() > 0) body.append("\n\n待办时间相近：");
-            int gLimit = Math.min(activeTaskClashes.size(), 4);
-            for (int g = 0; g < gLimit; g++) {
-                ClashPlan.Clash clash = activeTaskClashes.get(g);
-                if (g > 0) body.append("\n");
-                if (activeTaskClashes.size() > 1) {
-                    if (body.length() > 0) body.append("\n");
-                    body.append(Engine.humanDeadline(clash.start)).append("前后：");
-                }
-                for (int i = 0; i < clash.cards.size(); i++) {
-                    Engine.Card c = clash.cards.get(i);
-                    if (body.length() > 0) body.append("\n");
-                    body.append("· ").append(c.displayTitle()).append("  ")
-                            .append(Engine.humanDeadline(c.deadline));
-                }
-            }
-            if (activeTaskClashes.size() > gLimit) {
-                body.append("\n· 另有 ").append(activeTaskClashes.size() - gLimit).append(" 组相近事项");
-            }
-        }
+        if (conflicts.isEmpty()) return;
         alert()
-                .setTitle(activeLessonClashes.isEmpty() ? "这几件事挤在一起" : "日程冲突提醒")
-                .setMessage(body.toString())
+                .setTitle(conflicts.detailTitle())
+                .setMessage(conflicts.detailBody())
                 .setPositiveButton("知道了", null)
                 .show();
     }
@@ -1865,16 +1622,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         return card;
     }
 
-    private static String kindName(String kind) {
-        if ("exam".equals(kind)) return "考试";
-        if ("jielong".equals(kind)) return "接龙";
-        if (Engine.PlatformNotice.KIND_SIGNIN.equals(kind)) return "签到";
-        if (Engine.PlatformNotice.KIND_GRADE.equals(kind)) return "成绩";
-        if ("media".equals(kind)) return "图片/语音";
-        return null;
-    }
-
-    /** 卡片类型标签：考试紫、接龙青，普通作业不加标签。 */
+    /** 卡片类型标签：考试紫、接龙青，普通作业不加标签（供详情底抽屉使用）。 */
     TextView kindTag(String kind) {
         if ("exam".equals(kind)) return Ui.tag(this, "考试", Ui.VIOLET, Ui.VIOLET_BG);
         if ("jielong".equals(kind)) return Ui.tag(this, "接龙", Ui.TEAL, Ui.TEAL_BG);
@@ -1882,23 +1630,6 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         if (Engine.PlatformNotice.KIND_GRADE.equals(kind)) return Ui.tag(this, "成绩", Ui.GREEN, Ui.GREEN_BG);
         if ("media".equals(kind)) return Ui.tag(this, "图片/语音", Ui.ORANGE, Ui.ORANGE_BG);
         return null;
-    }
-
-    /** 卡片第二行的时间文字：与详情面板同一套说法，避免今天/明天时重复出现两次时钟。 */
-    private String dueLabel(Engine.Card c, long now) {
-        if ("media".equals(c.kind)) return "内容读不到 · " + (c.sourceText != null && c.sourceText.contains("[图片]")
-                ? "截图分享给楼外可识别" : "请到原群查看");
-        if (c.deadlineHint() != null) return c.deadlineHint() + " · 时刻待确认";
-        if (c.deadline == 0) return "时间待确认 · 点开补充";
-        String dl = Engine.humanDeadline(c.deadline);
-        String cd = TodayView.countdown(c.deadline, now);
-        return dl.equals(cd) ? dl : dl + " · " + cd;
-    }
-
-    private int dueColor(Engine.Card c, long now) {
-        boolean unsure = c.needsConfirm || c.deadline == 0 || c.deadlineHint() != null;
-        int urgency = TodayView.urgency(c.deadline, c.needsConfirm, c.done, now);
-        return unsure ? Ui.AMBER_TX : urgency >= 1 ? Ui.urgencyColor(urgency) : Ui.SUB;
     }
 
     /**
@@ -2042,60 +1773,18 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
     }
 
     private void refreshConflicts(Engine shown, long now) {
-        lessonClashesByCard.clear();
-        taskClashByCard.clear();
-        if (shown == null) {
-            activeTaskClashes = java.util.Collections.emptyList();
-            activeLessonClashes = java.util.Collections.emptyList();
-            return;
-        }
-        List<Engine.Card> all = shown.all();
-        activeTaskClashes = ClashPlan.find(all, now);
-        activeLessonClashes = (demo == null && timetable != null)
-                ? StudyPlanner.findLessonClashes(all, timetable.weekAheadCourses(now), now)
-                : java.util.Collections.emptyList();
-        for (StudyPlanner.LessonClash lc : activeLessonClashes) {
-            if (lc.card == null || lc.card.id == null) continue;
-            List<StudyPlanner.LessonClash> list = lessonClashesByCard.get(lc.card.id);
-            if (list == null) { list = new ArrayList<>(); lessonClashesByCard.put(lc.card.id, list); }
-            list.add(lc);
-        }
-        for (ClashPlan.Clash g : activeTaskClashes) {
-            for (Engine.Card card : g.cards) {
-                if (card != null && card.id != null) taskClashByCard.put(card.id, g);
-            }
-        }
+        conflicts.refresh(shown, timetable, demo != null, now);
     }
 
     private String cardConflictTag(Engine.Card c) {
-        if (c == null || c.done || c.id == null) return null;
-        if (lessonClashesByCard.containsKey(c.id)) return "撞课";
-        if (taskClashByCard.containsKey(c.id)) return "撞车";
-        return null;
+        return conflicts.cardTag(c);
     }
 
     /** 供卡片详情底抽屉展示当前卡片关联的具体撞课或相近事项，不改变首页布局。 */
     List<String> cardConflictLines(Engine.Card c) {
-        List<String> out = new ArrayList<>();
-        if (c == null || c.done || c.id == null) return out;
         Engine shown = demo == null ? engine : demo.engine;
         refreshConflicts(shown, System.currentTimeMillis());
-        List<StudyPlanner.LessonClash> lessons = lessonClashesByCard.get(c.id);
-        if (lessons != null) {
-            for (StudyPlanner.LessonClash lc : lessons) {
-                out.add("撞课 · " + lc.text());
-            }
-        }
-        ClashPlan.Clash group = taskClashByCard.get(c.id);
-        if (group != null) {
-            int peers = 0;
-            for (Engine.Card peer : group.cards) {
-                if (peer == null || c.id.equals(peer.id)) continue;
-                if (peers++ >= 3) break;
-                out.add("时间相近 · 与「" + peer.displayTitle() + "」（" + Engine.humanDeadline(peer.deadline) + "）挤在一起");
-            }
-        }
-        return out;
+        return conflicts.cardLines(c);
     }
 
     private void loadTimetableAsync() {
@@ -2209,122 +1898,16 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
         shrink.start();
     }
 
-    /** 来源小图标：应用真实图标优先，取不到用品牌色文字徽标。 */
-    View sourceMark(Engine.Card c, float sizeDp) {
-        return sourceMark(sourceName(c), c.sourcePackageName(), sizeDp);
-    }
+    /** 来源小图标与品牌名解析：委托 HomeSourceStyle 实现。 */
+    View sourceMark(Engine.Card c, float sizeDp) { return HomeSourceStyle.sourceMark(this, c, sizeDp); }
 
-    /** 包名对应的来源名称（与卡片上的显示一致）。 */
-    String appNameFor(String pkg) {
-        Engine.Card probe = new Engine.Card();
-        probe.sourcePackage = pkg;
-        return sourceName(probe);
-    }
+    String appNameFor(String pkg) { return HomeSourceStyle.appNameFor(pkg); }
 
-    View sourceMark(String name, String pkg, float sizeDp) {
-        pkg = pkg == null ? "" : pkg.trim();
-        int size = dp(this, sizeDp);
-        Drawable icon = sourceIcon(pkg);
-        if (icon != null) {
-            ImageView image = new ImageView(this);
-            image.setImageDrawable(icon);
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            image.setBackground(Ui.round(this, Ui.CARD, 4));
-            image.setClipToOutline(true);
-            image.setLayoutParams(new LinearLayout.LayoutParams(size, size));
-            return image;
-        }
-        TextView badge = new TextView(this);
-        badge.setText(sourceBadge(name, pkg));
-        badge.setTextSize(sizeDp * 0.55f);
-        badge.setTypeface(Typeface.DEFAULT_BOLD);
-        badge.setTextColor(Color.WHITE);
-        badge.setGravity(Gravity.CENTER);
-        badge.setIncludeFontPadding(false);
-        badge.setBackground(Ui.round(this, sourceBadgeColor(name, pkg), 4));
-        badge.setLayoutParams(new LinearLayout.LayoutParams(size, size));
-        return badge;
-    }
+    View sourceMark(String name, String pkg, float sizeDp) { return HomeSourceStyle.sourceMark(this, name, pkg, sizeDp); }
 
-    /**
-     * 来源应用名：只信引擎/main 侧给出的真实名称，空值统一显示「来源待确认」，
-     * 不按包名猜应用名，避免把系统通知误标成某个具体平台。
-     */
-    /** “来源 · 群 · 发送者”：空的和与前面重复的跳过（教务系统卡三处都是“教务系统”）。 */
-    static String joinDistinct(String... parts) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        for (String p : parts) {
-            if (p == null || p.trim().isEmpty()) continue;
-            if (!out.contains(p.trim())) out.add(p.trim());
-        }
-        return TextUtils.join(" · ", out);
-    }
+    static String joinDistinct(String... parts) { return HomeSourceStyle.joinDistinct(parts); }
 
-    String sourceName(Engine.Card c) {
-        String name = c.sourceAppName();
-        return TextUtils.isEmpty(name) || name.trim().isEmpty() ? "来源待确认" : name.trim();
-    }
-
-    /**
-     * 图标读取：成功只缓存 ConstantState，每张卡各自 newDrawable().mutate()；
-     * 取不到图标或包名无效也记入 miss，后续 render 不再重复查询 PackageManager。
-     */
-    Drawable sourceIcon(String pkg) {
-        if (TextUtils.isEmpty(pkg)) return null;
-        Drawable.ConstantState state = sourceIconCache.get(pkg);
-        if (state == null && !sourceIconMiss.contains(pkg)) {
-            try {
-                Drawable appIcon = getPackageManager().getApplicationIcon(pkg);
-                state = appIcon == null ? null : appIcon.getConstantState();
-            } catch (Exception ignored) {
-                state = null;
-            }
-            if (state == null) {
-                sourceIconMiss.add(pkg);
-                return null;
-            }
-            sourceIconCache.put(pkg, state);
-        }
-        if (state == null) return null;
-        try {
-            Drawable drawable = state.newDrawable(getResources());
-            return drawable == null ? null : drawable.mutate();
-        } catch (Exception ignored) {
-            // 缓存里的 ConstantState 失效时清掉并记 miss，下一轮不再反复失败。
-            sourceIconCache.remove(pkg);
-            sourceIconMiss.add(pkg);
-            return null;
-        }
-    }
-
-    /** 图标不可用时的文字徽标：微信/QQ/飞书/钉钉/TIM 用各自品牌字，其余取名称首字。 */
-    String sourceBadge(String name, String pkg) {
-        String key = (name + " " + pkg).toLowerCase(Locale.ROOT);
-        if (key.contains("微信") || key.contains("wechat") || key.contains("com.tencent.mm")) return "微";
-        if (key.contains("飞书") || key.contains("lark") || key.contains("feishu")) return "飞";
-        if (key.contains("钉钉") || key.contains("dingtalk") || key.contains("rimet")) return "钉";
-        if (key.contains("tim") || key.contains("com.tencent.tim")) return "T";
-        if (key.contains("qq") || key.contains("com.tencent.mobileqq")) return "Q";
-        if (key.contains("学习通") || key.contains("chaoxing")) return "学";
-        if (key.contains("知到") || key.contains("wisdomtree")) return "知";
-        if (key.contains("雨课堂") || key.contains("xuetangx")) return "雨";
-        String trimmed = name == null ? "" : name.trim();
-        return trimmed.isEmpty() ? "源" : trimmed.substring(0, 1);
-    }
-
-    /** 徽标品牌色：只管图标缺失时的辨识度，不参与正文配色。 */
-    int sourceBadgeColor(String name, String pkg) {
-        String key = (name + " " + pkg).toLowerCase(Locale.ROOT);
-        if (key.contains("微信") || key.contains("wechat") || key.contains("com.tencent.mm")) return Ui.GREEN;
-        if (key.contains("飞书") || key.contains("lark") || key.contains("feishu")) return Color.parseColor("#5B5BD6");
-        if (key.contains("钉钉") || key.contains("dingtalk") || key.contains("rimet")) return Color.parseColor("#2E7CF6");
-        if (key.contains("tim") || key.contains("com.tencent.tim")) return Color.parseColor("#0FA9C9");
-        if (key.contains("qq") || key.contains("com.tencent.mobileqq")) return Color.parseColor("#2B7DE9");
-        if (key.contains("学习通") || key.contains("chaoxing")) return Color.parseColor("#E8452C");
-        if (key.contains("知到") || key.contains("wisdomtree")) return Color.parseColor("#1A9E6A");
-        if (key.contains("雨课堂") || key.contains("xuetangx")) return Color.parseColor("#2F6BFF");
-        return Ui.BLUE;
-    }
+    String sourceName(Engine.Card c) { return HomeSourceStyle.sourceName(c); }
 
     /** 卡片详情与来源溯源：委托 HomeCardSheets 构建。 */
     void showSource(Engine.Card c) { HomeCardSheets.showSource(this, c); }

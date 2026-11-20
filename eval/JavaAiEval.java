@@ -176,6 +176,13 @@ public final class JavaAiEval {
         }
         out.put("escalations", escArr);
         out.put("hybrid_batches", buildBatches(st.escalations, st.engine.effectiveProfile(), AiClient.JUDGE_SYSTEM, true));
+        // v0.86 端侧非对称权限护栏：本机小模型只接收已有待确认卡（cardId != null）进行保守补全，跳过未出卡复判
+        List<Engine.Escalation> localGuarded = new ArrayList<>();
+        for (Engine.Escalation e : st.escalations) {
+            if (e.cardId != null) localGuarded.add(e);
+        }
+        out.put("n_local_guarded_escalations", localGuarded.size());
+        out.put("hybrid_local_guarded_batches", buildBatches(localGuarded, st.engine.effectiveProfile(), AiClient.JUDGE_SYSTEM, true));
 
         // 构造纯大模型直抽批次（100 条全送，不经过本机筛选，不泄露 local_guess）
         List<Engine.Escalation> allDirect = new ArrayList<>();
@@ -193,9 +200,13 @@ public final class JavaAiEval {
         Files.writeString(outPath, out.toString(2) + "\n", StandardCharsets.UTF_8);
     }
 
-    private static void doApply(Path modelPath, Path oodPath, Path respPath, Path outPath) throws Exception {
+    private static void doApply(Path modelPath, Path oodPath, Path respPath, Path outPath, boolean localGuarded) throws Exception {
         List<Row> rows = loadRows(oodPath);
         RunState st = runLocal(modelPath, rows);
+        List<Engine.Escalation> targets = new ArrayList<>();
+        for (Engine.Escalation e : st.escalations) {
+            if (!localGuarded || e.cardId != null) targets.add(e);
+        }
         JSONObject respObj = new JSONObject(Files.readString(respPath, StandardCharsets.UTF_8));
         JSONArray batchOutputs = respObj.getJSONArray("batch_outputs");
 
@@ -213,9 +224,9 @@ public final class JavaAiEval {
         }
 
         int batchIdx = 0;
-        for (int start = 0; start < st.escalations.size(); start += step, batchIdx++) {
-            int end = Math.min(st.escalations.size(), start + step);
-            List<Engine.Escalation> sub = st.escalations.subList(start, end);
+        for (int start = 0; start < targets.size(); start += step, batchIdx++) {
+            int end = Math.min(targets.size(), start + step);
+            List<Engine.Escalation> sub = targets.subList(start, end);
             long batchNow = sub.get(sub.size() - 1).msg.ts;
             Map<String, Engine.Escalation> byId = new HashMap<>();
             AiClient.buildJudgeRequest(sub, st.engine.effectiveProfile(), true, batchNow, byId);
@@ -229,7 +240,7 @@ public final class JavaAiEval {
                 jsonValidBatches++;
                 JSONArray arr = parsed.optJSONArray("items");
                 if (arr != null) rawItemsReturned += arr.length();
-                verdicts = AiClient.parseVerdicts(parsed, byId);
+                verdicts = AiClient.parseVerdicts(parsed, byId, localGuarded);
                 parsedVerdicts += verdicts.size();
             } catch (Exception ex) {
                 err = ex.getClass().getSimpleName() + ": " + ex.getMessage();
@@ -282,7 +293,8 @@ public final class JavaAiEval {
 
         JSONObject out = new JSONObject();
         out.put("total_batches", batchIdx);
-        out.put("total_escalations", st.escalations.size());
+        out.put("total_escalations", targets.size());
+        out.put("local_guarded", localGuarded);
         out.put("json_valid_batches", jsonValidBatches);
         out.put("raw_items_returned", rawItemsReturned);
         out.put("parsed_verdicts", parsedVerdicts);
@@ -299,7 +311,8 @@ public final class JavaAiEval {
         if ("export".equals(mode)) {
             doExport(Paths.get(args[1]), Paths.get(args[2]), Paths.get(args[3]));
         } else if ("apply".equals(mode)) {
-            doApply(Paths.get(args[1]), Paths.get(args[2]), Paths.get(args[3]), Paths.get(args[4]));
+            boolean guarded = args.length > 5 && "local_guarded".equals(args[5]);
+            doApply(Paths.get(args[1]), Paths.get(args[2]), Paths.get(args[3]), Paths.get(args[4]), guarded);
         } else {
             throw new IllegalArgumentException("Unknown mode: " + mode);
         }
