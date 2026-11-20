@@ -1,0 +1,2167 @@
+{
+  "dataset": {
+    "path": "eval/strict_ood.jsonl",
+    "total": 100,
+    "action_todo_exam": 50,
+    "jielong": 10,
+    "negatives": 40,
+    "java_escalations": 19,
+    "batch_size": 3
+  },
+  "escalations": [
+    {
+      "reason": "low_conf",
+      "prob": 0.8,
+      "sender": "组长-林晓",
+      "group_name": "软件工程大作业群",
+      "index": 0,
+      "source_id": "ood_006",
+      "label": "todo",
+      "text": "@李承宇 下周一晚上20:00前把需求文档和原型图汇总到QQ群文件",
+      "card_id": "c3",
+      "ts": "2026-10-14T10:10"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "班长陈宇",
+      "group_name": "计科2301班群",
+      "index": 1,
+      "source_id": "ood_019",
+      "label": "todo",
+      "text": "今晚 23 点前还没交班费的抓紧微信转我",
+      "card_id": "c15",
+      "ts": "2026-10-14T10:42"
+    },
+    {
+      "reason": "low_conf",
+      "prob": 0.45831752072364035,
+      "sender": "组长-林晓",
+      "group_name": "软件工程大作业群",
+      "index": 2,
+      "source_id": "ood_028",
+      "label": "chatter",
+      "text": "承宇记得今晚 21:30 前把数据库接口文档发群里",
+      "card_id": "",
+      "ts": "2026-10-14T11:05"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "王老师",
+      "group_name": "数据库系统 2026秋",
+      "index": 3,
+      "source_id": "ood_041",
+      "label": "todo",
+      "text": "近期把上一次的实验数据再核对后交一下",
+      "card_id": "c36",
+      "ts": "2026-10-14T11:40"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "辅导员张老师",
+      "group_name": "计科2301班群",
+      "index": 4,
+      "source_id": "ood_042",
+      "label": "todo",
+      "text": "下月中旬左右提交毕业实习意向表，具体日期再通知",
+      "card_id": "c37",
+      "ts": "2026-10-14T11:42"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "赵老师",
+      "group_name": "操作系统课程群",
+      "index": 5,
+      "source_id": "ood_043",
+      "label": "todo",
+      "text": "这几天抽空把学习通里的教学评价问卷填一下",
+      "card_id": "c38",
+      "ts": "2026-10-14T11:45"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "周老师",
+      "group_name": "软件工程大作业群",
+      "index": 6,
+      "source_id": "ood_044",
+      "label": "todo",
+      "text": "有空的时候把小组分工确认单发我邮箱",
+      "card_id": "c39",
+      "ts": "2026-10-14T11:48"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "刘老师",
+      "group_name": "计算机网络 2026秋",
+      "index": 7,
+      "source_id": "ood_045",
+      "label": "todo",
+      "text": "尽快提交实验分组名单，不要拖太久",
+      "card_id": "c40",
+      "ts": "2026-10-14T11:50"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "班长陈宇",
+      "group_name": "计科2301班群",
+      "index": 8,
+      "source_id": "ood_046",
+      "label": "todo",
+      "text": "@所有人 抓紧把宿舍水电补助登记表填完发给生活委员",
+      "card_id": "c41",
+      "ts": "2026-10-14T11:52"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "王老师",
+      "group_name": "数据库系统 2026秋",
+      "index": 9,
+      "source_id": "ood_047",
+      "label": "todo",
+      "text": "等通知再交第二版课程设计文档",
+      "card_id": "c42",
+      "ts": "2026-10-14T11:55"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "赵老师",
+      "group_name": "操作系统课程群",
+      "index": 10,
+      "source_id": "ood_048",
+      "label": "todo",
+      "text": "下周某天课前抽时间交一下实验预习纸质稿",
+      "card_id": "c43",
+      "ts": "2026-10-14T11:58"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "刘老师",
+      "group_name": "计算机网络 2026秋",
+      "index": 11,
+      "source_id": "ood_049",
+      "label": "todo",
+      "text": "稍后请大家把个人实验环境截图传到群里",
+      "card_id": "c44",
+      "ts": "2026-10-14T12:00"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "团支书孙敏",
+      "group_name": "计科2301班群",
+      "index": 12,
+      "source_id": "ood_050",
+      "label": "todo",
+      "text": "这学期末前把入党积极分子思想汇报统一交到支书处",
+      "card_id": "c45",
+      "ts": "2026-10-14T12:02"
+    },
+    {
+      "reason": "low_conf",
+      "prob": 0.9648885870419138,
+      "sender": "陈宇",
+      "group_name": "数据库系统 2026秋",
+      "index": 13,
+      "source_id": "ood_076",
+      "label": "discussion",
+      "text": "这周第3题写起来真费劲，我准备下周再交一次补交版",
+      "card_id": "",
+      "ts": "2026-10-14T12:45"
+    },
+    {
+      "reason": "exam_unparsed",
+      "prob": 0.8959012060925473,
+      "sender": "刘老师",
+      "group_name": "计算机网络 2026秋",
+      "index": 14,
+      "source_id": "ood_083",
+      "label": "exam",
+      "text": "期中卷面成绩已发布，同学们可自行登录教务系统查询",
+      "card_id": "",
+      "ts": "2026-10-14T12:52"
+    },
+    {
+      "reason": "low_conf",
+      "prob": 0.5292731614749392,
+      "sender": "赵老师",
+      "group_name": "操作系统课程群",
+      "index": 15,
+      "source_id": "ood_084",
+      "label": "chatter",
+      "text": "下周上机课请自带笔记本电脑，机房投影坏了",
+      "card_id": "",
+      "ts": "2026-10-14T12:53"
+    },
+    {
+      "reason": "extract",
+      "prob": 0.8,
+      "sender": "王老师",
+      "group_name": "数据库系统 2026秋",
+      "index": 16,
+      "source_id": "ood_086",
+      "label": "todo",
+      "text": "本次作业优秀范例已上传至课程网站供参考",
+      "card_id": "c51",
+      "ts": "2026-10-14T12:55"
+    },
+    {
+      "reason": "exam_unparsed",
+      "prob": 0.99004073369004,
+      "sender": "刘老师",
+      "group_name": "计算机网络 2026秋",
+      "index": 17,
+      "source_id": "ood_089",
+      "label": "exam",
+      "text": "下周考试范围确定为教材第 1 到 5 章，不考第 6 章",
+      "card_id": "",
+      "ts": "2026-10-14T12:58"
+    },
+    {
+      "reason": "low_conf",
+      "prob": 0.5372378823286432,
+      "sender": "孙敏",
+      "group_name": "数据库系统 2026秋",
+      "index": 18,
+      "source_id": "ood_093",
+      "label": "discussion",
+      "text": "哈哈哈交了个寂寞",
+      "card_id": "",
+      "ts": "2026-10-14T13:02"
+    }
+  ],
+  "baselines": {
+    "keyword_only_python": {
+      "n_messages": 100,
+      "todo_tp": 35,
+      "todo_fp": 13,
+      "todo_fn": 15,
+      "recall": 0.7,
+      "precision": 0.7292,
+      "f1": 0.7143,
+      "time_acc": 0.65,
+      "time_hits": "26/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 0.8,
+      "jielong_precision": 0.5,
+      "escalated_to_llm": 0,
+      "local_only_pct": 1.0,
+      "noise_dropped": 3
+    },
+    "stage2_lr_only_python": {
+      "n_messages": 100,
+      "todo_tp": 10,
+      "todo_fp": 0,
+      "todo_fn": 40,
+      "recall": 0.2,
+      "precision": 1.0,
+      "f1": 0.3333,
+      "time_acc": 0.25,
+      "time_hits": "10/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 1.0,
+      "escalated_to_llm": 0,
+      "local_only_pct": 1.0,
+      "noise_dropped": 3
+    },
+    "apk_java_local_only": {
+      "n_messages": 100,
+      "todo_tp": 47,
+      "todo_fp": 1,
+      "todo_fn": 3,
+      "recall": 0.94,
+      "precision": 0.9792,
+      "f1": 0.9592,
+      "time_acc": 0.9,
+      "time_hits": "36/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 1.0,
+      "escalated_to_llm": 19,
+      "local_only_pct": 0.81,
+      "noise_dropped": 3,
+      "llm_batches": 0,
+      "llm_messages": 0,
+      "total_tokens": 0,
+      "desktop_elapsed_s": 0.0
+    },
+    "apk_java_plus_1.5b_gbnf": {
+      "n_messages": 100,
+      "todo_tp": 48,
+      "todo_fp": 6,
+      "todo_fn": 2,
+      "recall": 0.96,
+      "precision": 0.8889,
+      "f1": 0.9231,
+      "time_acc": 0.9,
+      "time_hits": "36/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 1.0,
+      "escalated_to_llm": 19,
+      "local_only_pct": 0.81,
+      "llm_batches": 7,
+      "llm_messages": 19,
+      "json_valid_batches": "7/7",
+      "parsed_verdicts": "19/19",
+      "applied_verdicts": 15,
+      "parse_errors": [],
+      "desktop_elapsed_s": 36.962,
+      "prompt_tokens": 6424,
+      "completion_tokens": 2038,
+      "total_tokens": 8462,
+      "trace": [
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": false,
+          "verdict_note": "@李承宇 下周一晚上20:00前把需求文档和原型图汇总到QQ",
+          "has_card_after": true,
+          "source_id": "ood_006",
+          "after_deadline": "2026-10-19T20:00",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "今晚 23 点前还没交班费的抓紧微信转我",
+          "has_card_after": true,
+          "source_id": "ood_019",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "@李承宇 下周一晚上20:00前把需求文档和原型图汇总到QQ",
+          "has_card_after": true,
+          "source_id": "ood_028",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "实验报告需在11月15日前提交，地点在教学西楼B301。",
+          "has_card_after": true,
+          "source_id": "ood_041",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "毕业实习意向表需在下月中旬左右提交，具体日期再通知。",
+          "has_card_after": true,
+          "source_id": "ood_042",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "教学评价问卷需在这几天抽空填一下。",
+          "has_card_after": true,
+          "source_id": "ood_043",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "软件工程课程设计答辩，地点三教 305，携带纸质报告。",
+          "has_card_after": true,
+          "source_id": "ood_044",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "计算机网络上机机考安排在 10 月 29 日 19:00，带",
+          "has_card_after": true,
+          "source_id": "ood_045",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "宿舍水电补助登记表填完发给生活委员。",
+          "has_card_after": true,
+          "source_id": "ood_046",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "数据库系统期中考试定在 11 月 12 日 09:00，地点",
+          "has_card_after": true,
+          "source_id": "ood_047",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "下周某天课前抽时间交一下实验预习纸质稿",
+          "has_card_after": true,
+          "source_id": "ood_048",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "稍后请大家把个人实验环境截图传到群里",
+          "has_card_after": true,
+          "source_id": "ood_049",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "本周三，辅导员张老师要求提交入党积极分子思想汇报，具体截止日",
+          "has_card_after": true,
+          "source_id": "ood_050",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "周三，数据库系统课程要求交实验报告，具体截止日",
+          "has_card_after": true,
+          "source_id": "ood_076",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "exam",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "周三，计算机网络课程要求交期中卷面成绩，具体截止日",
+          "has_card_after": true,
+          "source_id": "ood_083",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "已知本周第3题写起来真费劲，需补交版。",
+          "has_card_after": true,
+          "source_id": "ood_084",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "已知李承宇明天上午交。",
+          "has_card_after": true,
+          "source_id": "ood_086",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "exam",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "已知刘老师期中卷面成绩已发布。",
+          "has_card_after": true,
+          "source_id": "ood_089",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "讨论题，需在本周三前完成。",
+          "has_card_after": true,
+          "source_id": "ood_093",
+          "after_deadline": "",
+          "had_card_before": false
+        }
+      ],
+      "error_samples": {
+        "false_positives": [
+          {
+            "id": "ood_076",
+            "category": "neg_self_plan",
+            "text": "这周第3题写起来真费劲，我准备下周再交一次补交版"
+          },
+          {
+            "id": "ood_083",
+            "category": "neg_grade_published",
+            "text": "期中卷面成绩已发布，同学们可自行登录教务系统查询"
+          },
+          {
+            "id": "ood_084",
+            "category": "neg_bring_notice",
+            "text": "下周上机课请自带笔记本电脑，机房投影坏了"
+          },
+          {
+            "id": "ood_086",
+            "category": "neg_reference_uploaded",
+            "text": "本次作业优秀范例已上传至课程网站供参考"
+          },
+          {
+            "id": "ood_089",
+            "category": "neg_exam_scope",
+            "text": "下周考试范围确定为教材第 1 到 5 章，不考第 6 章"
+          },
+          {
+            "id": "ood_093",
+            "category": "neg_joke",
+            "text": "哈哈哈交了个寂寞"
+          }
+        ],
+        "false_negatives": [
+          {
+            "id": "ood_003",
+            "category": "numbered_todo_not_jielong",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "category": "month_end",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          }
+        ],
+        "time_errors": [
+          {
+            "id": "ood_003",
+            "expected": "2026-10-16T18:00:00",
+            "got": "",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "expected": "2026-10-31T23:59:00",
+            "got": "",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          },
+          {
+            "id": "ood_019",
+            "expected": "2026-10-14T23:00:00",
+            "got": "",
+            "text": "今晚 23 点前还没交班费的抓紧微信转我"
+          },
+          {
+            "id": "ood_028",
+            "expected": "2026-10-14T21:30:00",
+            "got": "",
+            "text": "承宇记得今晚 21:30 前把数据库接口文档发群里"
+          }
+        ]
+      }
+    },
+    "apk_java_plus_1.5b_no_gbnf": {
+      "n_messages": 100,
+      "todo_tp": 47,
+      "todo_fp": 2,
+      "todo_fn": 3,
+      "recall": 0.94,
+      "precision": 0.9592,
+      "f1": 0.9495,
+      "time_acc": 0.9,
+      "time_hits": "36/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 1.0,
+      "escalated_to_llm": 19,
+      "local_only_pct": 0.81,
+      "llm_batches": 7,
+      "llm_messages": 19,
+      "json_valid_batches": "7/7",
+      "parsed_verdicts": "1/19",
+      "applied_verdicts": 1,
+      "parse_errors": [
+        {
+          "batch_index": 0,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 1,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 2,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 3,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 4,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 5,
+          "error": "IOException: AI 返回格式不对"
+        }
+      ],
+      "desktop_elapsed_s": 14.996,
+      "prompt_tokens": 6424,
+      "completion_tokens": 2109,
+      "total_tokens": 8533,
+      "trace": [
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_006",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_019",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_028",
+          "had_card_before": false
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_041",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_042",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_043",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_044",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_045",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_046",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_047",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_048",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_049",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_050",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_076",
+          "had_card_before": false
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_083",
+          "had_card_before": false
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_084",
+          "had_card_before": false
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_086",
+          "had_card_before": true
+        },
+        {
+          "batch_error": "IOException: AI 返回格式不对",
+          "verdict_missing": true,
+          "source_id": "ood_089",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "讨论内容，无需提交",
+          "has_card_after": true,
+          "source_id": "ood_093",
+          "after_deadline": "",
+          "had_card_before": false
+        }
+      ],
+      "error_samples": {
+        "false_positives": [
+          {
+            "id": "ood_086",
+            "category": "neg_reference_uploaded",
+            "text": "本次作业优秀范例已上传至课程网站供参考"
+          },
+          {
+            "id": "ood_093",
+            "category": "neg_joke",
+            "text": "哈哈哈交了个寂寞"
+          }
+        ],
+        "false_negatives": [
+          {
+            "id": "ood_003",
+            "category": "numbered_todo_not_jielong",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "category": "month_end",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          },
+          {
+            "id": "ood_028",
+            "category": "alias_match",
+            "text": "承宇记得今晚 21:30 前把数据库接口文档发群里"
+          }
+        ],
+        "time_errors": [
+          {
+            "id": "ood_003",
+            "expected": "2026-10-16T18:00:00",
+            "got": "",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "expected": "2026-10-31T23:59:00",
+            "got": "",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          },
+          {
+            "id": "ood_019",
+            "expected": "2026-10-14T23:00:00",
+            "got": "",
+            "text": "今晚 23 点前还没交班费的抓紧微信转我"
+          },
+          {
+            "id": "ood_028",
+            "expected": "2026-10-14T21:30:00",
+            "got": "",
+            "text": "承宇记得今晚 21:30 前把数据库接口文档发群里"
+          }
+        ]
+      }
+    },
+    "direct_1.5b_gbnf": {
+      "n_messages": 100,
+      "todo_tp": 50,
+      "todo_fp": 40,
+      "todo_fn": 0,
+      "recall": 1.0,
+      "precision": 0.5556,
+      "f1": 0.7143,
+      "time_acc": 0.275,
+      "time_hits": "11/40",
+      "vague_restraint_acc": 0.0,
+      "vague_hits": "0/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 0.5,
+      "escalated_to_llm": 100,
+      "local_only_pct": 0.0,
+      "llm_batches": 34,
+      "llm_messages": 100,
+      "json_valid_batches": "34/34",
+      "valid_items": "100/100",
+      "missing_items": 0,
+      "desktop_elapsed_s": 82.135,
+      "prompt_tokens": 31657,
+      "completion_tokens": 10361,
+      "total_tokens": 42018,
+      "error_samples": {
+        "false_positives": [
+          {
+            "id": "ood_061",
+            "category": "neg_teacher_question",
+            "sender": "王老师",
+            "text": "大家实验报告周五能交齐吗？",
+            "note": "实验报告要求在周五前完成。"
+          },
+          {
+            "id": "ood_062",
+            "category": "neg_student_question",
+            "sender": "林晓",
+            "text": "请问明天的预习报告要交纸质版还是学习通提交啊？",
+            "note": "预习报告要求在明天前提交纸质版。"
+          },
+          {
+            "id": "ood_063",
+            "category": "neg_exam_question",
+            "sender": "赵磊",
+            "text": "有人知道周五随堂测验考第几章吗",
+            "note": "学委，评教截止是25号还是26号呀"
+          },
+          {
+            "id": "ood_064",
+            "category": "neg_deadline_question",
+            "sender": "周若曦",
+            "text": "学委，评教截止是 25 号还是 26 号呀",
+            "note": "下周答辩到底几点开始啊？"
+          },
+          {
+            "id": "ood_065",
+            "category": "neg_defense_question",
+            "sender": "孙敏",
+            "text": "下周答辩到底几点开始啊？",
+            "note": "下周答辩到底几点开始啊？"
+          },
+          {
+            "id": "ood_066",
+            "category": "neg_ask_done",
+            "sender": "陈宇",
+            "text": "你们都交实验报告了吗，格式模板在哪找的",
+            "note": "实验报告格式模板在哪找的"
+          },
+          {
+            "id": "ood_067",
+            "category": "neg_ask_ppt",
+            "sender": "赵磊",
+            "text": "王老师那个 PPT 谁存了发一份呗",
+            "note": "实验预习纸质稿要交纸质版还是学习通提交啊？"
+          },
+          {
+            "id": "ood_068",
+            "category": "neg_ask_modify",
+            "sender": "林晓",
+            "text": "四六级报名表填错还能修改不？",
+            "note": "四六级报名表填错还能修改不？"
+          },
+          {
+            "id": "ood_069",
+            "category": "neg_ask_cheat_sheet",
+            "sender": "周若曦",
+            "text": "下周考试允许带一张 A4 纸公式总结吗",
+            "note": "数据库实验报告交到学习通"
+          },
+          {
+            "id": "ood_070",
+            "category": "neg_ask_meetup",
+            "sender": "林晓",
+            "text": "明天要一起去研修室讨论不？",
+            "note": "讨论软件工程大作业"
+          },
+          {
+            "id": "ood_071",
+            "category": "neg_first_person_future",
+            "sender": "李承宇",
+            "text": "我明天上午就把数据库实验报告交到学习通",
+            "note": "数据库实验报告交到学习通"
+          },
+          {
+            "id": "ood_072",
+            "category": "neg_first_person_past",
+            "sender": "林晓",
+            "text": "我刚刚已经把预习报告传上去了",
+            "note": "预习报告需要纸质版，明天课前交。"
+          },
+          {
+            "id": "ood_073",
+            "category": "neg_first_person_an",
+            "sender": "赵磊",
+            "text": "俺今晚熬夜写完明天交",
+            "note": "实验预习需要在周五前完成。"
+          },
+          {
+            "id": "ood_074",
+            "category": "neg_yesterday_done",
+            "sender": "周若曦",
+            "text": "昨天就把体测报名交完了",
+            "note": "体测报名需要在昨天完成。"
+          },
+          {
+            "id": "ood_075",
+            "category": "neg_zanmen",
+            "sender": "孙敏",
+            "text": "咱们小组要不周四晚上先自己对一下代码",
+            "note": "补交数据库实验报告，截止周五12:45"
+          },
+          {
+            "id": "ood_076",
+            "category": "neg_self_plan",
+            "sender": "陈宇",
+            "text": "这周第3题写起来真费劲，我准备下周再交一次补交版",
+            "note": "补交数据库实验报告，截止周五12:45"
+          },
+          {
+            "id": "ood_077",
+            "category": "neg_self_cancel",
+            "sender": "林晓",
+            "text": "我把今晚点的外卖取消了",
+            "note": "补交数据库实验报告，截止周五12:45"
+          },
+          {
+            "id": "ood_078",
+            "category": "neg_past_exam_paper",
+            "sender": "赵磊",
+            "text": "求一份上学期的操作系统期末真题卷",
+            "note": "操作系统期末真题卷"
+          },
+          {
+            "id": "ood_079",
+            "category": "neg_course_grading",
+            "sender": "孙敏",
+            "text": "王老师给分怎么样啊，平时作业占比高吗",
+            "note": "给分情况和平时作业占比"
+          },
+          {
+            "id": "ood_080",
+            "category": "neg_self_comment",
+            "sender": "周若曦",
+            "text": "我看了下期中成绩还挺稳的",
+            "note": "期中成绩"
+          },
+          {
+            "id": "ood_081",
+            "category": "neg_class_cancelled",
+            "sender": "赵老师",
+            "text": "明天早八的操作系统实验课停上一次，大家不用去机房",
+            "note": "操作系统实验课停上一次，不用去机房"
+          },
+          {
+            "id": "ood_082",
+            "category": "neg_room_change",
+            "sender": "王老师",
+            "text": "调课通知：周五数据库系统课挪到教学西楼D202",
+            "note": "数据库系统课挪到教学西楼D202"
+          },
+          {
+            "id": "ood_083",
+            "category": "neg_grade_published",
+            "sender": "刘老师",
+            "text": "期中卷面成绩已发布，同学们可自行登录教务系统查询",
+            "note": "期中卷面成绩已发布，可自行登录教务系统查询"
+          },
+          {
+            "id": "ood_084",
+            "category": "neg_bring_notice",
+            "sender": "赵老师",
+            "text": "下周上机课请自带笔记本电脑，机房投影坏了",
+            "note": "数据库系统 2026秋"
+          },
+          {
+            "id": "ood_085",
+            "category": "neg_sports_day",
+            "sender": "辅导员张老师",
+            "text": "校历通知：下周三全校运动会停课一天",
+            "note": "计科2301班群"
+          },
+          {
+            "id": "ood_086",
+            "category": "neg_reference_uploaded",
+            "sender": "王老师",
+            "text": "本次作业优秀范例已上传至课程网站供参考",
+            "note": "数据库系统 2026秋"
+          },
+          {
+            "id": "ood_087",
+            "category": "neg_office_hours",
+            "sender": "周老师",
+            "text": "本周四答疑改到线上腾讯会议 888-999-111",
+            "note": "本周四答疑改到线上腾讯会议 888-999-111"
+          },
+          {
+            "id": "ood_088",
+            "category": "neg_meeting_cancelled",
+            "sender": "班长陈宇",
+            "text": "本周五班会取消，各自安排自习",
+            "note": "本周五班会取消，各自安排自习"
+          },
+          {
+            "id": "ood_089",
+            "category": "neg_exam_scope",
+            "sender": "刘老师",
+            "text": "下周考试范围确定为教材第 1 到 5 章，不考第 6 章",
+            "note": "下周考试范围确定为教材第 1 到 5 章，不考第 6 章"
+          },
+          {
+            "id": "ood_090",
+            "category": "neg_dorm_schedule",
+            "sender": "辅导员张老师",
+            "text": "下月开始宿舍执行冬季作息断电时间",
+            "note": "辅导员张老师通知下月开始宿舍执行冬季作息断电时间"
+          },
+          {
+            "id": "ood_091",
+            "category": "neg_ack",
+            "sender": "林晓",
+            "text": "收到",
+            "note": "收到辅导员张老师的通知"
+          },
+          {
+            "id": "ood_092",
+            "category": "neg_plus1",
+            "sender": "赵磊",
+            "text": "+1",
+            "note": "收到辅导员张老师的通知"
+          },
+          {
+            "id": "ood_093",
+            "category": "neg_joke",
+            "sender": "孙敏",
+            "text": "哈哈哈交了个寂寞",
+            "note": "实验报告截止时间明确为周三13:04"
+          },
+          {
+            "id": "ood_094",
+            "category": "neg_canteen",
+            "sender": "周若曦",
+            "text": "有人现在去一食堂吃面吗",
+            "note": "吃面活动未明确时间"
+          },
+          {
+            "id": "ood_095",
+            "category": "neg_complaining",
+            "sender": "林晓",
+            "text": "好家伙，这学期实验也太多了吧😂",
+            "note": "实验课活动未明确时间"
+          },
+          {
+            "id": "ood_096",
+            "category": "neg_thanks",
+            "sender": "陈宇",
+            "text": "好的谢谢老师",
+            "note": "提交数据库实验报告，图片为实验报告附件"
+          },
+          {
+            "id": "ood_097",
+            "category": "neg_media_noise",
+            "sender": "赵磊",
+            "text": "[图片]",
+            "note": "参加软件工程大作业群答疑改，会议号为888-999-111"
+          },
+          {
+            "id": "ood_098",
+            "category": "neg_recall",
+            "sender": "陈宇",
+            "text": "李四撤回了一条消息",
+            "note": "撤回一条消息，无具体时间"
+          },
+          {
+            "id": "ood_099",
+            "category": "neg_basketball",
+            "sender": "孙敏",
+            "text": "明天打球吗？缺两个人",
+            "note": "辅导员张老师通知，1月10日前提交寒假社会实践申报表。"
+          },
+          {
+            "id": "ood_100",
+            "category": "neg_at_me_chatter",
+            "sender": "周若曦",
+            "text": "@李承宇 你在图书馆几楼自习",
+            "note": "数据库系统2026秋课程通知，1月10日前提交数据库实验报告"
+          }
+        ],
+        "false_negatives": [],
+        "time_errors": [
+          {
+            "id": "ood_001",
+            "expected": "2026-10-15T20:30:00",
+            "got": "2026-10-15T18:00:00",
+            "text": "明晚八点半前把第三次实验报告传到学习通，超时系统自动关闭"
+          },
+          {
+            "id": "ood_002",
+            "expected": "2026-10-16T23:59:00",
+            "got": "2026-10-18T00:00:00",
+            "text": "实验报告要求2-3页，本周五前交到课程网站"
+          },
+          {
+            "id": "ood_003",
+            "expected": "2026-10-16T18:00:00",
+            "got": "2026-10-18T18:00:00",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_006",
+            "expected": "2026-10-19T20:00:00",
+            "got": "2026-10-21T20:00:00",
+            "text": "@李承宇 下周一晚上20:00前把需求文档和原型图汇总到QQ群文件"
+          },
+          {
+            "id": "ood_009",
+            "expected": "2026-10-14T16:30:00",
+            "got": "2026-10-14T14:00:00",
+            "text": "别忘了，今天下午四点半前提交抓包实验数据"
+          },
+          {
+            "id": "ood_010",
+            "expected": "2026-10-31T23:59:00",
+            "got": "2026-10-25T18:00:00",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          },
+          {
+            "id": "ood_011",
+            "expected": "2026-10-20T08:00:00",
+            "got": "2026-10-16T10:00:00",
+            "text": "第3组注意，下周二上课前交系统架构初稿"
+          },
+          {
+            "id": "ood_012",
+            "expected": "2026-11-02T22:00:00",
+            "got": "2026-10-15T12:00:00",
+            "text": "11 月 2 日 22:00 前提交进程调度实验代码到课程网站"
+          },
+          {
+            "id": "ood_013",
+            "expected": "2026-10-18T23:59:00",
+            "got": "2026-10-25T18:00:00",
+            "text": "计科2301的同学周日前填写四六级报名信息确认表"
+          },
+          {
+            "id": "ood_014",
+            "expected": "2026-10-15T12:30:00",
+            "got": "2026-10-15T12:00:00",
+            "text": "明天中午 12 点半前交数据库读书笔记电子版到邮箱"
+          },
+          {
+            "id": "ood_015",
+            "expected": "2026-10-18T23:59:00",
+            "got": "2026-10-30T12:00:00",
+            "text": "这周末前在学习通完成第二章在线习题"
+          },
+          {
+            "id": "ood_017",
+            "expected": "2026-10-16T19:30:00",
+            "got": "2026-10-30T19:30:00",
+            "text": "本周五 19 点 30 分前上传用户调研问卷数据"
+          },
+          {
+            "id": "ood_018",
+            "expected": "2026-10-23T18:00:00",
+            "got": "2026-10-15T18:00:00",
+            "text": "把内存管理实验报告交了，下周五 18 点前"
+          },
+          {
+            "id": "ood_020",
+            "expected": "2026-10-15T14:00:00",
+            "got": "2026-10-14T14:00:00",
+            "text": "20230137 及同组同学明天 14:00 前补交一下上机签到表"
+          },
+          {
+            "id": "ood_021",
+            "expected": "2026-10-22T14:30:00",
+            "got": "2026-10-15T12:00:00",
+            "text": "下周四下午两点半前上传路由协议仿真报告"
+          },
+          {
+            "id": "ood_022",
+            "expected": "2026-10-17T20:00:00",
+            "got": "2026-10-15T20:00:00",
+            "text": "周六 20:00 前提交第一次迭代测试报告到 Git 仓库"
+          },
+          {
+            "id": "ood_025",
+            "expected": "2026-11-15T23:59:00",
+            "got": "2026-11-15T00:00:00",
+            "text": "11 月 15 日前提交课程大作业选题说明到课程平台"
+          },
+          {
+            "id": "ood_026",
+            "expected": "2026-10-16T15:00:00",
+            "got": "2026-11-05T15:00:00",
+            "text": "@所有人 后天下午三点前完成校园跑补录申请表填报"
+          },
+          {
+            "id": "ood_027",
+            "expected": "2026-10-19T17:00:00",
+            "got": "2026-10-15T17:00:00",
+            "text": "各位同学，下周一 17 点前交一份 Wireshark 分析小结"
+          },
+          {
+            "id": "ood_029",
+            "expected": "2026-10-16T17:30:00",
+            "got": "2026-10-15T17:30:00",
+            "text": "周五下班 17:30 前未交体检回执的同学交到学工办"
+          },
+          {
+            "id": "ood_030",
+            "expected": "2026-10-15T19:00:00",
+            "got": "2026-10-15T11:15:00",
+            "text": "明天晚上七点前提交死锁实验总结，传到学习通作业区"
+          },
+          {
+            "id": "ood_031",
+            "expected": "2026-10-21T14:30:00",
+            "got": "2026-10-15T14:30:00",
+            "text": "@所有人 下周三 14:30 在教东A201 进行操作系统期中随堂测验，带学生证"
+          },
+          {
+            "id": "ood_033",
+            "expected": "2026-10-23T09:00:00",
+            "got": "2026-10-29T19:00:00",
+            "text": "下周五 09:00 软件工程课程设计答辩，地点三教 305，携带纸质报告"
+          },
+          {
+            "id": "ood_036",
+            "expected": "2026-10-16T10:10:00",
+            "got": "2026-10-08T08:30:00",
+            "text": "本周五 10:10 随堂小测验，地点不变（三教302），带黑笔"
+          },
+          {
+            "id": "ood_037",
+            "expected": "2027-01-08T08:30:00",
+            "got": "2026-10-08T08:30:00",
+            "text": "期末笔试时间为 1 月 8 日 08:30，教学东楼C102，携带身份证与学生证"
+          },
+          {
+            "id": "ood_038",
+            "expected": "2026-10-19T14:00:00",
+            "got": "2026-10-14T14:00:00",
+            "text": "下周一 14:00 无线网络专题答辩，三教 405，带上演示电脑"
+          },
+          {
+            "id": "ood_040",
+            "expected": "2026-10-22T18:30:00",
+            "got": "2026-10-24T18:30:00",
+            "text": "下周四 18:30 敏捷开发阶段性评审答辩，线上腾讯会议，提前十分钟测试麦"
+          },
+          {
+            "id": "ood_004",
+            "expected": "2027-01-10T23:59:00",
+            "got": "2026-12-20T10:00:00",
+            "text": "各位同学注意，1月10日前把寒假社会实践申报表交到辅导员邮箱"
+          },
+          {
+            "id": "ood_005",
+            "expected": "2026-12-21T08:00:00",
+            "got": "2026-12-20T10:05:00",
+            "text": "明早八点前签到并提交预习思考题，晚了不收"
+          }
+        ],
+        "vague_hallucinations": [
+          {
+            "id": "ood_041",
+            "got_deadline": "2026-11-12T09:00:00",
+            "text": "近期把上一次的实验数据再核对后交一下"
+          },
+          {
+            "id": "ood_042",
+            "got_deadline": "2026-11-01T17:30:00",
+            "text": "下月中旬左右提交毕业实习意向表，具体日期再通知"
+          },
+          {
+            "id": "ood_043",
+            "got_deadline": "2026-10-16T16:00:00",
+            "text": "这几天抽空把学习通里的教学评价问卷填一下"
+          },
+          {
+            "id": "ood_044",
+            "got_deadline": "2026-10-20T09:00:00",
+            "text": "有空的时候把小组分工确认单发我邮箱"
+          },
+          {
+            "id": "ood_045",
+            "got_deadline": "2026-10-29T19:00:00",
+            "text": "尽快提交实验分组名单，不要拖太久"
+          },
+          {
+            "id": "ood_046",
+            "got_deadline": "2026-10-25T16:00:00",
+            "text": "@所有人 抓紧把宿舍水电补助登记表填完发给生活委员"
+          },
+          {
+            "id": "ood_047",
+            "got_deadline": "2026-11-12T09:00:00",
+            "text": "等通知再交第二版课程设计文档"
+          },
+          {
+            "id": "ood_048",
+            "got_deadline": "2026-10-16T14:30:00",
+            "text": "下周某天课前抽时间交一下实验预习纸质稿"
+          },
+          {
+            "id": "ood_049",
+            "got_deadline": "2026-10-29T19:00:00",
+            "text": "稍后请大家把个人实验环境截图传到群里"
+          },
+          {
+            "id": "ood_050",
+            "got_deadline": "2026-10-24T09:30:00",
+            "text": "这学期末前把入党积极分子思想汇报统一交到支书处"
+          }
+        ]
+      }
+    },
+    "apk_java_plus_8b_gbnf": {
+      "n_messages": 100,
+      "todo_tp": 48,
+      "todo_fp": 3,
+      "todo_fn": 2,
+      "recall": 0.96,
+      "precision": 0.9412,
+      "f1": 0.9505,
+      "time_acc": 0.925,
+      "time_hits": "37/40",
+      "vague_restraint_acc": 1.0,
+      "vague_hits": "10/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 1.0,
+      "escalated_to_llm": 19,
+      "local_only_pct": 0.81,
+      "llm_batches": 7,
+      "llm_messages": 19,
+      "json_valid_batches": "7/7",
+      "parsed_verdicts": "19/19",
+      "applied_verdicts": 12,
+      "parse_errors": [],
+      "desktop_elapsed_s": 377.318,
+      "prompt_tokens": 6473,
+      "completion_tokens": 1583,
+      "total_tokens": 8056,
+      "trace": [
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.95,
+          "verdict_todo": true,
+          "after_needs_confirm": false,
+          "verdict_note": "@李承宇，需本人操作",
+          "has_card_after": true,
+          "source_id": "ood_006",
+          "after_deadline": "2026-10-19T20:00",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.95,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "@所有人，需本人操作",
+          "has_card_after": true,
+          "source_id": "ood_019",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "2026-10-14T21:30",
+          "verdict_time_sure": true,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.95,
+          "verdict_todo": true,
+          "after_needs_confirm": false,
+          "verdict_note": "@承宇，需本人操作",
+          "has_card_after": true,
+          "source_id": "ood_028",
+          "after_deadline": "2026-10-14T21:30",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "基于课程匹配",
+          "has_card_after": true,
+          "source_id": "ood_041",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.8,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "时间推测",
+          "has_card_after": true,
+          "source_id": "ood_042",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "基于课程匹配",
+          "has_card_after": true,
+          "source_id": "ood_043",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "无明确时间，推测为当天截止",
+          "has_card_after": true,
+          "source_id": "ood_044",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "无明确时间，推测为机考时间",
+          "has_card_after": true,
+          "source_id": "ood_045",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "明确时间，与班级相关",
+          "has_card_after": true,
+          "source_id": "ood_046",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "需等待通知提交",
+          "has_card_after": true,
+          "source_id": "ood_047",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "需抽空提交",
+          "has_card_after": true,
+          "source_id": "ood_048",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "需尽快上传",
+          "has_card_after": true,
+          "source_id": "ood_049",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "末前未明确具体日期",
+          "has_card_after": true,
+          "source_id": "ood_050",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.5,
+          "verdict_todo": false,
+          "after_needs_confirm": false,
+          "verdict_note": "讨论实验报告进度",
+          "has_card_after": false,
+          "source_id": "ood_076",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "exam",
+          "applied": false,
+          "verdict_conf": 0.8,
+          "verdict_todo": false,
+          "after_needs_confirm": false,
+          "verdict_note": "成绩发布，非考试通知",
+          "has_card_after": false,
+          "source_id": "ood_083",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "机房投影坏了，需自带设备",
+          "has_card_after": true,
+          "source_id": "ood_084",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": true,
+          "verdict_conf": 0.8,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "作业优秀范例供参考",
+          "has_card_after": true,
+          "source_id": "ood_086",
+          "after_deadline": "",
+          "had_card_before": true
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "exam",
+          "applied": true,
+          "verdict_conf": 0.9,
+          "verdict_todo": true,
+          "after_needs_confirm": true,
+          "verdict_note": "考试范围明确，需复习教材第1-5章",
+          "has_card_after": true,
+          "source_id": "ood_089",
+          "after_deadline": "",
+          "had_card_before": false
+        },
+        {
+          "verdict_deadline": "",
+          "verdict_time_sure": false,
+          "verdict_kind": "todo",
+          "applied": false,
+          "verdict_conf": 0.8,
+          "verdict_todo": false,
+          "after_needs_confirm": false,
+          "verdict_note": "纯聊天，无待办事项",
+          "has_card_after": false,
+          "source_id": "ood_093",
+          "after_deadline": "",
+          "had_card_before": false
+        }
+      ],
+      "error_samples": {
+        "false_positives": [
+          {
+            "id": "ood_084",
+            "category": "neg_bring_notice",
+            "text": "下周上机课请自带笔记本电脑，机房投影坏了"
+          },
+          {
+            "id": "ood_086",
+            "category": "neg_reference_uploaded",
+            "text": "本次作业优秀范例已上传至课程网站供参考"
+          },
+          {
+            "id": "ood_089",
+            "category": "neg_exam_scope",
+            "text": "下周考试范围确定为教材第 1 到 5 章，不考第 6 章"
+          }
+        ],
+        "false_negatives": [
+          {
+            "id": "ood_003",
+            "category": "numbered_todo_not_jielong",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "category": "month_end",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          }
+        ],
+        "time_errors": [
+          {
+            "id": "ood_003",
+            "expected": "2026-10-16T18:00:00",
+            "got": "",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_010",
+            "expected": "2026-10-31T23:59:00",
+            "got": "",
+            "text": "@所有人 月底前把青年大学习截图发到QQ群相册里"
+          },
+          {
+            "id": "ood_019",
+            "expected": "2026-10-14T23:00:00",
+            "got": "",
+            "text": "今晚 23 点前还没交班费的抓紧微信转我"
+          }
+        ]
+      }
+    },
+    "direct_8b_gbnf": {
+      "n_messages": 100,
+      "todo_tp": 49,
+      "todo_fp": 10,
+      "todo_fn": 1,
+      "recall": 0.98,
+      "precision": 0.8305,
+      "f1": 0.8991,
+      "time_acc": 0.425,
+      "time_hits": "17/40",
+      "vague_restraint_acc": 0.5,
+      "vague_hits": "5/10",
+      "jielong_recall": 1.0,
+      "jielong_precision": 0.625,
+      "escalated_to_llm": 100,
+      "local_only_pct": 0.0,
+      "llm_batches": 34,
+      "llm_messages": 100,
+      "json_valid_batches": "34/34",
+      "valid_items": "100/100",
+      "missing_items": 0,
+      "desktop_elapsed_s": 1606.244,
+      "prompt_tokens": 31895,
+      "completion_tokens": 7686,
+      "total_tokens": 39581,
+      "error_samples": {
+        "false_positives": [
+          {
+            "id": "ood_061",
+            "category": "neg_teacher_question",
+            "sender": "王老师",
+            "text": "大家实验报告周五能交齐吗？",
+            "note": "未明确提交方式，但有时间要求"
+          },
+          {
+            "id": "ood_062",
+            "category": "neg_student_question",
+            "sender": "林晓",
+            "text": "请问明天的预习报告要交纸质版还是学习通提交啊？",
+            "note": "询问提交方式，但有时间要求"
+          },
+          {
+            "id": "ood_064",
+            "category": "neg_deadline_question",
+            "sender": "周若曦",
+            "text": "学委，评教截止是 25 号还是 26 号呀",
+            "note": "未明确提交方式"
+          },
+          {
+            "id": "ood_065",
+            "category": "neg_defense_question",
+            "sender": "孙敏",
+            "text": "下周答辩到底几点开始啊？",
+            "note": "未明确具体时间"
+          },
+          {
+            "id": "ood_066",
+            "category": "neg_ask_done",
+            "sender": "陈宇",
+            "text": "你们都交实验报告了吗，格式模板在哪找的",
+            "note": "王老师提问，需提交实验报告"
+          },
+          {
+            "id": "ood_071",
+            "category": "neg_first_person_future",
+            "sender": "李承宇",
+            "text": "我明天上午就把数据库实验报告交到学习通",
+            "note": "明确提交时间和渠道"
+          },
+          {
+            "id": "ood_073",
+            "category": "neg_first_person_an",
+            "sender": "赵磊",
+            "text": "俺今晚熬夜写完明天交",
+            "note": "周五随堂测验，需确认章节"
+          },
+          {
+            "id": "ood_076",
+            "category": "neg_self_plan",
+            "sender": "陈宇",
+            "text": "这周第3题写起来真费劲，我准备下周再交一次补交版",
+            "note": "补交实验报告"
+          },
+          {
+            "id": "ood_082",
+            "category": "neg_room_change",
+            "sender": "王老师",
+            "text": "调课通知：周五数据库系统课挪到教学西楼D202",
+            "note": "明确提到提交到学习通"
+          },
+          {
+            "id": "ood_095",
+            "category": "neg_complaining",
+            "sender": "林晓",
+            "text": "好家伙，这学期实验也太多了吧😂",
+            "note": "实验课停上通知"
+          }
+        ],
+        "false_negatives": [
+          {
+            "id": "ood_042",
+            "category": "vague_mid_month",
+            "sender": "辅导员张老师",
+            "text": "下月中旬左右提交毕业实习意向表，具体日期再通知",
+            "note": "时间未明确，需等待通知"
+          }
+        ],
+        "time_errors": [
+          {
+            "id": "ood_001",
+            "expected": "2026-10-15T20:30:00",
+            "got": "2026-10-15T20:59:00",
+            "text": "明晚八点半前把第三次实验报告传到学习通，超时系统自动关闭"
+          },
+          {
+            "id": "ood_002",
+            "expected": "2026-10-16T23:59:00",
+            "got": "2026-10-21T23:59:00",
+            "text": "实验报告要求2-3页，本周五前交到课程网站"
+          },
+          {
+            "id": "ood_003",
+            "expected": "2026-10-16T18:00:00",
+            "got": "2026-10-21T18:00:00",
+            "text": "本周作业：\n1. 完成习题 3.1\n2. 预习第 4 章\n3. 周五 18 点前提交"
+          },
+          {
+            "id": "ood_006",
+            "expected": "2026-10-19T20:00:00",
+            "got": "2026-10-18T20:00:00",
+            "text": "@李承宇 下周一晚上20:00前把需求文档和原型图汇总到QQ群文件"
+          },
+          {
+            "id": "ood_008",
+            "expected": "2026-10-21T12:00:00",
+            "got": "2026-10-19T12:00:00",
+            "text": "下周三 12:00 之前交 ER 图设计作业到雨课堂"
+          },
+          {
+            "id": "ood_011",
+            "expected": "2026-10-20T08:00:00",
+            "got": "2026-10-25T23:59:00",
+            "text": "第3组注意，下周二上课前交系统架构初稿"
+          },
+          {
+            "id": "ood_013",
+            "expected": "2026-10-18T23:59:00",
+            "got": "2026-10-25T23:59:00",
+            "text": "计科2301的同学周日前填写四六级报名信息确认表"
+          },
+          {
+            "id": "ood_015",
+            "expected": "2026-10-18T23:59:00",
+            "got": "2026-10-16T23:59:00",
+            "text": "这周末前在学习通完成第二章在线习题"
+          },
+          {
+            "id": "ood_017",
+            "expected": "2026-10-16T19:30:00",
+            "got": "2026-10-15T19:30:00",
+            "text": "本周五 19 点 30 分前上传用户调研问卷数据"
+          },
+          {
+            "id": "ood_018",
+            "expected": "2026-10-23T18:00:00",
+            "got": "2026-10-20T18:00:00",
+            "text": "把内存管理实验报告交了，下周五 18 点前"
+          },
+          {
+            "id": "ood_019",
+            "expected": "2026-10-14T23:00:00",
+            "got": "2026-10-14T23:59:00",
+            "text": "今晚 23 点前还没交班费的抓紧微信转我"
+          },
+          {
+            "id": "ood_021",
+            "expected": "2026-10-22T14:30:00",
+            "got": "2026-10-20T15:30:00",
+            "text": "下周四下午两点半前上传路由协议仿真报告"
+          },
+          {
+            "id": "ood_022",
+            "expected": "2026-10-17T20:00:00",
+            "got": "2026-10-22T20:00:00",
+            "text": "周六 20:00 前提交第一次迭代测试报告到 Git 仓库"
+          },
+          {
+            "id": "ood_027",
+            "expected": "2026-10-19T17:00:00",
+            "got": "2026-10-18T17:00:00",
+            "text": "各位同学，下周一 17 点前交一份 Wireshark 分析小结"
+          },
+          {
+            "id": "ood_029",
+            "expected": "2026-10-16T17:30:00",
+            "got": "2026-10-20T17:30:00",
+            "text": "周五下班 17:30 前未交体检回执的同学交到学工办"
+          },
+          {
+            "id": "ood_030",
+            "expected": "2026-10-15T19:00:00",
+            "got": "2026-10-15T19:59:00",
+            "text": "明天晚上七点前提交死锁实验总结，传到学习通作业区"
+          },
+          {
+            "id": "ood_031",
+            "expected": "2026-10-21T14:30:00",
+            "got": "2026-10-19T14:30:00",
+            "text": "@所有人 下周三 14:30 在教东A201 进行操作系统期中随堂测验，带学生证"
+          },
+          {
+            "id": "ood_033",
+            "expected": "2026-10-23T09:00:00",
+            "got": "2026-10-21T09:00:00",
+            "text": "下周五 09:00 软件工程课程设计答辩，地点三教 305，携带纸质报告"
+          },
+          {
+            "id": "ood_036",
+            "expected": "2026-10-16T10:10:00",
+            "got": "2026-11-12T09:00:00",
+            "text": "本周五 10:10 随堂小测验，地点不变（三教302），带黑笔"
+          },
+          {
+            "id": "ood_037",
+            "expected": "2027-01-08T08:30:00",
+            "got": "2026-01-08T08:30:00",
+            "text": "期末笔试时间为 1 月 8 日 08:30，教学东楼C102，携带身份证与学生证"
+          },
+          {
+            "id": "ood_038",
+            "expected": "2026-10-19T14:00:00",
+            "got": "2026-10-29T19:00:00",
+            "text": "下周一 14:00 无线网络专题答辩，三教 405，带上演示电脑"
+          },
+          {
+            "id": "ood_040",
+            "expected": "2026-10-22T18:30:00",
+            "got": "2026-10-27T18:30:00",
+            "text": "下周四 18:30 敏捷开发阶段性评审答辩，线上腾讯会议，提前十分钟测试麦"
+          },
+          {
+            "id": "ood_005",
+            "expected": "2026-12-21T08:00:00",
+            "got": "2026-12-20T08:00:00",
+            "text": "明早八点前签到并提交预习思考题，晚了不收"
+          }
+        ],
+        "vague_hallucinations": [
+          {
+            "id": "ood_041",
+            "got_deadline": "2026-11-12T09:00:00",
+            "text": "近期把上一次的实验数据再核对后交一下"
+          },
+          {
+            "id": "ood_044",
+            "got_deadline": "2026-10-15T19:30:00",
+            "text": "有空的时候把小组分工确认单发我邮箱"
+          },
+          {
+            "id": "ood_046",
+            "got_deadline": "2026-10-15T16:00:00",
+            "text": "@所有人 抓紧把宿舍水电补助登记表填完发给生活委员"
+          },
+          {
+            "id": "ood_047",
+            "got_deadline": "2026-11-12T09:00:00",
+            "text": "等通知再交第二版课程设计文档"
+          },
+          {
+            "id": "ood_049",
+            "got_deadline": "2026-10-29T19:00:00",
+            "text": "稍后请大家把个人实验环境截图传到群里"
+          }
+        ]
+      }
+    }
+  },
+  "gbnf_ablation": {
+    "small_1.5b_without_gbnf": {
+      "use_grammar": false,
+      "batches": 7,
+      "escalations": 19,
+      "json_valid_batches": 7,
+      "json_valid_rate": 1.0,
+      "raw_items_returned": 1,
+      "parsed_verdicts": 1,
+      "valid_verdict_rate": 0.0526,
+      "applied_verdicts": 1,
+      "parse_errors": [
+        {
+          "batch_index": 0,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 1,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 2,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 3,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 4,
+          "error": "IOException: AI 返回格式不对"
+        },
+        {
+          "batch_index": 5,
+          "error": "IOException: AI 返回格式不对"
+        }
+      ],
+      "desktop_elapsed_s": 14.996,
+      "prompt_tokens": 6424,
+      "completion_tokens": 2109
+    },
+    "small_1.5b_with_gbnf": {
+      "use_grammar": true,
+      "batches": 7,
+      "escalations": 19,
+      "json_valid_batches": 7,
+      "json_valid_rate": 1.0,
+      "raw_items_returned": 19,
+      "parsed_verdicts": 19,
+      "valid_verdict_rate": 1.0,
+      "applied_verdicts": 15,
+      "parse_errors": [],
+      "desktop_elapsed_s": 36.962,
+      "prompt_tokens": 6424,
+      "completion_tokens": 2038
+    },
+    "large_8b_without_gbnf": {
+      "use_grammar": false,
+      "batches": 7,
+      "escalations": 19,
+      "json_valid_batches": 7,
+      "json_valid_rate": 1.0,
+      "raw_items_returned": 16,
+      "parsed_verdicts": 16,
+      "valid_verdict_rate": 0.8421,
+      "applied_verdicts": 9,
+      "parse_errors": [
+        {
+          "batch_index": 1,
+          "error": "IOException: AI 返回格式不对"
+        }
+      ],
+      "desktop_elapsed_s": 426.907,
+      "prompt_tokens": 6473,
+      "completion_tokens": 1857
+    },
+    "large_8b_with_gbnf": {
+      "use_grammar": true,
+      "batches": 7,
+      "escalations": 19,
+      "json_valid_batches": 7,
+      "json_valid_rate": 1.0,
+      "raw_items_returned": 19,
+      "parsed_verdicts": 19,
+      "valid_verdict_rate": 1.0,
+      "applied_verdicts": 12,
+      "parse_errors": [],
+      "desktop_elapsed_s": 377.318,
+      "prompt_tokens": 6473,
+      "completion_tokens": 1583
+    }
+  },
+  "models": {
+    "small": {
+      "name": "Qwen2.5-1.5B-Instruct (Q4_K_M)",
+      "size_mb": 1065.6,
+      "server_load_s": 1.564
+    },
+    "large": {
+      "name": "Qwen3-8B (Q4_K_M)",
+      "size_mb": 4983.3,
+      "server_load_s": 3.323,
+      "no_think": true
+    }
+  }
+}
