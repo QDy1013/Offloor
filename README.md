@@ -123,7 +123,7 @@ flowchart TD
 
 ### 4. 工程回归与可靠性校验
 
-- **核心与适配器全量校验**（`python eval/run_checks.py --android-jar ... --json-jar ...`）：**95 组检查、0 组失败**（免 Android SDK 运行 78 组；传入 jar 跑满 95 组，覆盖 `EngineTest`、`Step3~Step65` Java 引擎及跨源学习闭环/课表/校园/AI 适配器测试，以及时间解析、撤回规则、考试边界、去重排序、`test_strict_benchmark` 等 16 项 Python 脚本）。
+- **核心与适配器全量校验**（`python eval/run_checks.py --android-jar ... --json-jar ...`）：**98 组检查、0 组失败**（免 Android SDK 运行 80 组；传入 jar 跑满 98 组，覆盖 `EngineTest`、`Step3~Step67` Java 引擎及跨源学习闭环/课表/校园/校车车票/AI 适配器测试，以及时间解析、撤回规则、考试边界、去重排序、`test_strict_benchmark` 等 16 项 Python 脚本）。
 - **页面与校园服务契约回归**（`python eval/run_browser_checks.py`）：**19 组检查、0 组失败**（覆盖首页视觉 `test_home_visual.cjs`、用户须知 `test_home_usage_notice.cjs`、校园网/一卡通余额同步 `test_campus_balance_sync.cjs`、课表导入、电费/空教室、校车与图书馆研修室等 19 项浏览器/节点脚本）。
 - **状态持久性、有状态序列与演示回放**：`python eval/run_reliability.py`（20/20 边界分支全过）、`python eval/run_sequence_eval.py --require-stateful-pass`（主序列与 `exam_cancel_review_cases.json` 双端全过）、`python eval/run_showcase.py`（3 条演示分支各 7 态完整导出）。
 - **端侧 1.5B 小模型与核心链路真机实测（2026-11-19 ～ 11-20，vivo V2505A · Android 16 · arm64-v8a）**：已加载 `Qwen2.5-1.5B-Instruct Q4_K_M`（`1.04 GB`）实跑 `liboffloor_llm.so` + GBNF，单次冷加载试跑 **`2.927 秒`** / 温态 **`2.357 秒`**；`v0.86` 连续 5 轮加载-推理-释放压测端到端耗时稳在 **`2.87s ～ 2.93s`**，释放后 PSS 连续 5 轮稳定回落至 **`164.5 ～ 165.0 MB`**（Native Heap 稳在 `75.6 MB`，零内存泄漏），电池温度全程 **`36.9°C → 36.9°C`（+0.0°C）**，校园三栏余额（`¥` 统一格式）、课表空档直达空教室/研修室与首页重构模块均实机验证通过（`0` 崩溃 / `0` ANR；中低端机型耗时、长时间耗电与商用云端 API 对比仍待补充）。
@@ -150,7 +150,7 @@ Offloor/
 │   ├── test_strict_benchmark.py      # 严格基准自动化回归断言
 │   ├── train.py / run_eval.py        # 分类器训练与合成集留出/消融评测
 │   ├── run_java_eval.py / EngineEval.java  # APK Java 引擎评测与复核率统计
-│   ├── run_checks.py                 # 95 组 Java + Adapter + Python 全量校验入口
+│   ├── run_checks.py                 # 98 组 Java + Adapter + Python 全量校验入口
 │   ├── run_browser_checks.py         # 19 组校园/首页浏览器与页面脚本回归入口
 │   ├── run_sequence_eval.py / run_reliability.py / run_showcase.py  # 有状态序列、边界可靠性与演示状态机导出
 │   └── test_*.py / test_*.cjs / time_cases.tsv  # 专项回归脚本（含首页视觉/弹窗/校园余额同步测试）
@@ -165,11 +165,11 @@ Offloor/
 │   │   └── TodayWidget.java / NotifListener.java / MainActivity.java ...
 │   ├── native/                       # llama.cpp JNI 封装与端侧 GGUF 编译配置
 │   ├── replay/                       # 独立通知回放器 APK（272 条离线链路演示）
-│   ├── test/                         # Step3~Step65、CampusDataTest、TimetableTest、AiResponseTest 等 JVM 用例
+│   ├── test/                         # Step3~Step67、CampusDataTest、CampusBusTicketTest、TimetableTest 等 JVM 用例
 │   └── build.py / prepare_updates.py # 跨平台零 Gradle 构建脚本与更新清单校验
 ├── docs/                             # 系统架构说明、同集消融报告、方案书大纲、演示分镜与 UI 截图
 ├── .github/                          # CI 自动检查与预览版/正式版带 NDK APK 构建流
-├── CHANGELOG.md                      # v0.9 ~ v0.86 完整版本演进与候选分支记录
+├── CHANGELOG.md                      # v0.9 ~ v0.87 完整版本演进与候选分支记录
 └── README.md                         # 本文件
 ```
 
@@ -183,7 +183,7 @@ Offloor/
 # 1. 运行严格无泄漏 OOD 多基线基准对比（输出 eval/benchmark_report.json）
 python eval/run_benchmark.py
 
-# 2. 运行全量核心回归与严格基准校验（免 Android SDK 运行 78 组；传入 jar 后跑满 95 组）
+# 2. 运行全量核心回归与严格基准校验（免 Android SDK 运行 80 组；传入 jar 后跑满 98 组）
 python eval/run_checks.py
 # 若本地已有 android.jar 与 org.json.jar：
 # python eval/run_checks.py --android-jar <android.jar> --json-jar <org.json.jar>

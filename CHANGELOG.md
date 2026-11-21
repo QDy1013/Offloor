@@ -2,6 +2,21 @@
 
 > 本文件收纳历次版本迭代与实验分支变更记录。项目定位、系统架构、评测结果与使用说明见 [README.md](README.md)。
 
+## v0.87（修复校车付款与电费充值入口、接入我的车票与原生 L 级乘车核验码、底部双栏导航）
+
+- **校车收银台外跳支付与页面生命周期修复**：
+  1. 新增共用页面能力 [PayWebSupport.java](android/app/src/com/nopalou/PayWebSupport.java) 与纯逻辑协议路由 [CampusPay.java](android/app/src/com/nopalou/CampusPay.java)，支持 `weixin://`、`alipays://`、`uppay://`、`intent://`（含 `browser_fallback_url` 回退）正确拉起外部支付应用，补齐多窗口/弹窗转发、`WebChromeClient` JS 对话框、第三方 Cookie 与微信 H5 支付（`wx.tenpay.com`）`Referer` 保护，并在 [AndroidManifest.xml](android/app/AndroidManifest.xml) 补充支付宝、云闪付与外跳协议可见性声明；[nwpu-bus.js](android/app/assets/nwpu-bus.js) 同步兼容 `PayCashier` 返回 HTML 或直接跳转 URL。
+  2. [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 修复跳转微信/支付宝时 `onPause()` 无条件销毁收银台与后台校车会话的问题（`inCashier()` 期间保留上下文，关闭收银台后自动复查订单）；[Step66Test.java](android/test/Step66Test.java) 覆盖纯 Java 入口与跳转路由回归。
+- **电费充值入口统一认证修复**：
+  1. [CampusPay.java](android/app/src/com/nopalou/CampusPay.java) 将一卡通交电费入口从裸首页修正为统一身份认证入口 `yktapp.nwpu.edu.cn/berserker-auth/cas/login/supwisdom?...plat`；[CampusPayActivity.java](android/app/src/com/nopalou/CampusPayActivity.java) 接入 [PayWebSupport.java](android/app/src/com/nopalou/PayWebSupport.java)，增加 HTTP 4xx/5xx 主文档报错识别与右上角刷新操作（仍严格只让 `*.nwpu.edu.cn` 在应用内加载，不注入脚本）。
+- **我的车票、底部双栏导航与官方同款原生 L 级乘车核验码**：
+  1. [nwpu-bus.js](android/app/assets/nwpu-bus.js) 接入校方 `/api/GetMyAppointment`（直接获取 18 位核验串 `objid`、上车地点 `fcdd`、预付单号与待支付剩余分钟）并与按日班次 `GetAppointmentOrder` 精确合并；[CampusBusTicket.java](android/app/src/com/nopalou/CampusBusTicket.java) 实现车票合并、退票/过期清理、账号哈希防串号与写时序防并发覆盖，[CampusBusTicketTest.java](android/test/CampusBusTicketTest.java) 与 [test_bus_ticket.cjs](eval/test_bus_ticket.cjs) 完成覆盖。
+  2. [QrCode.java](android/app/src/com/nopalou/QrCode.java) 实现纯 Java ISO/IEC 18004 二维码矩阵生成（支持官网同款 `Level.L` 与 `Level.M`，Version 1–10，经 [Step67Test.java](android/test/Step67Test.java) 与 OpenCV 解码器交叉验证）；[BusQrDialog.java](android/app/src/com/nopalou/BusQrDialog.java) 仅用真实 `objid` 绘制纯白底高清核验码并自动提亮屏幕。
+  3. [CampusActivity.java](android/app/src/com/nopalou/CampusActivity.java) 新增校车页底部固定 **「买票 | 我的车票」** 双栏切换导航，车票管理不再挤在购票列表顶部；[CampusBusRefresh.java](android/app/src/com/nopalou/CampusBusRefresh.java) 升级「校方订单」弹窗改由翱翔门户 SSO 跳转打开。
+- **验证与实机确认**：`run_checks.py`（98 组、0 失败）、`run_browser_checks.py`（19 组全过）全部通过，真机（vivo V2505A）实测电费充值打开、校车跳转微信/支付宝付款、门户进校方订单与我的车票列表拉取均已跑通。
+
+---
+
 ## v0.86（端侧 1.5B 非对称权限护栏、首页模块化瘦身与参赛架构/方案材料体系）
 
 - **端侧小模型非对称权限护栏（解决同集评测暴露的 1.5B 迎合误报）**：

@@ -30,6 +30,11 @@ public class CampusActivity extends Activity {
     private String busDate=CampusClassroomQuery.today(System.currentTimeMillis()),busError="";
     private boolean busAttempted,busLoading,busHidePast=true;
     private long busUpdated;
+    private int busTab;
+    private java.util.List<CampusBusTicket.Ticket> busTickets=java.util.Collections.emptyList();
+    private String busTicketOwner="";
+    private boolean busTicketsScanning,busTicketsScanPendingAll=true;
+    private int busTicketWriteEpoch,busScanEpoch;
     private CampusClassroomRefresh classroomRefresh;
     private boolean roomAttempted,roomLoading;
     private String roomCampus="长安校区",roomDate="",roomToken="",roomError="";
@@ -51,10 +56,13 @@ public class CampusActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b); Ui.apply(this); detail=getIntent().getStringExtra("module");
         busWeekend=b==null?CampusBusSchedule.weekend(System.currentTimeMillis()):b.getBoolean("bus_weekend");
-        busRoute=b==null?"":b.getString("bus_route",""); busPlace=b==null?"":b.getString("bus_place",""); render();
+        busRoute=b==null?"":b.getString("bus_route",""); busPlace=b==null?"":b.getString("bus_place","");
+        busTab=b==null?getIntent().getIntExtra("bus_tab",0):b.getInt("bus_tab",0);
+        if (busTab!=0 && busTab!=1) busTab=0;
+        render();
     }
     @Override public void onSaveInstanceState(Bundle b) {
-        b.putBoolean("bus_weekend",busWeekend); b.putString("bus_route",busRoute); b.putString("bus_place",busPlace); super.onSaveInstanceState(b);
+        b.putBoolean("bus_weekend",busWeekend); b.putString("bus_route",busRoute); b.putString("bus_place",busPlace); b.putInt("bus_tab",busTab); super.onSaveInstanceState(b);
     }
     @Override public void onResume() {
         super.onResume(); resumed=true;
@@ -85,6 +93,7 @@ public class CampusActivity extends Activity {
             try { d=CampusStore.load(getApplicationContext()); } catch (Exception e) { broken=true; }
             CampusData result=d; boolean bad=broken;
             runOnUiThread(() -> { if (isDestroyed() || isFinishing()) return; int y=scroll==null?0:scroll.getScrollY(); data=result; loaded=true;
+                loadBusTicketsForOwner();
                 if ("bus".equals(detail) && resumed && !busAttempted) startBusQuery();
                 render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y)); if (bad) toast("校园存档无法读取"); });
         });
@@ -115,6 +124,10 @@ public class CampusActivity extends Activity {
             View nav=AppNavigation.bar(this,AppNavigation.CAMPUS);
             frame.addView(nav,new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
             AppNavigation.reserve(nav,scroll);
+        } else if ("bus".equals(service.id)) {
+            View busNav=busNavBar();
+            frame.addView(busNav,new android.widget.FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));
+            AppNavigation.reserve(busNav,scroll);
         }
     }
     private LinearLayout card() {
@@ -617,16 +630,78 @@ public class CampusActivity extends Activity {
         });
     }
 
+    private void renderKeepingScroll() {
+        int y=scroll==null?0:scroll.getScrollY();
+        render();
+        if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,y));
+    }
+    private String currentOwner() { return data==null?"":data.owner; }
+    private void loadBusTicketsForOwner() {
+        String owner=currentOwner();
+        if (owner.equals(busTicketOwner)) return;
+        busTicketOwner=owner; busTicketsScanPendingAll=true;
+        if (owner.isEmpty()) { busTickets=java.util.Collections.emptyList(); return; }
+        String today=CampusClassroomQuery.today(System.currentTimeMillis());
+        String raw=getSharedPreferences("campus-bus-tickets",MODE_PRIVATE).getString("snapshot","");
+        busTickets=CampusBusTicket.decodeStorage(raw,owner,today);
+    }
+    private void saveBusTickets() {
+        String owner=currentOwner();
+        if (owner.isEmpty() || !owner.equals(busTicketOwner)) return;
+        String encoded=CampusBusTicket.encodeStorage(owner,busTickets);
+        if (!encoded.isEmpty()) getSharedPreferences("campus-bus-tickets",MODE_PRIVATE).edit().putString("snapshot",encoded).apply();
+    }
+    private void syncSingleBusTicket(JSONObject trip,String targetDate,JSONObject quoteResult) {
+        loadBusTicketsForOwner();
+        if (currentOwner().isEmpty()) return;
+        busTicketWriteEpoch++;
+        String today=CampusClassroomQuery.today(System.currentTimeMillis());
+        busTickets=CampusBusTicket.upsertFromQuote(busTickets,trip,targetDate,quoteResult,today);
+        saveBusTickets();
+        renderKeepingScroll();
+    }
+    private void startBusOrderScan(JSONArray currentTrips,String queriedDate) {
+        if (busRefresh==null || isDestroyed() || isFinishing() || currentOwner().isEmpty()) return;
+        loadBusTicketsForOwner();
+        final String ownerSnapshot=currentOwner();
+        final int startWriteEpoch=busTicketWriteEpoch;
+        final int scanId=++busScanEpoch;
+        final String[] threeDays=CampusBusTicket.threeDaysFrom(System.currentTimeMillis());
+        final String[] targetDates=busTicketsScanPendingAll?threeDays:new String[]{queriedDate};
+        final CampusBusRefresh runner=busRefresh;
+        busTicketsScanning=true;
+        renderKeepingScroll();
+        runner.scanOrders(targetDates,queriedDate,currentTrips,(results,extraTickets) -> {
+            if (isDestroyed() || isFinishing() || busRefresh!=runner || scanId!=busScanEpoch) return;
+            busTicketsScanning=false;
+            if (!ownerSnapshot.equals(currentOwner())) return;
+            if (startWriteEpoch!=busTicketWriteEpoch) { renderKeepingScroll(); return; }
+            String today=CampusClassroomQuery.today(System.currentTimeMillis());
+            busTickets=CampusBusTicket.mergeScanResults(busTickets,results,extraTickets,today);
+            if (results!=null && results.length()>0) busTicketsScanPendingAll=false;
+            saveBusTickets();
+            renderKeepingScroll();
+        });
+    }
+    private void openBusPortal() {
+        if (busRefresh==null) busRefresh=new CampusBusRefresh(this,(t,e) -> { });
+        busRefresh.openPortal(currentOwner(),() -> {
+            if (isDestroyed() || isFinishing() || !busLinked()) return;
+            busTicketsScanPendingAll=true; startBusQuery(); render();
+        });
+    }
     private void startBusQuery() {
-        ticketBusy=false;
+        ticketBusy=false; busTicketsScanning=false;
+        loadBusTicketsForOwner();
         if (busRefresh!=null) busRefresh.stop();
         busAttempted=true; busLoading=true; busError=""; busTrips=null; busUpdated=0;
+        final String queriedDate=busDate;
         busRefresh=new CampusBusRefresh(this,(trips,error) -> {
             busLoading=false; busTrips=trips; busError=error;
-            if (trips!=null) busUpdated=System.currentTimeMillis();
-            render();
+            if (trips!=null) { busUpdated=System.currentTimeMillis(); startBusOrderScan(trips,queriedDate); }
+            renderKeepingScroll();
         });
-        busRefresh.start(data,busDate);
+        busRefresh.start(data,queriedDate);
     }
     private boolean busLinked() { return data!=null && !data.owner.isEmpty(); }
     private void chooseBusDate() {
@@ -705,7 +780,20 @@ public class CampusActivity extends Activity {
         info.setSingleLine(true); info.setEllipsize(android.text.TextUtils.TruncateAt.END);
         meta.addView(info,new LinearLayout.LayoutParams(0,-2,1));
         if (!trip.optString("id").isEmpty()) {
-            TextView action=smallAction(open?"购票":"查看订单",open?Ui.ON_ACCENT:Ui.TEXT,open?Ui.ACCENT:Ui.CARD,true,() -> ticketQuote(trip));
+            CampusBusTicket.Ticket owned=CampusBusTicket.findForTrip(busTickets,busDate,trip);
+            String label; int fg; int bg;
+            if (owned!=null) {
+                if (owned.payable) { label="待支付"; fg=Ui.ON_ACCENT; bg=Ui.ORANGE; }
+                else if (owned.paid && "已核验".equals(owned.status)) { label="已核验"; fg=Ui.SUB; bg=Ui.CARD; }
+                else if (owned.paid) { label="已购 · "+(owned.status.isEmpty()?"待核验":owned.status); fg=Ui.GREEN; bg=Ui.GREEN_BG; }
+                else { label=owned.status; fg=Ui.ACCENT; bg=Ui.ACCENT_BG; }
+            } else {
+                label=open?"购票":"查看订单"; fg=open?Ui.ON_ACCENT:Ui.TEXT; bg=open?Ui.ACCENT:Ui.CARD;
+            }
+            TextView action=smallAction(label,fg,bg,true,() -> {
+                if (owned!=null && owned.hasQrCode()) showBusQr(owned);
+                else ticketQuote(trip,busDate);
+            });
             LinearLayout.LayoutParams actionParams=new LinearLayout.LayoutParams(-2,-2); actionParams.leftMargin=dp(8); meta.addView(action,actionParams);
         }
         row.addView(meta);
@@ -721,7 +809,7 @@ public class CampusActivity extends Activity {
         LinearLayout live=card();
         LinearLayout head=new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL); head.setBaselineAligned(false);
         head.addView(text("实时余位与已订人数",17,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
-        if (busLinked()) head.addView(smallAction("刷新",Ui.ACCENT,Ui.ACCENT_BG,!busLoading,() -> { startBusQuery(); render(); }));
+        if (busLinked()) head.addView(smallAction("刷新",Ui.ACCENT,Ui.ACCENT_BG,!busLoading,() -> { busTicketsScanPendingAll=true; startBusQuery(); render(); }));
         live.addView(head);
         if (!busLinked()) {
             CourseUi.gap(live,10);
@@ -848,17 +936,30 @@ public class CampusActivity extends Activity {
         live.addView(text("余位与人数随预约实时变化，购票结果以校方系统为准。",11,Ui.MUTE,false));
     }
     private boolean ticketBusy;
-    private void ticketQuote(JSONObject trip) {
-        if (ticketBusy || busRefresh==null) return;
+    private void ticketQuote(JSONObject trip,String targetDate) {
+        if (ticketBusy) return;
+        if (busLoading) { toast("正在连接校车系统，请稍候…"); return; }
+        if (busRefresh==null) { toast("请先刷新连接校车系统，或点右上角「校方订单」"); return; }
+        String queryDate=(targetDate==null || targetDate.isEmpty())?busDate:targetDate;
         ticketBusy=true; toast("正在查询票价和订单…");
-        busRefresh.ticket("quote",trip,"",false,(result,error) -> {
+        busRefresh.ticket("quote",trip,queryDate,"",false,(result,error) -> {
             ticketBusy=false;
             if (result==null) { toast(error); return; }
-            if (result.optBoolean("paid")) { new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("购票成功").setMessage(busDate+" "+trip.optString("time")+" "+trip.optString("route")+"\n订单："+result.optString("order")+"\n状态："+result.optString("status")).setPositiveButton("知道了",null).show(); return; }
-            if (result.optBoolean("payable")) { ticketPrepare(trip,result.optString("order"),0); return; }
+            syncSingleBusTicket(trip,queryDate,result);
+            if (result.optBoolean("paid")) {
+                CampusBusTicket.Ticket latest=CampusBusTicket.findForTrip(busTickets,queryDate,trip);
+                if (latest==null || !latest.hasQrCode()) startBusOrderScan(busTrips,queryDate);
+                AlertDialog.Builder ok=new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("购票成功")
+                        .setMessage(queryDate+" "+trip.optString("time")+" "+trip.optString("route")+"\n订单："+result.optString("order")+"\n状态："+result.optString("status"))
+                        .setNeutralButton("查看校方订单",(d,w) -> openBusPortal());
+                if (latest!=null && latest.hasQrCode()) ok.setNegativeButton("知道了",null).setPositiveButton("出示乘车码",(d,w) -> showBusQr(latest));
+                else ok.setNegativeButton("知道了",null).setPositiveButton("去我的车票",(d,w) -> { busTab=1; render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,0)); });
+                ok.show(); return;
+            }
+            if (result.optBoolean("payable")) { ticketPrepare(trip,queryDate,result.optString("order"),0); return; }
             if (!result.optBoolean("canSubmit") || !trip.optBoolean("open")) { toast("当前不可购票，订单状态："+result.optString("status","未下单")); return; }
             LinearLayout body=CourseUi.column(this); body.setPadding(dp(24),dp(12),dp(24),dp(12));
-            body.addView(text(busDate+" "+trip.optString("time")+"\n"+trip.optString("route")+"\n应付：¥"+result.optString("fee"),16,Ui.TEXT,true));
+            body.addView(text(queryDate+" "+trip.optString("time")+"\n"+trip.optString("route")+"\n应付：¥"+result.optString("fee"),16,Ui.TEXT,true));
             android.widget.CheckBox agreement=new android.widget.CheckBox(this); agreement.setText("我已阅读并同意预约须知"); body.addView(agreement);
             String notice=result.optString("notice");
             android.app.AlertDialog dialog=new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("确认购票").setView(body)
@@ -869,31 +970,34 @@ public class CampusActivity extends Activity {
                 agreement.setOnCheckedChangeListener((button,checked) -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(checked));
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                     dialog.dismiss(); ticketBusy=true;
-                    busRefresh.ticket("submit",trip,result.optString("fee"),true,(order,err) -> {
+                    busRefresh.ticket("submit",trip,queryDate,result.optString("fee"),true,(order,err) -> {
                         ticketBusy=false;
-                        if (order==null) { new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("订单结果未确认").setMessage(err).setPositiveButton("查询订单",(a,b) -> ticketQuote(trip)).setNegativeButton("稍后查询",null).show(); return; }
-                        if (order.optBoolean("paid")) { ticketQuote(trip); return; }
-                        if (!order.optString("order").isEmpty()) ticketPrepare(trip,order.optString("order"),0);
-                        else { toast("订单状态已变化，请重新查询"); ticketQuote(trip); }
+                        if (order==null) { new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("订单结果未确认").setMessage(err).setPositiveButton("查询订单",(a,b) -> ticketQuote(trip,queryDate)).setNegativeButton("稍后查询",null).show(); return; }
+                        syncSingleBusTicket(trip,queryDate,order);
+                        if (order.optBoolean("paid")) { ticketQuote(trip,queryDate); return; }
+                        if (!order.optString("order").isEmpty()) ticketPrepare(trip,queryDate,order.optString("order"),0);
+                        else { toast("订单状态已变化，请重新查询"); ticketQuote(trip,queryDate); }
                     });
                 });
             }); dialog.show();
         });
     }
-    private void ticketPrepare(JSONObject trip,String order,int attempt) {
+    private void ticketPrepare(JSONObject trip,String targetDate,String order,int attempt) {
         if (ticketBusy || busRefresh==null || !resumed) return;
+        String queryDate=(targetDate==null || targetDate.isEmpty())?busDate:targetDate;
         ticketBusy=true;
-        busRefresh.ticket("prepare",trip,order,false,(result,error) -> {
+        busRefresh.ticket("prepare",trip,queryDate,order,false,(result,error) -> {
             ticketBusy=false;
             if (result==null) { toast(error); return; }
-            if (result.optBoolean("paid")) { ticketQuote(trip); return; }
+            syncSingleBusTicket(trip,queryDate,result);
+            if (result.optBoolean("paid")) { ticketQuote(trip,queryDate); return; }
             if (result.optBoolean("preparing") && attempt<10) {
-                updates.postDelayed(() -> ticketPrepare(trip,order,attempt+1),2000); return;
+                updates.postDelayed(() -> ticketPrepare(trip,queryDate,order,attempt+1),2000); return;
             }
             String prepay=result.optString("prepay");
             if (prepay.isEmpty()) { toast("支付单尚未就绪，请稍后点击查看订单继续"); return; }
             new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("订单待支付").setMessage("订单："+order+"\n应付：¥"+result.optString("fee")+"\n在应用内的校方收银台完成支付后，将查询校方订单结果。")
-                .setNegativeButton("稍后支付",null).setPositiveButton("去支付",(d,w) -> busRefresh.openCashier(order,prepay,() -> ticketQuote(trip),(r,e) -> toast(e))).show();
+                .setNegativeButton("稍后支付",null).setPositiveButton("去支付",(d,w) -> busRefresh.openCashier(order,prepay,() -> ticketQuote(trip,queryDate),(r,e) -> toast(e))).show();
         });
     }
     private void showTicketNotice(String url) {
@@ -905,7 +1009,205 @@ public class CampusActivity extends Activity {
         new AlertDialog.Builder(this,Ui.dialogTheme()).setTitle("预约须知").setView(notice).setPositiveButton("关闭",null).setOnDismissListener(d -> notice.destroy()).show();
         notice.loadUrl(url);
     }
+    private void showBusQr(CampusBusTicket.Ticket ticket) {
+        Runnable verify=() -> {
+            if (!ticket.date.isEmpty() && !ticket.id.isEmpty()) ticketQuote(ticket.toTripJson(),ticket.date);
+            else { busTicketsScanPendingAll=true; startBusQuery(); render(); }
+        };
+        BusQrDialog.show(this,ticket,verify,this::openBusPortal);
+    }
+    private void renderBusTicketsPage() {
+        if (!busLinked()) {
+            LinearLayout login=card();
+            login.addView(text("我的车票",17,Ui.TEXT,true));
+            CourseUi.gap(login,10);
+            TextView hint=text("连接校园账号后，自动汇总你购买的车票，支持直接出示乘车核验二维码与继续支付。",12,Ui.SUB,false);
+            hint.setLineSpacing(dp(3),1); login.addView(hint);
+            CourseUi.gap(login,14);
+            login.addView(CourseUi.action(this,"连接校园账号",true,() -> startActivity(new Intent(this,NwpuImportActivity.class).putExtra("school_id","nwpu"))),CourseUi.row(dp(48)));
+            return;
+        }
+        loadBusTicketsForOwner();
+        LinearLayout topCard=card();
+        LinearLayout head=new LinearLayout(this); head.setGravity(Gravity.CENTER_VERTICAL); head.setBaselineAligned(false);
+        String heading="我的车票";
+        if (!busTickets.isEmpty()) {
+            int payCount=0;
+            for (CampusBusTicket.Ticket t:busTickets) if (t.payable) payCount++;
+            heading=payCount>0?"我的车票 · 待支付 "+payCount+" 张":"我的车票 · "+busTickets.size()+" 张";
+        }
+        head.addView(text(heading,17,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
+        TextView refreshBtn=smallAction("刷新",Ui.ACCENT,Ui.ACCENT_BG,!busLoading && !busTicketsScanning,() -> { busTicketsScanPendingAll=true; startBusQuery(); render(); });
+        head.addView(refreshBtn);
+        TextView portalBtn=smallAction("校方订单",Ui.TEXT,Ui.FILL,true,this::openBusPortal);
+        LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-2,-2); pp.leftMargin=dp(6);
+        head.addView(portalBtn,pp);
+        topCard.addView(head);
+        if (busTicketsScanning || busLoading) {
+            CourseUi.gap(topCard,12);
+            android.widget.ProgressBar bar=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+            bar.setIndeterminate(true); bar.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
+            topCard.addView(bar,CourseUi.row(dp(3)));
+            CourseUi.gap(topCard,8);
+            topCard.addView(text("正在向校方核对车票与乘车核验码…",12,Ui.SUB,false));
+        } else if (!busError.isEmpty() && busTickets.isEmpty()) {
+            CourseUi.gap(topCard,12);
+            topCard.addView(banner(busError,Ui.RED,Ui.RED_BG));
+        } else if (busTickets.isEmpty()) {
+            CourseUi.gap(topCard,12);
+            topCard.addView(text("当前暂无有效车票，去「买票」页挑一班合适的车吧。",12,Ui.SUB,false));
+            CourseUi.gap(topCard,12);
+            topCard.addView(CourseUi.action(this,"去买票",true,() -> { busTab=0; render(); if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,0)); }),CourseUi.row(dp(44)));
+        }
+
+        if (!busTickets.isEmpty()) {
+            String[] threeDays=CampusBusTicket.threeDaysFrom(System.currentTimeMillis());
+            for (CampusBusTicket.Ticket t:busTickets) {
+                LinearLayout ticketCard=card();
+                LinearLayout rowTop=new LinearLayout(this); rowTop.setGravity(Gravity.CENTER_VERTICAL); rowTop.setBaselineAligned(false);
+                rowTop.addView(text(CampusBusTicket.friendlyDate(t.date,threeDays)+" "+t.time,19,Ui.TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
+                boolean verified="已核验".equals(t.status);
+                TextView badge;
+                if (t.payable) badge=Ui.tag(this,"待支付",Ui.ORANGE,Ui.ORANGE_BG);
+                else if (t.paid && verified) badge=Ui.tag(this,"已核验",Ui.SUB,Ui.FILL);
+                else if (t.paid) badge=Ui.tag(this,t.status.isEmpty()?"待核验":t.status,Ui.GREEN,Ui.GREEN_BG);
+                else badge=Ui.tag(this,t.status,Ui.ACCENT,Ui.ACCENT_BG);
+                rowTop.addView(badge);
+                ticketCard.addView(rowTop);
+
+                StringBuilder routeLine=new StringBuilder();
+                String r=t.displayRoute();
+                if (!r.isEmpty()) routeLine.append(r);
+                if (!t.fee.isEmpty()) { if (routeLine.length()>0) routeLine.append(" · "); routeLine.append("¥").append(t.fee); }
+                if (routeLine.length()>0) {
+                    CourseUi.gap(ticketCard,6);
+                    ticketCard.addView(text(routeLine.toString(),14,Ui.TEXT,false));
+                }
+                if (!t.place.isEmpty()) {
+                    CourseUi.gap(ticketCard,4);
+                    ticketCard.addView(text("上车地点："+t.place,12,Ui.SUB,false));
+                }
+                if (t.payable && t.payRemainMin>=0) {
+                    CourseUi.gap(ticketCard,4);
+                    ticketCard.addView(text("剩余支付时间约 "+t.payRemainMin+" 分钟，请及时完成付款",12,Ui.ORANGE,true));
+                }
+                String refText=!t.qrCode.isEmpty()?("核验码 "+t.qrCode):(!t.order.isEmpty()?"单号 "+t.order:"");
+                if (!refText.isEmpty()) {
+                    CourseUi.gap(ticketCard,6);
+                    TextView ref=text(refText,11,Ui.MUTE,false);
+                    ref.setSingleLine(true); ref.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    ticketCard.addView(ref);
+                }
+
+                CourseUi.gap(ticketCard,14);
+                LinearLayout btns=new LinearLayout(this); btns.setBaselineAligned(false);
+                if (t.hasQrCode()) {
+                    TextView verifyBtn=CourseUi.action(this,"实时复核",false,() -> {
+                        if (!t.date.isEmpty() && !t.id.isEmpty()) ticketQuote(t.toTripJson(),t.date);
+                        else { busTicketsScanPendingAll=true; startBusQuery(); render(); }
+                    });
+                    verifyBtn.setMinHeight(dp(42));
+                    btns.addView(verifyBtn,new LinearLayout.LayoutParams(0,dp(42),1));
+                    View spacer=new View(this);
+                    btns.addView(spacer,new LinearLayout.LayoutParams(dp(10),1));
+                    TextView qrBtn=CourseUi.action(this,"出示乘车码",true,() -> showBusQr(t));
+                    qrBtn.setMinHeight(dp(42));
+                    btns.addView(qrBtn,new LinearLayout.LayoutParams(0,dp(42),1.4f));
+                } else if (t.paid) {
+                    TextView portal=CourseUi.action(this,"校方订单",false,this::openBusPortal);
+                    portal.setMinHeight(dp(42));
+                    btns.addView(portal,new LinearLayout.LayoutParams(0,dp(42),1));
+                    btns.addView(new View(this),new LinearLayout.LayoutParams(dp(10),1));
+                    TextView syncBtn=CourseUi.action(this,"获取乘车码",true,() -> startBusOrderScan(busTrips,busDate));
+                    syncBtn.setMinHeight(dp(42));
+                    btns.addView(syncBtn,new LinearLayout.LayoutParams(0,dp(42),1.4f));
+                } else if (t.payable) {
+                    Runnable payNow=() -> {
+                        if (!t.date.isEmpty() && !t.id.isEmpty()) ticketQuote(t.toTripJson(),t.date);
+                        else if (!t.order.isEmpty() && !t.prepay.isEmpty() && busRefresh!=null) busRefresh.openCashier(t.order,t.prepay,() -> { busTicketsScanPendingAll=true; startBusQuery(); },(res,err) -> toast(err));
+                        else openBusPortal();
+                    };
+                    TextView payBtn=CourseUi.action(this,"立即支付",true,payNow);
+                    payBtn.setMinHeight(dp(42));
+                    btns.addView(payBtn,new LinearLayout.LayoutParams(-1,dp(42)));
+                } else {
+                    TextView detailBtn=CourseUi.action(this,"查看状态",false,() -> {
+                        if (!t.date.isEmpty() && !t.id.isEmpty()) ticketQuote(t.toTripJson(),t.date);
+                        else openBusPortal();
+                    });
+                    detailBtn.setMinHeight(dp(42));
+                    btns.addView(detailBtn,new LinearLayout.LayoutParams(-1,dp(42)));
+                }
+                ticketCard.addView(btns);
+            }
+            note("点「出示乘车码」可亮屏出示官方同款乘车二维码；如需退票或查历史取消订单请点上方「校方订单」。");
+        }
+    }
+    private View busNavBar() {
+        LinearLayout shell=new LinearLayout(this); shell.setOrientation(LinearLayout.VERTICAL); shell.setBackgroundColor(Ui.BG);
+        shell.addView(Ui.hairline(this),new LinearLayout.LayoutParams(-1,1));
+        LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12),dp(4),dp(12),dp(6)); row.setMinimumHeight(dp(52));
+        shell.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        int count=busTickets.size();
+        String[] labels={"买票",count>0?"我的车票 ("+count+")":"我的车票"};
+        for (int i=0;i<2;i++) {
+            final int tabIdx=i; final boolean selected=busTab==tabIdx;
+            LinearLayout tab=new LinearLayout(this); tab.setGravity(Gravity.CENTER); tab.setOrientation(LinearLayout.VERTICAL);
+            tab.setPadding(0,dp(4),0,dp(4)); tab.setMinimumHeight(dp(48));
+            tab.setSelected(selected); tab.setFocusable(true);
+            tab.setBackground(Ui.ripple(this,null,Ui.press(),12)); Ui.pressScale(tab,0.97f);
+            int tint=selected?Ui.ACCENT:Ui.MUTE;
+            android.widget.ImageView icon=new android.widget.ImageView(this);
+            icon.setImageDrawable(busNavGlyph(tabIdx,tint));
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            tab.addView(icon,new LinearLayout.LayoutParams(dp(20),dp(20)));
+            TextView lbl=text(labels[i],11,tint,selected);
+            lbl.setSingleLine(true); lbl.setGravity(Gravity.CENTER); lbl.setIncludeFontPadding(false);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2); lp.topMargin=dp(3);
+            tab.addView(lbl,lp);
+            tab.setOnClickListener(v -> {
+                if (busTab==tabIdx) return;
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                busTab=tabIdx; render();
+                if (scroll!=null) scroll.post(() -> scroll.scrollTo(0,0));
+            });
+            LinearLayout.LayoutParams tlp=new LinearLayout.LayoutParams(0,-2,1);
+            if (i>0) tlp.leftMargin=dp(4);
+            row.addView(tab,tlp);
+        }
+        return shell;
+    }
+    private android.graphics.drawable.Drawable busNavGlyph(final int idx,final int color) {
+        return new android.graphics.drawable.Drawable() {
+            final android.graphics.Paint p=new android.graphics.Paint(3);
+            @Override public void draw(android.graphics.Canvas c) {
+                c.save(); c.translate(getBounds().left,getBounds().top);
+                c.scale(getBounds().width()/24f,getBounds().height()/24f);
+                p.setColor(color); p.setStrokeWidth(1.85f); p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                p.setStrokeJoin(android.graphics.Paint.Join.ROUND); p.setStyle(android.graphics.Paint.Style.STROKE);
+                if (idx==0) {
+                    c.drawRoundRect(new android.graphics.RectF(5,4.2f,19,17.2f),2.8f,2.8f,p);
+                    c.drawLine(5,11,19,11,p);
+                    c.drawLine(7.5f,17.2f,7.5f,19.5f,p); c.drawLine(16.5f,17.2f,16.5f,19.5f,p);
+                    c.drawLine(8.2f,14.2f,9.2f,14.2f,p); c.drawLine(14.8f,14.2f,15.8f,14.2f,p);
+                } else {
+                    c.drawRoundRect(new android.graphics.RectF(3.5f,5.5f,20.5f,18.5f),2.4f,2.4f,p);
+                    c.drawLine(8.5f,5.5f,8.5f,18.5f,p);
+                    c.drawLine(12,10,17,10,p); c.drawLine(12,14,15.5f,14,p);
+                }
+                c.restore();
+            }
+            @Override public void setAlpha(int a) { p.setAlpha(a); }
+            @Override public void setColorFilter(android.graphics.ColorFilter f) { p.setColorFilter(f); }
+            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        };
+    }
     private void renderBus(JSONObject module) {
+        if (busTab==1) {
+            renderBusTicketsPage();
+            return;
+        }
         renderBusLive();
         section("学期内参考时刻表");
         LinearLayout filterCard=card(); filterCard.setPadding(dp(10),dp(10),dp(10),dp(10));
@@ -1046,6 +1348,13 @@ public class CampusActivity extends Activity {
         toast("已复制脱敏同步自检信息（不含账号、密码和余额）");
     }
     @Override public void finish() { super.finish(); AppNavigation.fade(this); }
-    @Override public void onPause() { resumed=false; if (busRefresh!=null) busRefresh.stop(); busAttempted=false; busLoading=false; busTrips=null; ticketBusy=false; CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause(); }
+    @Override public void onPause() {
+        resumed=false;
+        if (busRefresh==null || !busRefresh.inCashier()) {
+            if (busRefresh!=null) busRefresh.stop();
+            busAttempted=false; busLoading=false; busTicketsScanning=false; busTrips=null; ticketBusy=false;
+        }
+        CampusStore.unobserve(changed); updates.removeCallbacksAndMessages(null); CampusAutoRefresh.pause(this); super.onPause();
+    }
     @Override public void onDestroy() { if (busRefresh!=null) busRefresh.stop(); stopClassroomQuery(); CampusSilentRefresh.hostDestroyed(this); io.shutdown(); super.onDestroy(); }
 }
