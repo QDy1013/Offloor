@@ -1033,7 +1033,7 @@ public class MainActivity extends Activity implements Engine.SelectedListener {
             numColor = Ui.AMBER_TX;
             lead = "confirm";
         } else {
-            head = "今天没有截止";
+            head = "今日没有待办事项";
         }
         SpannableString s = new SpannableString(head);
         if (num != null) {
